@@ -1,0 +1,55 @@
+@php $chef = auth()->user()->estChef(); @endphp
+<x-layouts.app title="Paramètres">
+    <x-page-header title="Paramètres"/>
+    <x-tabs :active="$tab" :items="array_filter(['cabinet' => $chef ? ['Cabinet', '?tab=cabinet'] : null, 'users' => $chef ? ['Utilisateurs ('.$users->where('status', 'pending')->count().' en attente)', '?tab=users'] : null, 'compte' => ['Mon compte', '?tab=compte']])"/>
+    @if($tab === 'cabinet' && $chef)
+        <form method="POST" action="{{ route('parametres.cabinet') }}" enctype="multipart/form-data" class="grid gap-6 lg:grid-cols-3">@csrf
+            <div class="card lg:col-span-2"><div class="card-h"><h2 class="card-t">Coordonnées (en-tête des factures et documents)</h2></div>
+                <div class="card-b grid gap-4 md:grid-cols-2">
+                    <x-field label="Nom du cabinet" name="nom" :value="$c['nom']" required span="md:col-span-2"/>
+                    <x-field label="Adresse" name="adresse" :value="$c['adresse']" span="md:col-span-2"/>
+                    <x-field label="Matricule fiscal" name="mf" :value="$c['mf']" hint="7 chiffres + lettre : requis pour les fichiers TEIF et TEJ"/>
+                    <x-field label="Téléphone" name="telephone" :value="$c['telephone']"/>
+                    <x-field label="E-mail" name="email" type="email" :value="$c['email']"/>
+                    <x-field label="Slogan (pied de page)" name="slogan" :value="$c['slogan']"/>
+                </div>
+                <div class="card-h border-t"><h2 class="card-t">Coordonnées bancaires</h2></div>
+                <div class="card-b grid gap-4 md:grid-cols-2">
+                    <x-field label="Banque" name="banque" :value="$c['banque']"/><x-field label="Titulaire" name="titulaire" :value="$c['titulaire']"/>
+                    <x-field label="RIB" name="rib" :value="$c['rib']"/><x-field label="IBAN" name="iban" :value="$c['iban']"/><x-field label="BIC" name="bic" :value="$c['bic']"/>
+                </div>
+            </div>
+            <div class="space-y-6">
+                <div class="card card-b space-y-4"><h2 class="card-t">Logo</h2>
+                    @if($c['logo'])<img src="{{ asset('storage/'.$c['logo']) }}" class="max-h-24 rounded-lg border border-slate-200 bg-white p-2"><label class="flex items-center gap-2 text-sm"><input type="checkbox" name="retirer_logo" value="1"> Retirer le logo</label>@endif
+                    <input type="file" name="logo" accept="image/*" class="input">
+                </div>
+                <button class="btn-primary w-full">Enregistrer</button>
+            </div>
+        </form>
+    @elseif($tab === 'users' && $chef)
+        <div class="card">@foreach($users as $x)
+            <div class="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3 last:border-0 dark:border-slate-800">
+                <span class="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-xs font-semibold text-white">{{ $x->initiales() }}</span>
+                <div class="min-w-0 flex-1"><div class="font-medium">{{ $x->name }} @if($x->is(auth()->user()))<span class="text-xs text-slate-400">(vous)</span>@endif</div><div class="text-xs text-slate-500">{{ $x->email }} · inscrit {{ $x->created_at->diffForHumans() }}</div></div>
+                <span class="{{ $x->estChef() ? 'badge-blue' : 'badge-gray' }}">{{ $x->roleLibelle() }}</span>
+                <span class="badge-{{ ['active' => 'green', 'pending' => 'amber', 'disabled' => 'red'][$x->status] }}">{{ ['active' => 'Actif', 'pending' => 'En attente', 'disabled' => 'Désactivé'][$x->status] }}</span>
+                @unless($x->is(auth()->user()))
+                    <form method="POST" action="{{ route('parametres.user', $x) }}" class="flex gap-1">@csrf @method('PATCH')
+                        @if($x->status !== 'active')<button name="action" value="activer" class="btn-success btn-sm">{{ $x->status === 'pending' ? 'Valider' : 'Réactiver' }}</button>@else<button name="action" value="desactiver" class="btn-secondary btn-sm">Désactiver</button>@endif
+                        <button name="action" value="role" class="btn-secondary btn-sm">{{ $x->estChef() ? 'Passer collaborateur' : 'Nommer chef comptable' }}</button>
+                    </form>
+                    <x-confirm-delete :action="route('parametres.user.destroy', $x)"/>
+                @endunless
+            </div>
+        @endforeach</div>
+    @else
+        <form method="POST" action="{{ route('parametres.password') }}" class="card card-b max-w-md space-y-4">@csrf
+            <h2 class="card-t">Changer mon mot de passe</h2>
+            <x-field label="Mot de passe actuel" name="actuel" type="password" required/>
+            <x-field label="Nouveau mot de passe" name="password" type="password" required/>
+            <x-field label="Confirmer" name="password_confirmation" type="password" required/>
+            <button class="btn-primary">Modifier</button>
+        </form>
+    @endif
+</x-layouts.app>

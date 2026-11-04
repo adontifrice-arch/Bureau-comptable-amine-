@@ -1,0 +1,76 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --color-brand-50: #eef8fa;
+    --color-brand-100: #d4eef2;
+    --color-brand-200: #a9dde6;
+    --color-brand-300: #6fc3d1;
+    --color-brand-400: #3aa6b8;
+    --color-brand-500: #168a9c;
+    --color-brand-600: #0b6e7f;
+    --color-brand-700: #0c5967;
+    --color-brand-800: #0f4954;
+    --color-brand-900: #12303a;
+    --color-brand-950: #0b1f26;
+}
+
+[x-cloak] { display: none !important; }
+
+@layer components {
+    .card { @apply rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(16,40,50,.04)] dark:border-slate-800 dark:bg-slate-900; }
+    .card-h { @apply flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5 dark:border-slate-800; }
+    .card-t { @apply text-[15px] font-semibold text-slate-800 dark:text-slate-100; }
+    .card-b { @apply p-5; }
+
+    .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-50 cursor-pointer whitespace-nowrap; }
+    .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-50 cursor-pointer whitespace-nowrap bg-brand-600 text-white shadow-sm hover:bg-brand-700; }
+    .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-50 cursor-pointer whitespace-nowrap border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700; }
+    .btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-50 cursor-pointer whitespace-nowrap text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800; }
+    .btn-danger { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-50 cursor-pointer whitespace-nowrap bg-rose-600 text-white hover:bg-rose-700; }
+    .btn-success { @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:opacity-50 cursor-pointer whitespace-nowrap bg-emerald-600 text-white hover:bg-emerald-700; }
+    .btn-sm { @apply px-2.5 py-1.5 text-xs rounded-lg; }
+    .btn-icon { @apply inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-100 cursor-pointer; }
+
+    .label { @apply mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400; }
+    .input { @apply block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100; }
+    .input-sm { @apply block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 shadow-sm transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 px-2.5 py-1.5 text-xs rounded-lg; }
+
+    .badge { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap; }
+    .badge-gray { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300; }
+    .badge-green { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/15 dark:bg-emerald-500/10 dark:text-emerald-300; }
+    .badge-amber { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap bg-amber-50 text-amber-700 ring-1 ring-amber-600/15 dark:bg-amber-500/10 dark:text-amber-300; }
+    .badge-red { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap bg-rose-50 text-rose-700 ring-1 ring-rose-600/15 dark:bg-rose-500/10 dark:text-rose-300; }
+    .badge-blue { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap bg-brand-50 text-brand-700 ring-1 ring-brand-600/15 dark:bg-brand-500/10 dark:text-brand-300; }
+
+    .tbl { @apply w-full text-sm; }
+    .tbl thead th { @apply border-b border-slate-200 bg-slate-50/70 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-400; }
+    .tbl tbody td { @apply border-b border-slate-100 px-4 py-3 align-middle text-slate-700 dark:border-slate-800 dark:text-slate-300; }
+    .tbl tbody tr:hover td { @apply bg-slate-50/60 dark:bg-slate-800/30; }
+    .tbl tfoot td { @apply px-4 py-3 font-semibold text-slate-800 dark:text-slate-100; }
+    .num { @apply text-right font-mono tabular-nums whitespace-nowrap; }
+
+    .tab { @apply relative whitespace-nowrap px-3 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200; }
+    .tab-active { @apply text-brand-700 dark:text-brand-300 after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-brand-600; }
+
+    .nav-link { @apply flex items-center gap-3 rounded-xl px-3 py-2 text-[13.5px] font-medium text-slate-300 transition hover:bg-white/5 hover:text-white; }
+    .nav-link-active { @apply bg-white/10 text-white shadow-inner; }
+
+    .prose-doc { @apply font-serif text-[15px] leading-7 text-slate-900; }
+    .prose-doc p { @apply mb-2; }
+    .prose-doc h3 { @apply mt-4 mb-2 font-bold; }
+}
+
+@media print {
+    .no-print { display: none !important; }
+    body { background: #fff !important; }
+    .print-area { box-shadow: none !important; border: 0 !important; margin: 0 !important; padding: 0 !important; }
+}

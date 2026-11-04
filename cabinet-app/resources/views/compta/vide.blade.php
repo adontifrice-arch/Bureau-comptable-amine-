@@ -1,0 +1,1 @@
+<x-layouts.app title="Dossiers"><div class="card"><x-empty icon="users" title="Aucun dossier client">Ajoutez d’abord un client dans l’onglet <a href="{{ route('clients.create') }}" class="text-brand-700 underline">Clients</a>.</x-empty></div></x-layouts.app>

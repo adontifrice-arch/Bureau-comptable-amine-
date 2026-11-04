@@ -1,0 +1,147 @@
+<x-layouts.app :title="$client->nom">
+    <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div class="flex items-center gap-4">
+            <a href="{{ route('clients.index') }}" class="btn-icon"><x-icon name="arrow-left" class="h-4 w-4"/></a>
+            <div class="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-lg font-bold text-white shadow-lg shadow-brand-900/20">{{ $client->initiales() }}</div>
+            <div>
+                <h1 class="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{{ $client->nom }}</h1>
+                <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                    <span>{{ $client->forme ?: '—' }}</span>
+                    @if($client->type_personne)<span class="badge-gray">{{ $client->type_personne === 'morale' ? 'Personne morale' : 'Personne physique' }}</span>@endif
+                    @if($client->mission)<span class="badge-blue">{{ $client->mission }}</span>@endif
+                </div>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{{ route('echeances.calendrier', $client) }}" class="btn-secondary"><x-icon name="calendar" class="h-4 w-4"/> Calendrier</a>
+            <a href="{{ route('actes.create', $client) }}" class="btn-secondary"><x-icon name="file-text" class="h-4 w-4"/> Rédiger statuts / PV</a>
+            <a href="{{ route('factures.create', ['client' => $client->id]) }}" class="btn-secondary"><x-icon name="invoice" class="h-4 w-4"/> Facturer</a>
+            <a href="{{ route('clients.edit', $client) }}" class="btn-primary"><x-icon name="edit" class="h-4 w-4"/> Modifier</a>
+        </div>
+    </div>
+
+    @php $u = fn($t) => route('clients.show', [$client, 'tab' => $t]); @endphp
+    <x-tabs :active="$tab" :items="['fiche' => ['Fiche', $u('fiche')], 'echeances' => ['Échéances ('.$echeances->whereNull('accomplie_le')->count().')', $u('echeances')], 'exigences' => ['Exigences ('.$client->exigences->count().')', $u('exigences')], 'factures' => ['Factures ('.$factures->count().')', $u('factures')], 'documents' => ['Documents ('.$documents->count().')', $u('documents')], 'actes' => ['Actes juridiques ('.$actes->count().')', $u('actes')]]"/>
+
+    @if($tab === 'fiche')
+        @php
+            $bloc = function ($titre, $rows) { return [$titre, array_filter($rows, fn($v) => $v !== null && $v !== '' && $v !== '—')]; };
+            $blocs = [
+                $bloc('Identification', ['Dénomination commerciale' => $client->denomination_commerciale, 'Résidence' => ['residente' => 'Résidente', 'non_residente' => 'Non résidente'][$client->residence] ?? null, 'Régime d’exportation' => ['totale' => 'Totalement exportatrice', 'partielle' => 'Partiellement exportatrice'][$client->regime_export] ?? null, 'Matricule fiscal' => $client->matricule_fiscal, 'Matricule CNSS' => $client->matricule_cnss, 'Matricule indépendant' => $client->matricule_independant, 'Adresse' => $client->adresse, 'Téléphone' => $client->telephone, 'E-mail' => $client->email]),
+                $bloc('Mission & capital', ['Mission' => $client->mission, 'Honoraires mensuels' => $client->honoraires_mensuels > 0 ? tnd($client->honoraires_mensuels) : null, 'Compte comptable' => $client->compte_comptable, 'Capital' => $client->capital > 0 ? tnd($client->capital) : null, 'Nombre de parts' => $client->nb_parts, 'Valeur nominale' => $client->valeur_nominale ? tnd($client->valeur_nominale) : null]),
+                $bloc('Gérant', ['Nom' => $client->gerant_nom, 'Nationalité' => $client->gerant_nationalite, 'CIN' => trim($client->gerant_cin.($client->gerant_cin_date ? ' du '.dfr($client->gerant_cin_date) : '').($client->gerant_cin_lieu ? ' à '.$client->gerant_cin_lieu : '')), 'Passeport' => $client->gerant_passeport, 'Carte de séjour' => $client->gerant_carte_sejour, 'Né(e) le' => $client->gerant_naissance_date ? dfr($client->gerant_naissance_date).($client->gerant_naissance_lieu ? ' à '.$client->gerant_naissance_lieu : '') : null, 'Adresse' => $client->gerant_adresse, 'Nommé le' => $client->gerant_nomination_date ? dfr($client->gerant_nomination_date).($client->gerant_nomination_duree ? ' ('.$client->gerant_nomination_duree.')' : '') : null, 'Associé' => $client->gerant_associe === null ? null : ($client->gerant_associe ? 'Oui'.($client->gerant_parts ? ' — '.$client->gerant_parts.' parts' : '') : 'Non')]),
+            ];
+        @endphp
+        <div class="grid gap-6 lg:grid-cols-3">
+            @foreach($blocs as [$t, $rows])
+                <div class="card">
+                    <div class="card-h"><h2 class="card-t">{{ $t }}</h2></div>
+                    <dl class="divide-y divide-slate-100 dark:divide-slate-800">
+                        @forelse($rows as $k => $v)
+                            <div class="flex justify-between gap-4 px-5 py-2.5 text-sm"><dt class="text-slate-500">{{ $k }}</dt><dd class="text-right font-medium text-slate-800 dark:text-slate-100">{{ $v }}</dd></div>
+                        @empty
+                            <div class="px-5 py-4 text-sm text-slate-400">Non renseigné.</div>
+                        @endforelse
+                    </dl>
+                </div>
+            @endforeach
+        </div>
+        <div class="card mt-6">
+            <div class="card-h"><h2 class="card-t">Associés</h2></div>
+            @if($client->associes->count())
+                <table class="tbl"><thead><tr><th>Associé</th><th>Pièce d’identité</th><th>Nationalité</th><th>Apport</th><th class="text-right">Parts</th></tr></thead><tbody>
+                @foreach($client->associes as $a)
+                    <tr><td class="font-medium">{{ $a->nom }}</td><td>{{ $a->cin ? 'CIN '.$a->cin : ($a->passeport ? 'Passeport '.$a->passeport : '—') }}</td><td>{{ $a->nationalite ?: '—' }}</td><td>{{ $a->apport === 'nature' ? 'En nature' : 'En numéraire' }}</td><td class="num">{{ $a->parts }}{{ $a->parts_de ? ' (n° '.$a->parts_de.' à '.$a->parts_a.')' : '' }}</td></tr>
+                @endforeach
+                </tbody></table>
+            @else <x-empty icon="users" title="Aucun associé renseigné"/> @endif
+        </div>
+        <div class="mt-6 flex justify-end"><x-confirm-delete :action="route('clients.destroy', $client)" :icon="false" label="Supprimer ce client" message="Supprimer ce client avec toutes ses échéances, factures, écritures et documents ?"/></div>
+
+    @elseif($tab === 'echeances')
+        <div class="card">
+            <div class="card-h"><h2 class="card-t">Échéances du client</h2>
+                <button class="btn-primary btn-sm" x-data @click="$dispatch('open-modal', 'ech')"><x-icon name="plus" class="h-3.5 w-3.5"/> Ajouter</button></div>
+            @include('echeances._list', ['items' => $echeances, 'showClient' => false])
+        </div>
+        <x-modal name="ech" title="Nouvelle échéance">
+            @include('echeances._form', ['clientId' => $client->id])
+        </x-modal>
+
+    @elseif($tab === 'exigences')
+        <div class="card" x-data="{ e: {} }">
+            <div class="card-h"><h2 class="card-t">Exigences et obligations</h2>
+                <button class="btn-primary btn-sm" @click="e = {}; $dispatch('open-modal', 'exi')"><x-icon name="plus" class="h-3.5 w-3.5"/> Ajouter</button></div>
+            @if($client->exigences->count())
+            <div class="overflow-x-auto"><table class="tbl">
+                <thead><tr><th>Exigence</th><th>Organisme</th><th>Périodicité</th><th>Date limite</th><th>Remarque</th><th></th></tr></thead><tbody>
+                @foreach($client->exigences as $x)
+                    <tr>
+                        <td class="font-medium">{{ $x->intitule }}</td><td>{{ $x->organisme }}</td><td>{{ $x->periodicite }}</td>
+                        <td>@if($x->date_limite)<span class="{{ $x->date_limite->isPast() ? 'badge-red' : 'badge-gray' }}">{{ dfr($x->date_limite) }}</span>@else — @endif</td>
+                        <td class="max-w-xs text-xs text-slate-500">{{ $x->remarque }}</td>
+                        <td class="whitespace-nowrap text-right">
+                            <form method="POST" action="{{ route('clients.exigences.echeance', $x) }}" class="inline">@csrf<button class="btn-ghost btn-sm" title="Créer l’échéance correspondante"><x-icon name="calendar" class="h-3.5 w-3.5"/> Échéance</button></form>
+                            <button class="btn-icon" @click="e = @js($x->only(['id','intitule','organisme','periodicite','remarque']) + ['date_limite' => optional($x->date_limite)->format('Y-m-d')]); $dispatch('open-modal', 'exi')"><x-icon name="edit" class="h-4 w-4"/></button>
+                            <x-confirm-delete :action="route('clients.exigences.destroy', $x)"/>
+                        </td>
+                    </tr>
+                @endforeach
+            </tbody></table></div>
+            @else <x-empty icon="list" title="Aucune exigence">Recensez les obligations du client (TVA, CNSS, RNE, douane…).</x-empty> @endif
+
+            <x-modal name="exi" title="Exigence">
+                <form method="POST" :action="e.id ? '{{ url('exigences') }}/' + e.id : '{{ route('clients.exigences.store', $client) }}'" class="grid gap-4 md:grid-cols-2">
+                    @csrf <template x-if="e.id"><input type="hidden" name="_method" value="PUT"></template>
+                    <div class="md:col-span-2"><label class="label">Exigence *</label><input name="intitule" class="input" x-model="e.intitule" required placeholder="Déclaration mensuelle de TVA"></div>
+                    <div><label class="label">Organisme</label><select name="organisme" class="input" x-model="e.organisme">@foreach(config('cabinet.ORGS') as $o)<option>{{ $o }}</option>@endforeach</select></div>
+                    <div><label class="label">Périodicité</label><select name="periodicite" class="input" x-model="e.periodicite">@foreach(config('cabinet.PERS') as $o)<option>{{ $o }}</option>@endforeach</select></div>
+                    <div><label class="label">Prochaine date limite</label><input type="date" name="date_limite" class="input" x-model="e.date_limite"></div>
+                    <div class="md:col-span-2"><label class="label">Remarque</label><textarea name="remarque" class="input" rows="2" x-model="e.remarque"></textarea></div>
+                    <div class="flex justify-end md:col-span-2"><button class="btn-primary">Enregistrer</button></div>
+                </form>
+            </x-modal>
+        </div>
+
+    @elseif($tab === 'factures')
+        <div class="card">
+            <div class="card-h"><h2 class="card-t">Factures et devis</h2><a href="{{ route('factures.create', ['client' => $client->id]) }}" class="btn-primary btn-sm"><x-icon name="plus" class="h-3.5 w-3.5"/> Nouvelle facture</a></div>
+            @include('factures._table', ['items' => $factures])
+        </div>
+
+    @elseif($tab === 'documents')
+        @php $base = array_slice(config('cabinet.GC'), 0, 9); $have = $documents->pluck('categorie')->unique(); @endphp
+        <div class="grid gap-6 lg:grid-cols-3">
+            <div class="card">
+                <div class="card-h"><h2 class="card-t">Pièces de base</h2><span class="badge-blue">{{ collect($base)->filter(fn($c) => $have->contains($c))->count() }}/9</span></div>
+                <ul class="divide-y divide-slate-100 dark:divide-slate-800">
+                    @foreach($base as $c)
+                        <li class="flex items-center justify-between px-5 py-2.5 text-sm"><span>{{ $c }}</span>@if($have->contains($c))<x-icon name="check" class="h-4 w-4 text-emerald-600"/>@else<span class="badge-amber">Manquante</span>@endif</li>
+                    @endforeach
+                </ul>
+            </div>
+            <div class="card lg:col-span-2">
+                <div class="card-h"><h2 class="card-t">Documents du dossier</h2><a href="{{ route('ged.index', ['client' => $client->id]) }}" class="btn-primary btn-sm"><x-icon name="upload" class="h-3.5 w-3.5"/> Ajouter dans la GED</a></div>
+                @forelse($documents as $doc)
+                    <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-3 text-sm last:border-0 dark:border-slate-800">
+                        <x-icon name="file-text" class="h-5 w-5 text-brand-600"/>
+                        <div class="min-w-0 flex-1"><div class="truncate font-medium">{{ $doc->nom }}</div><div class="text-xs text-slate-500">{{ $doc->categorie }} · {{ dfr($doc->date) }}</div></div>
+                        <a href="{{ route('ged.download', $doc) }}" class="btn-icon"><x-icon name="download" class="h-4 w-4"/></a>
+                    </div>
+                @empty <x-empty icon="folder" title="Aucun document"/> @endforelse
+            </div>
+        </div>
+
+    @elseif($tab === 'actes')
+        <div class="card">
+            <div class="card-h"><h2 class="card-t">Statuts, PV et contrats</h2><a href="{{ route('actes.create', $client) }}" class="btn-primary btn-sm"><x-icon name="plus" class="h-3.5 w-3.5"/> Nouveau document</a></div>
+            @forelse($actes as $a)
+                <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-3 text-sm last:border-0 dark:border-slate-800">
+                    <x-icon name="file-text" class="h-5 w-5 text-brand-600"/>
+                    <a href="{{ route('actes.edit', $a) }}" class="min-w-0 flex-1"><div class="truncate font-medium hover:text-brand-700">{{ $a->titre }}</div><div class="text-xs text-slate-500">{{ dfr($a->date) }} · modifié {{ $a->updated_at->diffForHumans() }}</div></a>
+                    <x-confirm-delete :action="route('actes.destroy', $a)"/>
+                </div>
+            @empty <x-empty icon="file-text" title="Aucun acte rédigé">Générez des statuts SARL/SUARL, des PV d’assemblée ou un contrat de cession de parts.</x-empty> @endforelse
+        </div>
+    @endif
+</x-layouts.app>
