@@ -38,7 +38,7 @@ class Balises
         ],
         'Cession de parts' => [
             'CEDANT' => 'Identité du cédant', 'CESSIONNAIRE' => 'Identité du cessionnaire', 'NB_PARTS_CEDEES' => 'Nombre de parts cédées',
-            'NUMEROS_PARTS' => 'Numéros des parts cédées', 'PRIX' => 'Prix de cession',
+            'NUMEROS_PARTS' => 'Numéros des parts cédées (de … à … inclus)', 'PRIX' => 'Prix de cession',
         ],
     ];
 
@@ -65,7 +65,8 @@ class Balises
     {
         $c->loadMissing('associes');
         $as = $c->associes->map(fn ($a) => ['nom' => $a->nom, 'nat' => $a->nationalite, 'dn' => $a->naissance_date, 'ln' => $a->naissance_lieu, 'cin' => $a->cin,
-            'cind' => $a->cin_date, 'cinl' => $a->cin_lieu, 'pas' => $a->passeport, 'cs' => $a->carte_sejour, 'adr' => $a->adresse,
+            'cind' => $a->cin_date, 'cinl' => $a->cin_lieu, 'pas' => $a->passeport, 'pasd' => $a->passeport_date, 'pasv' => $a->passeport_validite,
+            'cs' => $a->carte_sejour, 'adr' => $a->adresse,
             'p' => $a->parts, 'pd' => $a->parts_de, 'pf' => $a->parts_a, 'ap' => $a->apport])->values();
         $gerantListe = $c->gerant_nom && $as->contains(fn ($a) => mb_strtolower(trim($a['nom'])) === mb_strtolower(trim($c->gerant_nom)));
         if ($c->gerant_nom && ! $gerantListe && ($c->gerant_associe || $as->isEmpty())) {
@@ -77,7 +78,8 @@ class Balises
     public static function gerant(Client $c): array
     {
         return ['nom' => $c->gerant_nom ?: self::VIDE, 'nat' => $c->gerant_nationalite, 'dn' => $c->gerant_naissance_date, 'ln' => $c->gerant_naissance_lieu,
-            'cin' => $c->gerant_cin, 'cind' => $c->gerant_cin_date, 'cinl' => $c->gerant_cin_lieu, 'pas' => $c->gerant_passeport, 'cs' => $c->gerant_carte_sejour,
+            'cin' => $c->gerant_cin, 'cind' => $c->gerant_cin_date, 'cinl' => $c->gerant_cin_lieu, 'pas' => $c->gerant_passeport, 'pasd' => $c->gerant_passeport_date,
+            'pasv' => $c->gerant_passeport_validite, 'cs' => $c->gerant_carte_sejour,
             'adr' => $c->gerant_adresse];
     }
 
@@ -87,8 +89,10 @@ class Balises
         $s = $x['nom'];
         if (! empty($x['nat'])) $s .= ', de nationalité '.$x['nat'];
         if (! empty($x['dn'])) $s .= ', né(e) le '.dlong($x['dn']).(! empty($x['ln']) ? ' à '.$x['ln'] : '');
+        // Toutes les pièces d'identité renseignées : CIN, carte de séjour (résident étranger), passeport.
         if (! empty($x['cin'])) $s .= ', titulaire de la CIN n° '.$x['cin'].(! empty($x['cind']) ? ' délivrée le '.dfr($x['cind']) : '').(! empty($x['cinl']) ? ' à '.$x['cinl'] : '');
-        elseif (! empty($x['pas'])) $s .= ', titulaire du passeport n° '.$x['pas'].(! empty($x['cs']) ? ' et de la carte de séjour n° '.$x['cs'] : '');
+        if (! empty($x['cs'])) $s .= ', titulaire de la carte de séjour n° '.$x['cs'];
+        if (! empty($x['pas'])) $s .= ', titulaire du passeport n° '.$x['pas'].(! empty($x['pasd']) ? ' délivré le '.dfr($x['pasd']) : '').(! empty($x['pasv']) ? ' et valable jusqu’au '.dfr($x['pasv']) : '');
         if (! empty($x['adr'])) $s .= ', demeurant à '.$x['adr'];
         return $s;
     }
@@ -162,7 +166,7 @@ class Balises
             'DUREE_GERANT' => $v($c->gerant_nomination_duree),
 
             'ASSOCIES' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.self::identite($a))->implode("\n"),
-            'REPARTITION_PARTS' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.$a['nom'].' : '.($a['p'] ?: self::VIDE).' parts'.($a['pd'] ? ', numérotées de '.$a['pd'].' à '.$a['pf'] : ''))
+            'REPARTITION_PARTS' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.$a['nom'].' : '.($a['p'] ?: self::VIDE).' parts'.($a['pd'] ? ', numérotées de '.$a['pd'].' à '.$a['pf'].' inclus' : ''))
                 ->push('Total : '.($np ?: self::VIDE).' parts')->implode("\n"),
             'APPORTS' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.$a['nom'].' : apport en '.(($a['ap'] ?? 'numeraire') === 'nature' ? 'nature' : 'numéraire')
                 .' de '.($c->valeur_nominale && $a['p'] ? tnd($a['p'] * $c->valeur_nominale) : self::VIDE))->implode("\n"),
@@ -178,7 +182,7 @@ class Balises
             'CEDANT' => $ced ? self::identite($ced) : $v($d['cedant'] ?? null),
             'CESSIONNAIRE' => self::identite($cessionnaire),
             'NB_PARTS_CEDEES' => $v($d['parts'] ?? null),
-            'NUMEROS_PARTS' => ! empty($d['parts_de']) && ! empty($d['parts_a']) ? 'n° '.$d['parts_de'].' à '.$d['parts_a'] : self::VIDE,
+            'NUMEROS_PARTS' => ! empty($d['parts_de']) && ! empty($d['parts_a']) ? 'de '.$d['parts_de'].' à '.$d['parts_a'].' inclus' : self::VIDE,
             'PRIX' => ! empty($d['prix']) ? tnd($d['prix']) : self::VIDE,
         ];
     }

@@ -10,6 +10,7 @@ use App\Services\Actes\HtmlActe;
 use App\Services\Actes\ModeleDocx;
 use App\Services\Actes\ModeleTexte;
 use App\Services\Actes\OrdreDuJour;
+use App\Services\Actes\Statuts;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -160,39 +161,18 @@ class ActeController extends Controller
         $lieu = Balises::lieu($c);
         $id = fn ($x) => $e(Balises::identite($x));
         $as = Balises::detenteurs($c);
-        $ger = Balises::gerant($c);
         $np = $c->nb_parts ?: $as->sum('p');
         $entete = '<p style="text-align:center"><b>'.$e(mb_strtoupper($c->nom)).'</b><br>'.$e($c->forme).' au capital de '.$cap.'<br>Siège social : '.$e($c->adresse ?: '………').($c->matricule_fiscal ? '<br>Matricule fiscal : '.$e($c->matricule_fiscal) : '').'</p>';
         $sig = '<p style="margin-top:30px">'.$as->map(fn ($a) => $e($a['nom']).' : ……………………')->implode('<br>').'</p>';
         $t = $d['type'];
 
-        if (in_array($t, ['sarl', 'suarl'])) {
-            $uni = $t === 'suarl';
-            $h = '<h3 style="text-align:center">STATUTS<br>'.($uni ? 'SOCIÉTÉ UNIPERSONNELLE À RESPONSABILITÉ LIMITÉE' : 'SOCIÉTÉ À RESPONSABILITÉ LIMITÉE').'</h3>'.$entete;
-            $h .= $P($uni ? 'Le soussigné :' : 'Les soussignés :').'<ul>'.$as->map(fn ($a) => '<li>'.$id($a).'</li>')->implode('').'</ul>';
-            $h .= $P(($uni ? 'a établi' : 'ont établi').' ainsi qu’il suit les statuts d’une société à responsabilité limitée'.($uni ? ' unipersonnelle' : '').' régie par le Code des sociétés commerciales et par les présents statuts.');
-            $h .= $H('Article 1 – Forme').$P('Il est formé une société à responsabilité limitée'.($uni ? ' unipersonnelle' : '').' régie par les lois en vigueur et par les présents statuts.');
-            $h .= $H('Article 2 – Dénomination').$P('La société prend la dénomination : <b>'.$e($c->nom).'</b>'.($c->denomination_commerciale ? ', nom commercial « '.$e($c->denomination_commerciale).' »' : '').'.'.($c->residence ? ' La société est '.($c->residence === 'residente' ? 'résidente' : 'non résidente').(['non' => ' et non exportatrice', 'totale' => ' et totalement exportatrice', 'partielle' => ' et partiellement exportatrice'][$c->regime_export] ?? '').'.' : ''));
-            $h .= $H('Article 3 – Objet').$P($e($d['objet'] ?: '[Objet social à préciser]').'. Et plus généralement, toutes opérations commerciales, financières, mobilières ou immobilières se rattachant directement ou indirectement à l’objet social.');
-            $h .= $H('Article 4 – Siège social').$P('Le siège social est fixé à '.$e($c->adresse ?: '………').'. Il pourra être transféré en tout autre lieu par décision '.($uni ? 'de l’associé unique' : 'de l’assemblée générale extraordinaire').'.');
-            $h .= $H('Article 5 – Durée').$P('La durée de la société est fixée à '.($d['duree'] ?: 99).' années à compter de son immatriculation au registre national des entreprises, sauf dissolution anticipée ou prorogation.');
-            $h .= $H('Article 6 – Apports').$P('Il est fait apport à la société des sommes suivantes :').'<ul>'.$as->map(fn ($a) => '<li>'.$e($a['nom']).' : apport en '.(($a['ap'] ?? 'numeraire') === 'nature' ? 'nature' : 'numéraire').' de '.($c->valeur_nominale && $a['p'] ? tnd($a['p'] * $c->valeur_nominale) : '………').'</li>')->implode('').'</ul>'.$P('Soit au total la somme de '.$cap.', intégralement libérée et déposée au compte de la société.');
-            $h .= $H('Article 7 – Capital social').$P('Le capital social est fixé à '.$cap.', divisé en '.($np ?: '………').' parts sociales de '.$vn.' chacune, entièrement souscrites et libérées, attribuées comme suit :').'<ul>'.$as->map(fn ($a) => '<li>'.$e($a['nom']).' : '.($a['p'] ?: '………').' parts'.($a['pd'] ? ', numérotées de '.$a['pd'].' à '.$a['pf'] : '').'</li>')->implode('').'</ul>';
-            $h .= $H('Article 8 – Cession et transmission des parts').$P($uni ? 'Les parts sont librement cessibles par l’associé unique. Toute cession est constatée par écrit et rendue opposable à la société dans les formes légales.' : 'Les parts sociales ne peuvent être cédées à des tiers étrangers à la société qu’avec le consentement de la majorité des associés représentant au moins les trois quarts du capital social, conformément au Code des sociétés commerciales.');
-            $h .= $H('Article 9 – Gérance').$P('La société est gérée par une ou plusieurs personnes physiques, associées ou non. Est nommé(e) premier gérant pour une durée '.$e($c->gerant_nomination_duree ?: 'illimitée').' : '.$id($ger).'. Le gérant dispose des pouvoirs les plus étendus pour agir au nom de la société.');
-            $h .= $H('Article 10 – Décisions collectives').$P($uni ? 'L’associé unique exerce les pouvoirs dévolus à l’assemblée des associés. Ses décisions sont consignées dans un registre.' : 'Les décisions ordinaires sont adoptées par un ou plusieurs associés représentant plus de la moitié du capital ; les décisions modifiant les statuts sont adoptées par les associés représentant au moins les trois quarts du capital.');
-            $h .= $H('Article 11 – Exercice social').$P('L’exercice social commence le 1er janvier et se termine le 31 décembre. Par exception, le premier exercice commence à l’immatriculation de la société.');
-            $h .= $H('Article 12 – Affectation des résultats').$P('Sur le bénéfice net, il est prélevé 5 % pour constituer la réserve légale jusqu’à ce que celle-ci atteigne le dixième du capital. Le solde est affecté sur décision '.($uni ? 'de l’associé unique' : 'des associés').'.');
-            $h .= $H('Article 13 – Dissolution – Liquidation').$P('À l’expiration de la société ou en cas de dissolution anticipée, la liquidation est effectuée conformément à la loi.');
-            $h .= $H('Article 14 – Publicité – Pouvoirs').$P('Tous pouvoirs sont donnés au porteur d’une copie des présentes pour accomplir les formalités de dépôt et de publicité prévues par la loi.');
-            return $h.$P('Fait à '.$e($lieu).', le '.dlong($d['date']).', en quatre exemplaires originaux.').$sig;
-        }
+        if (in_array($t, ['sarl', 'suarl'])) return Statuts::html($c, $d, $entete);
 
         if ($t === 'cession') {
             $ced = $as->first(fn ($a) => mb_strtolower(trim($a['nom'])) === mb_strtolower(trim($d['cedant'] ?? ''))) ?? ['nom' => $d['cedant'] ?: '………'];
             $h = '<h3 style="text-align:center">CONTRAT DE CESSION DE PARTS SOCIALES</h3>'.$entete.$P('<b>ENTRE LES SOUSSIGNÉS :</b>');
             $h .= $P('1) '.$id($ced).', ci-après dénommé(e) « le Cédant »,').$P('ET').$P('2) '.$e($d['cessionnaire'] ?: '………').($d['cessionnaire_cin'] ? ', titulaire de la CIN n° '.$e($d['cessionnaire_cin']) : '').($d['cessionnaire_adresse'] ? ', demeurant à '.$e($d['cessionnaire_adresse']) : '').', ci-après dénommé(e) « le Cessionnaire »,');
-            $h .= $P('<b>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</b>').$H('Article 1 – Cession').$P('Le Cédant cède, sous les garanties ordinaires de fait et de droit, au Cessionnaire qui accepte, '.($d['parts'] ?: '………').' parts sociales de '.$vn.' chacune'.($d['parts_de'] ? ', numérotées de '.$d['parts_de'].' à '.$d['parts_a'] : '').', qu’il détient dans le capital de la société '.$e($c->nom).'.');
+            $h .= $P('<b>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</b>').$H('Article 1 – Cession').$P('Le Cédant cède, sous les garanties ordinaires de fait et de droit, au Cessionnaire qui accepte, '.($d['parts'] ?: '………').' parts sociales de '.$vn.' chacune'.($d['parts_de'] ? ', numérotées de '.$d['parts_de'].' à '.$d['parts_a'].' inclus' : '').', qu’il détient dans le capital de la société '.$e($c->nom).'.');
             $h .= $H('Article 2 – Prix').$P('La présente cession est consentie et acceptée moyennant le prix global de '.(! empty($d['prix']) ? tnd($d['prix']) : '………').', que le Cédant reconnaît avoir reçu, dont quittance.');
             $h .= $H('Article 3 – Propriété – Jouissance').$P('Le Cessionnaire est propriétaire des parts cédées à compter de ce jour et a droit aux bénéfices à compter de la même date.');
             $h .= $H('Article 4 – Agrément').$P('La présente cession a été agréée conformément aux statuts et au Code des sociétés commerciales.');

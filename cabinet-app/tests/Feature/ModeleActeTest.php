@@ -70,8 +70,8 @@ class ModeleActeTest extends TestCase
         $this->assertSame(ModeleActe::sole()->id, $acte->modele_id);
         $this->assertStringContainsString('<p>STATUTS DE Alpha Conseil (SARL), société résidente et non exportatrice</p>', $acte->contenu);
         $this->assertStringContainsString('Capital : 1 000,000 TND, 100 parts de 10,000 TND', $acte->contenu);
-        $this->assertStringContainsString('- Sami Ben Ali : 60 parts, numérotées de 1 à 60<br>', $acte->contenu);   // gérant associé inclus
-        $this->assertStringContainsString('- Leila Trabelsi : 40 parts, numérotées de 61 à 100<br>', $acte->contenu);
+        $this->assertStringContainsString('- Sami Ben Ali : 60 parts, numérotées de 1 à 60 inclus<br>', $acte->contenu);   // gérant associé inclus
+        $this->assertStringContainsString('- Leila Trabelsi : 40 parts, numérotées de 61 à 100 inclus<br>', $acte->contenu);
         $this->assertStringContainsString('Total : 100 parts', $acte->contenu);
         $this->assertStringContainsString('Fait à Tunis, le 15 mars 2026. Objet : Conseil &amp; formation', $acte->contenu);
         $this->get(route('actes.edit', $acte))->assertOk()->assertDontSee('Word (modèle)');
@@ -90,13 +90,13 @@ class ModeleActeTest extends TestCase
 
         $acte = Acte::sole();
         $this->assertStringContainsString('<b>CONTRAT DE CESSION – Alpha Conseil</b>', $acte->contenu);
-        $this->assertStringContainsString('Entre Leila Trabelsi, de nationalité tunisienne, titulaire de la CIN n° 07654321 et Nadia Gharbi, titulaire de la CIN n° 09999999 : 20 parts (n° 61 à 80) pour 2 500,000 TND.', $acte->contenu);
+        $this->assertStringContainsString('Entre Leila Trabelsi, de nationalité tunisienne, titulaire de la CIN n° 07654321 et Nadia Gharbi, titulaire de la CIN n° 09999999 : 20 parts (de 61 à 80 inclus) pour 2 500,000 TND.', $acte->contenu);
 
         $this->get(route('actes.edit', $acte))->assertOk()->assertSee('Word (modèle)');
         $r = $this->get(route('actes.docx', $acte))->assertOk()->assertDownload();
         $fichier = $r->baseResponse->getFile()->getPathname();
         $this->assertStringContainsString('CONTRAT DE CESSION – Alpha Conseil', $this->texteDocx($fichier));
-        $this->assertStringContainsString('20 parts (n° 61 à 80)', $this->texteDocx($fichier));
+        $this->assertStringContainsString('20 parts (de 61 à 80 inclus)', $this->texteDocx($fichier));
     }
 
     public function test_redaction_d_un_pv_avec_ordre_du_jour_et_resolutions(): void
