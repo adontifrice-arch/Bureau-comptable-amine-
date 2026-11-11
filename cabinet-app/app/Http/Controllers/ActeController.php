@@ -6,9 +6,11 @@ use App\Models\Acte;
 use App\Models\Client;
 use App\Models\ModeleActe;
 use App\Services\Actes\Balises;
+use App\Services\Actes\HtmlActe;
 use App\Services\Actes\ModeleDocx;
 use App\Services\Actes\ModeleTexte;
 use App\Services\Actes\OrdreDuJour;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -72,7 +74,7 @@ class ActeController extends Controller
             return back()->withInput()->withErrors(['modele_id' => $ex->getMessage()]);
         }
         $acte = Acte::create(['client_id' => $client->id, 'type' => $d['type'], 'modele_id' => $modele?->id, 'date' => $d['date'], 'donnees' => $d,
-            'titre' => self::types()[$d['type']].' – '.dfr($d['date']), 'contenu' => $contenu]);
+            'titre' => self::types()[$d['type']].' – '.dfr($d['date']), 'contenu' => HtmlActe::nettoyer($contenu)]);
         $this->log('Rédaction : '.$acte->titre.($modele ? ' (modèle « '.$modele->nom.' »)' : ''), $client->id);
         return redirect()->route('actes.edit', $acte)->with('ok', 'Brouillon généré : relisez-le et modifiez-le avant signature.');
     }
@@ -102,16 +104,44 @@ class ActeController extends Controller
         $d = ($acte->donnees ?? []) + ['type' => $acte->type, 'date' => $acte->date?->format('Y-m-d')];
         $tmp = tempnam(sys_get_temp_dir(), 'acte');
         ModeleDocx::remplir(Storage::path($m->fichier), Balises::valeurs($acte->client->load('associes'), $d), $tmp);
-        return response()->download($tmp, Str::slug($acte->client->nom.' '.$acte->titre).'.docx', [
+        return response()->download($tmp, self::nomFichier($acte).'.docx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'])->deleteFileAfterSend();
     }
 
-    public function edit(Acte $acte) { return view('actes.edit', ['acte' => $acte->load('client')]); }
+    private static function nomFichier(Acte $acte): string
+    {
+        return Str::slug(str_replace('/', '-', $acte->client->nom.' '.$acte->titre));
+    }
+
+    public function edit(Acte $acte) { return view('actes.edit', ['acte' => $acte->load('client', 'modele')]); }
 
     public function update(Request $r, Acte $acte)
     {
-        $acte->update($r->validate(['titre' => 'required|max:255', 'contenu' => 'required']));
+        $d = $r->validate(['titre' => 'required|max:255', 'contenu' => 'required|string|max:2000000']);
+        $d['contenu'] = HtmlActe::nettoyer($d['contenu']);
+        if (trim(strip_tags($d['contenu'])) === '') return back()->withErrors(['contenu' => 'Le document est vide.']);
+        $acte->update($d);
         return back()->with('ok', 'Document enregistré.');
+    }
+
+    /** Export PDF A4 paginé « Page i / n ». */
+    public function pdf(Acte $acte)
+    {
+        $pdf = Pdf::loadView('actes.pdf', ['acte' => $acte, 'contenu' => HtmlActe::nettoyer($acte->contenu)])
+            ->setPaper('a4', 'portrait')
+            ->setOption(['defaultFont' => 'DejaVu Serif', 'isRemoteEnabled' => false, 'isPhpEnabled' => false]);
+        $dompdf = $pdf->getDomPDF();
+        $dompdf->render();
+        $canvas = $dompdf->getCanvas();
+        $police = $dompdf->getFontMetrics()->getFont('Helvetica');
+        $texte = 'Page {PAGE_NUM} / {PAGE_COUNT}';
+        $largeur = $dompdf->getFontMetrics()->getTextWidth('Page 00 / 00', $police, 8);
+        $canvas->page_text(($canvas->get_width() - $largeur) / 2, $canvas->get_height() - 28, $texte, $police, 8, [0.4, 0.4, 0.4]);
+
+        return response($dompdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.self::nomFichier($acte).'.pdf"',
+        ]);
     }
 
     public function destroy(Acte $acte)

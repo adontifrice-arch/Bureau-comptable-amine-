@@ -28,6 +28,7 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::delete('actes/modeles/{modele}', [C\ModeleActeController::class, 'destroy'])->name('modeles-actes.destroy');
     Route::post('actes/ordre-du-jour', [C\ActeController::class, 'ordreAjouter'])->name('actes.odd.store');
     Route::delete('actes/ordre-du-jour', [C\ActeController::class, 'ordreRetirer'])->name('actes.odd.destroy');
+    Route::get('actes/{acte}/pdf', [C\ActeController::class, 'pdf'])->name('actes.pdf');
     Route::get('actes/{acte}/word', [C\ActeController::class, 'docx'])->name('actes.docx');
     Route::get('actes/{acte}', [C\ActeController::class, 'edit'])->name('actes.edit');
     Route::put('actes/{acte}', [C\ActeController::class, 'update'])->name('actes.update');
