@@ -8,6 +8,7 @@ use App\Models\ModeleActe;
 use App\Services\Actes\Balises;
 use App\Services\Actes\ModeleDocx;
 use App\Services\Actes\ModeleTexte;
+use App\Services\Actes\OrdreDuJour;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -19,8 +20,25 @@ class ActeController extends Controller
 {
     public function create(Client $client)
     {
-        return view('actes.create', ['client' => $client->load('associes'), 'types' => self::types(),
+        return view('actes.create', ['client' => $client->load('associes'), 'types' => self::types(), 'odd' => OrdreDuJour::tous(),
             'modeles' => ModeleActe::orderBy('nom')->get(['id', 'type', 'nom', 'format'])]);
+    }
+
+    /** Ajout d'un point personnalisé à l'ordre du jour d'un type de PV (conservé pour les prochains PV). */
+    public function ordreAjouter(Request $r)
+    {
+        $d = $r->validate(['type' => 'required|in:'.implode(',', OrdreDuJour::TYPES), 'point' => 'required|string|max:500']);
+        OrdreDuJour::ajouter($d['type'], $d['point']);
+        $this->log('Ordre du jour '.strtoupper($d['type']).' : ajout du point « '.OrdreDuJour::normaliser($d['point']).' »');
+        return response()->json(OrdreDuJour::tous());
+    }
+
+    public function ordreRetirer(Request $r)
+    {
+        $d = $r->validate(['type' => 'required|in:'.implode(',', OrdreDuJour::TYPES), 'point' => 'required|string|max:500']);
+        OrdreDuJour::retirer($d['type'], $d['point']);
+        $this->log('Ordre du jour '.strtoupper($d['type']).' : retrait du point « '.$d['point'].' »');
+        return response()->json(OrdreDuJour::tous());
     }
 
     public static function types(): Collection
@@ -38,7 +56,12 @@ class ActeController extends Controller
             'prix' => 'nullable|numeric|min:0']);
         $d += array_fill_keys(['objet', 'duree', 'ordre', 'ordre_libre', 'motif', 'date_cessation', 'cedant', 'cessionnaire', 'cessionnaire_cin', 'cessionnaire_adresse', 'parts', 'parts_de', 'parts_a', 'prix'], null);
         if (empty($d['parts']) && $d['parts_de'] && $d['parts_a']) $d['parts'] = $d['parts_a'] - $d['parts_de'] + 1;
-        $modele = ! empty($d['modele_id']) ? ModeleActe::find($d['modele_id']) : null;
+        if (in_array($d['type'], OrdreDuJour::TYPES, true) && $d['ordre']) {
+            // L'ordre du PV est celui de la liste, quel que soit l'ordre d'envoi des cases cochées.
+            $liste = array_column(OrdreDuJour::points($d['type']), 'texte');
+            $d['ordre'] = array_values(array_merge(array_intersect($liste, $d['ordre']), array_diff($d['ordre'], $liste)));
+        }
+        $modele =! empty($d['modele_id']) ? ModeleActe::find($d['modele_id']) : null;
         unset($d['modele_id']);
         if ($modele && $modele->type !== $d['type']) return back()->withInput()->withErrors(['modele_id' => 'Ce modèle n’est pas prévu pour ce type de document.']);
 

@@ -1,9 +1,41 @@
-@php $ODD = config('cabinet.ODD'); @endphp
 <x-layouts.app title="Rédiger un acte">
+    <script>
+        /** Ordre du jour des PV : points cochés numérotés dans l'ordre de la liste, points du cabinet conservés côté serveur. */
+        function redactionActe(init) {
+            return {
+                ...init, off: {}, nouveau: '', erreur: '', envoi: false,
+                numero(item) {
+                    if (this.off[item.texte]) return '';
+                    return (this.odd[this.t] || []).filter(x => !this.off[x.texte]).findIndex(x => x.texte === item.texte) + 1;
+                },
+                async appel(methode, corps) {
+                    this.envoi = true; this.erreur = '';
+                    try {
+                        const r = await fetch(@js(route('actes.odd.store')), { method: methode, body: JSON.stringify(corps), headers: {
+                            'Content-Type': 'application/json', 'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content } });
+                        if (!r.ok) { const e = await r.json().catch(() => ({})); this.erreur = e.message || 'Enregistrement impossible.'; return false; }
+                        this.odd = await r.json();
+                        return true;
+                    } catch (e) { this.erreur = 'Connexion impossible : réessayez.'; return false; }
+                    finally { this.envoi = false; }
+                },
+                async ajouter() {
+                    const point = this.nouveau.trim().replace(/\s+/g, ' ');
+                    if (!point) return;
+                    delete this.off[point];
+                    if (await this.appel('POST', { type: this.t, point })) this.nouveau = '';
+                },
+                async retirer(item) {
+                    if (confirm('Retirer « ' + item.texte + ' » des prochains PV ?')) await this.appel('DELETE', { type: item.type, point: item.texte });
+                },
+            };
+        }
+    </script>
     <x-page-header title="Rédiger statuts / PV" :subtitle="$client->nom" :back="route('clients.show', [$client, 'tab' => 'actes'])">
         <a href="{{ route('modeles-actes.index') }}" class="btn-secondary"><x-icon name="upload" class="h-4 w-4"/> Modèles du cabinet</a>
     </x-page-header>
-    <form method="POST" action="{{ route('actes.store', $client) }}" x-data="{ t: @js(old('type', 'sarl')), m: @js((string) old('modele_id', '')), odd: @js($ODD), modeles: @js($modeles) }" x-init="$watch('t', () => m = '')" class="card">@csrf
+    <form method="POST" action="{{ route('actes.store', $client) }}" x-data="redactionActe({ t: @js(old('type', 'sarl')), m: @js((string) old('modele_id', '')), odd: @js($odd), modeles: @js($modeles) })" x-init="$watch('t', () => m = '')" class="card">@csrf
         <div class="card-b grid gap-4 md:grid-cols-2">
             <div><label class="label">Type de document</label><select name="type" class="input" x-model="t">@foreach($types as $k => $l)<option value="{{ $k }}">{{ $l }}</option>@endforeach</select></div>
             <x-field label="Date du document" name="date" type="date" :value="now()->format('Y-m-d')"/>
@@ -21,13 +53,35 @@
                 <div><label class="label">Durée (années)</label><input type="number" name="duree" value="99" class="input"></div>
             </div></template>
             <template x-if="['ago','age','mixte','cess'].includes(t)"><div class="md:col-span-2">
-                <label class="label">Ordre du jour</label>
-                <div class="grid gap-1.5 rounded-xl border border-slate-200 p-4 md:grid-cols-2 dark:border-slate-700">
-                    <template x-for="item in (t === 'mixte' ? [...new Set([...odd.ago, ...odd.age])] : (odd[t] || []))" :key="item">
-                        <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="ordre[]" :value="item" checked class="mt-0.5 rounded border-slate-300 text-brand-600"><span x-text="item"></span></label>
-                    </template>
+                <div class="flex items-baseline justify-between gap-3">
+                    <label class="label">Ordre du jour</label>
+                    <span class="text-xs text-slate-400"><span x-text="(odd[t] || []).filter(x => !off[x.texte]).length"></span> point(s) retenu(s), dans l’ordre de la liste</span>
                 </div>
-                <label class="label mt-3">Autres points (un par ligne)</label><textarea name="ordre_libre" rows="2" class="input"></textarea>
+                <ol class="divide-y divide-slate-100 rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+                    <template x-for="item in (odd[t] || [])" :key="item.texte">
+                        <li class="flex items-center gap-3 px-4 py-2 text-sm">
+                            <span class="w-5 shrink-0 text-right text-xs font-semibold text-slate-400" x-text="numero(item)"></span>
+                            <label class="flex flex-1 items-start gap-2">
+                                <input type="checkbox" name="ordre[]" :value="item.texte" :checked="!off[item.texte]" @change="off[item.texte] = !$event.target.checked" class="mt-0.5 rounded border-slate-300 text-brand-600">
+                                <span x-text="item.texte" :class="off[item.texte] && 'text-slate-400 line-through'"></span>
+                            </label>
+                            <template x-if="item.type">
+                                <span class="flex items-center gap-1">
+                                    <span class="badge-blue">Cabinet</span>
+                                    <button type="button" class="btn-icon" title="Retirer ce point des prochains PV" @click="retirer(item)"><x-icon name="x" class="h-3.5 w-3.5"/></button>
+                                </span>
+                            </template>
+                        </li>
+                    </template>
+                </ol>
+                <div class="mt-2 flex gap-2">
+                    <input class="input" x-model="nouveau" maxlength="500" placeholder="Ajouter un point, conservé pour les prochains PV de ce type" @keydown.enter.prevent="ajouter()">
+                    <button type="button" class="btn-secondary whitespace-nowrap" @click="ajouter()" :disabled="!nouveau.trim() || envoi"><x-icon name="plus" class="h-4 w-4"/> Ajouter</button>
+                </div>
+                <p class="mt-1 text-xs text-rose-600" x-show="erreur" x-text="erreur"></p>
+                <details class="mt-3"><summary class="cursor-pointer text-xs text-slate-500">Points ponctuels pour ce PV seulement</summary>
+                    <textarea name="ordre_libre" rows="2" class="input mt-2" placeholder="Un point par ligne, ajouté à la fin, non conservé"></textarea>
+                </details>
             </div></template>
             <template x-if="t === 'cess'"><div class="grid gap-4 md:col-span-2 md:grid-cols-2">
                 <div><label class="label">Date de cessation</label><input type="date" name="date_cessation" class="input" value="{{ now()->format('Y-m-d') }}"></div>

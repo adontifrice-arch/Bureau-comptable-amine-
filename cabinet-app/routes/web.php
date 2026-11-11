@@ -26,6 +26,8 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('actes/modeles', [C\ModeleActeController::class, 'store'])->name('modeles-actes.store');
     Route::get('actes/modeles/{modele}/fichier', [C\ModeleActeController::class, 'download'])->name('modeles-actes.download');
     Route::delete('actes/modeles/{modele}', [C\ModeleActeController::class, 'destroy'])->name('modeles-actes.destroy');
+    Route::post('actes/ordre-du-jour', [C\ActeController::class, 'ordreAjouter'])->name('actes.odd.store');
+    Route::delete('actes/ordre-du-jour', [C\ActeController::class, 'ordreRetirer'])->name('actes.odd.destroy');
     Route::get('actes/{acte}/word', [C\ActeController::class, 'docx'])->name('actes.docx');
     Route::get('actes/{acte}', [C\ActeController::class, 'edit'])->name('actes.edit');
     Route::put('actes/{acte}', [C\ActeController::class, 'update'])->name('actes.update');
