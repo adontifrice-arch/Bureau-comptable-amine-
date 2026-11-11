@@ -3,9 +3,10 @@
     <x-page-header :title="$edit ? $client->nom : 'Nouveau client'" :subtitle="$edit ? 'Modifier la fiche du client' : 'Créer un dossier client'" :back="$edit ? route('clients.show', $client) : route('clients.index')"/>
 
     <form method="POST" action="{{ $edit ? route('clients.update', $client) : route('clients.store') }}" class="space-y-6"
-          x-data="{ associes: @js($associes), gas: '{{ $client->gerant_associe === null ? '' : ($client->gerant_associe ? '1' : '0') }}',
-                    np: '{{ $client->nb_parts }}', vn: '{{ $client->valeur_nominale }}', cap: '{{ $client->capital > 0 ? $client->capital : '' }}',
+          x-data="{ associes: @js(collect(old('associes', $associes))->values()), gas: @js((string) old('gerant_associe', $client->gerant_associe === null ? '' : ($client->gerant_associe ? '1' : '0'))),
+                    np: @js((string) old('nb_parts', $client->nb_parts)), gp: @js((string) old('gerant_parts', $client->gerant_parts)), vn: @js((string) old('valeur_nominale', $client->valeur_nominale)), cap: @js((string) old('capital', $client->capital > 0 ? $client->capital : '')),
                     addA() { this.associes.push({nom:'',cin:'',parts:'',apport:'numeraire'}) },
+                    totalParts() { return (this.gas === '1' ? (+this.gp || 0) : 0) + this.associes.reduce((s, a) => s + (+a.parts || ((+a.parts_a && +a.parts_de) ? a.parts_a - a.parts_de + 1 : 0)), 0) },
                     calcCap() { if (+this.np > 0 && +this.vn > 0) this.cap = Math.round(this.np * this.vn * 1000) / 1000 } }">
         @csrf @if($edit) @method('PUT') @endif
 
@@ -15,11 +16,11 @@
                 <x-field label="Nom / raison sociale *" name="nom" :value="$client->nom" required span="md:col-span-2"/>
                 <x-field label="Forme juridique" name="forme" :value="$client->forme" placeholder="SARL, SUARL, SA, BNC…" list="formes"/>
                 <datalist id="formes">@foreach(['SARL','SUARL','SA','SAS','SNC','Personne physique','Libéral (BNC)','Commerçant (BIC)','Association'] as $f)<option value="{{ $f }}">@endforeach</datalist>
-                <x-select label="Type de personne" name="type_personne" :value="$client->type_personne" placeholder="—" :options="['morale' => 'Personne morale', 'physique' => 'Personne physique']"/>
+                <x-select label="Type de personne" name="type_personne" :value="$client->type_personne" placeholder="Déduit de la forme juridique" :options="['morale' => 'Personne morale', 'physique' => 'Personne physique']"/>
                 <x-field label="Dénomination commerciale" name="denomination_commerciale" :value="$client->denomination_commerciale"/>
                 <x-select label="Résidence" name="residence" :value="$client->residence" placeholder="Non précisé" :options="['residente' => 'Société résidente', 'non_residente' => 'Société non résidente']"/>
-                <x-select label="Régime d’exportation" name="regime_export" :value="$client->regime_export" placeholder="Aucun / non précisé" :options="['totale' => 'Totalement exportatrice', 'partielle' => 'Partiellement exportatrice']"/>
-                <x-field label="Matricule fiscal" name="matricule_fiscal" :value="$client->matricule_fiscal" placeholder="1234567/A/M/000"/>
+                <x-select label="Régime d’exportation" name="regime_export" :value="$client->regime_export" placeholder="Non précisé" :options="['non' => 'Non exportatrice', 'totale' => 'Totalement exportatrice', 'partielle' => 'Partiellement exportatrice']"/>
+                <x-field label="Matricule fiscal" name="matricule_fiscal" :value="$client->matricule_fiscal" placeholder="1234567/A/M/000" hint="7 chiffres + 1 lettre, puis code TVA, catégorie et n° d’établissement"/>
                 <x-field label="Matricule CNSS" name="matricule_cnss" :value="$client->matricule_cnss"/>
                 <x-field label="Matricule indépendant" name="matricule_independant" :value="$client->matricule_independant"/>
                 <x-field label="Adresse du siège" name="adresse" :value="$client->adresse" span="md:col-span-2"/>
@@ -36,7 +37,9 @@
                 <x-field label="Compte comptable client" name="compte_comptable" :value="$client->compte_comptable" placeholder="411001"/>
                 <div><label class="label">Nombre de parts sociales</label><input name="nb_parts" type="number" class="input" x-model="np" @input="calcCap()"></div>
                 <div><label class="label">Valeur nominale de la part (TND)</label><input name="valeur_nominale" type="number" step="0.001" class="input" x-model="vn" @input="calcCap()"></div>
-                <div><label class="label">Capital (TND)</label><input name="capital" type="number" step="0.001" class="input" x-model="cap"></div>
+                <div><label class="label">Capital (TND)</label><input name="capital" type="number" step="0.001" class="input" x-model="cap">
+                    <p class="mt-1 text-xs text-slate-400">Capital = nombre de parts × valeur nominale</p>
+                    @error('capital')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
             </div>
         </div>
 
@@ -61,7 +64,7 @@
                     <select name="gerant_associe" class="input" x-model="gas"><option value="">—</option><option value="1">Oui, associé</option><option value="0">Non associé</option></select></div>
                 <template x-if="gas === '1'">
                     <div class="grid gap-4 md:col-span-3 md:grid-cols-4">
-                        <x-field label="Parts détenues" name="gerant_parts" type="number" :value="$client->gerant_parts"/>
+                        <x-field label="Parts détenues" name="gerant_parts" type="number" :value="$client->gerant_parts" x-model="gp"/>
                         <x-field label="Parts numérotées de" name="gerant_parts_de" type="number" :value="$client->gerant_parts_de"/>
                         <x-field label="à" name="gerant_parts_a" type="number" :value="$client->gerant_parts_a"/>
                         <x-select label="Apport" name="gerant_apport" :value="$client->gerant_apport" :options="['numeraire' => 'En numéraire', 'nature' => 'En nature']"/>
@@ -79,6 +82,10 @@
                         <div><label class="label">CIN</label><input class="input" :name="`associes[${i}][cin]`" x-model="a.cin"></div>
                         <div><label class="label">Passeport</label><input class="input" :name="`associes[${i}][passeport]`" x-model="a.passeport"></div>
                         <div><label class="label">CIN délivrée le</label><input type="date" class="input" :name="`associes[${i}][cin_date]`" x-model="a.cin_date"></div>
+                        <div><label class="label">CIN délivrée à</label><input class="input" :name="`associes[${i}][cin_lieu]`" x-model="a.cin_lieu"></div>
+                        <div><label class="label">Carte de séjour</label><input class="input" :name="`associes[${i}][carte_sejour]`" x-model="a.carte_sejour"></div>
+                        <div><label class="label">Passeport délivré le</label><input type="date" class="input" :name="`associes[${i}][passeport_date]`" x-model="a.passeport_date"></div>
+                        <div><label class="label">Passeport valable jusqu’au</label><input type="date" class="input" :name="`associes[${i}][passeport_validite]`" x-model="a.passeport_validite"></div>
                         <div><label class="label">Nationalité</label><input class="input" :name="`associes[${i}][nationalite]`" x-model="a.nationalite"></div>
                         <div><label class="label">Date de naissance</label><input type="date" class="input" :name="`associes[${i}][naissance_date]`" x-model="a.naissance_date"></div>
                         <div><label class="label">Lieu de naissance</label><input class="input" :name="`associes[${i}][naissance_lieu]`" x-model="a.naissance_lieu"></div>
@@ -86,10 +93,11 @@
                         <div><label class="label">Parts (de … à …)</label><div class="flex gap-2"><input type="number" class="input" placeholder="de" :name="`associes[${i}][parts_de]`" x-model="a.parts_de"><input type="number" class="input" placeholder="à" :name="`associes[${i}][parts_a]`" x-model="a.parts_a"></div></div>
                         <div><label class="label">Nombre de parts</label><input type="number" class="input" :name="`associes[${i}][parts]`" x-model="a.parts"></div>
                         <div><label class="label">Apport</label><select class="input" :name="`associes[${i}][apport]`" x-model="a.apport"><option value="numeraire">En numéraire</option><option value="nature">En nature</option></select></div>
-                        <div class="flex items-end justify-end md:col-span-3"><button type="button" class="btn-ghost btn-sm !text-rose-600" @click="associes.splice(i, 1)"><x-icon name="trash" class="h-3.5 w-3.5"/> Retirer</button></div>
+                        <div class="flex items-end justify-end"><button type="button" class="btn-ghost btn-sm !text-rose-600" @click="associes.splice(i, 1)"><x-icon name="trash" class="h-3.5 w-3.5"/> Retirer</button></div>
                     </div>
                 </template>
                 <p x-show="!associes.length" class="text-sm text-slate-500">Aucun associé renseigné.</p>
+                <p x-show="+np > 0" class="text-xs" :class="totalParts() > +np ? 'text-rose-600' : 'text-slate-500'">Parts attribuées : <span x-text="totalParts()"></span> / <span x-text="np"></span></p>
             </div>
         </div>
 

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ClientRequest;
+use App\Models\Associe;
 use App\Models\Client;
 use App\Models\Echeance;
 use App\Models\Exigence;
@@ -25,11 +27,11 @@ class ClientController extends Controller
 
     public function create() { return view('clients.form', ['client' => new Client(), 'associes' => []]); }
 
-    public function store(Request $r)
+    public function store(ClientRequest $r)
     {
         $client = DB::transaction(function () use ($r) {
-            $c = Client::create($this->valider($r));
-            $this->syncAssocies($c, $r);
+            $c = Client::create($r->client());
+            $this->syncAssocies($c, $r->associes());
             EcheanceController::acomptesProvisionnels($c);
             return $c;
         });
@@ -50,17 +52,19 @@ class ClientController extends Controller
 
     public function edit(Client $client)
     {
-        return view('clients.form', ['client' => $client, 'associes' => $client->associes->map(fn ($a) => $a->only([
-            'nom', 'cin', 'cin_date', 'cin_lieu', 'passeport', 'nationalite', 'adresse', 'naissance_date', 'naissance_lieu', 'parts', 'parts_de', 'parts_a', 'apport',
-        ]))->map(fn ($a) => array_map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v, $a))->values()]);
+        return view('clients.form', ['client' => $client, 'associes' => $client->associes->map(fn ($a) => $a->only(Associe::CHAMPS))->map(fn ($a) => array_map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v, $a))->values()]);
     }
 
-    public function update(Request $r, Client $client)
+    public function update(ClientRequest $r, Client $client)
     {
         DB::transaction(function () use ($r, $client) {
-            $client->update($this->valider($r));
-            $this->syncAssocies($client, $r);
+            $etaitPhysique = $client->estPhysique();
+            $client->update($r->client());
+            $this->syncAssocies($client, $r->associes());
+            // Changement de nature (personne morale ↔ physique) : les acomptes non cochés passent au 25 ou au 28.
+            if ($client->estPhysique() !== $etaitPhysique) EcheanceController::acomptesProvisionnels($client);
         });
+        $this->log('Modification du client '.$client->nom, $client->id);
         return redirect()->route('clients.show', $client)->with('ok', 'Fiche client enregistrée.');
     }
 
@@ -104,40 +108,9 @@ class ClientController extends Controller
             'date_limite' => 'nullable|date', 'remarque' => 'nullable|max:2000']);
     }
 
-    private function valider(Request $r): array
-    {
-        $d = $r->validate([
-            'nom' => 'required|max:255', 'forme' => 'nullable|max:100', 'type_personne' => 'nullable|in:morale,physique',
-            'denomination_commerciale' => 'nullable|max:255', 'residence' => 'nullable|in:residente,non_residente',
-            'regime_export' => 'nullable|in:totale,partielle', 'mission' => 'nullable|max:255', 'honoraires_mensuels' => 'nullable|numeric|min:0',
-            'matricule_fiscal' => 'nullable|max:50', 'compte_comptable' => 'nullable|max:20', 'matricule_cnss' => 'nullable|max:50',
-            'matricule_independant' => 'nullable|max:50', 'capital' => 'nullable|numeric|min:0', 'nb_parts' => 'nullable|integer|min:0',
-            'valeur_nominale' => 'nullable|numeric|min:0', 'adresse' => 'nullable|max:255', 'email' => 'nullable|email|max:255', 'telephone' => 'nullable|max:50',
-            'gerant_nom' => 'nullable|max:255', 'gerant_cin' => 'nullable|max:50', 'gerant_cin_date' => 'nullable|date', 'gerant_cin_lieu' => 'nullable|max:100',
-            'gerant_carte_sejour' => 'nullable|max:50', 'gerant_passeport' => 'nullable|max:50', 'gerant_passeport_date' => 'nullable|date',
-            'gerant_passeport_validite' => 'nullable|date', 'gerant_nationalite' => 'nullable|max:100', 'gerant_adresse' => 'nullable|max:255',
-            'gerant_naissance_date' => 'nullable|date', 'gerant_naissance_lieu' => 'nullable|max:100', 'gerant_nomination_date' => 'nullable|date',
-            'gerant_nomination_duree' => 'nullable|max:100', 'gerant_associe' => 'nullable|in:0,1', 'gerant_parts' => 'nullable|integer|min:0',
-            'gerant_parts_de' => 'nullable|integer|min:0', 'gerant_parts_a' => 'nullable|integer|min:0', 'gerant_apport' => 'nullable|in:numeraire,nature',
-        ]);
-        $d['honoraires_mensuels'] = $d['honoraires_mensuels'] ?? 0;
-        $d['capital'] = $d['capital'] ?? 0;
-        if (! empty($d['nb_parts']) && ! empty($d['valeur_nominale']) && empty($r->input('capital'))) $d['capital'] = r3($d['nb_parts'] * $d['valeur_nominale']);
-        $d['gerant_associe'] = isset($d['gerant_associe']) && $d['gerant_associe'] !== null && $d['gerant_associe'] !== '' ? (bool) $d['gerant_associe'] : null;
-        return $d;
-    }
-
-    private function syncAssocies(Client $c, Request $r): void
+    private function syncAssocies(Client $c, array $associes): void
     {
         $c->associes()->delete();
-        foreach ((array) $r->input('associes', []) as $a) {
-            if (empty(trim($a['nom'] ?? ''))) continue;
-            $a = array_map(fn ($v) => $v === '' ? null : $v, array_intersect_key($a, array_flip([
-                'nom', 'cin', 'cin_date', 'cin_lieu', 'passeport', 'nationalite', 'adresse', 'naissance_date', 'naissance_lieu', 'parts', 'parts_de', 'parts_a', 'apport'])));
-            $a['parts'] = (int) ($a['parts'] ?? 0);
-            if (! $a['parts'] && ! empty($a['parts_de']) && ! empty($a['parts_a']) && $a['parts_a'] >= $a['parts_de']) $a['parts'] = $a['parts_a'] - $a['parts_de'] + 1;
-            $a['apport'] = $a['apport'] ?? 'numeraire';
-            $c->associes()->create($a);
-        }
+        foreach ($associes as $a) $c->associes()->create($a);
     }
 }

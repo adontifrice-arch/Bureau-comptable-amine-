@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Echeance extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'echeances';
     protected $guarded = [];
     protected $casts = ['date_echeance'=>'date','accomplie_le'=>'date'];

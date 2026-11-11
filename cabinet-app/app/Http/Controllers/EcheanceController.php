@@ -96,15 +96,28 @@ class EcheanceController extends Controller
     }
 
     /** Acomptes provisionnels (juin, septembre, décembre) pour l'année en cours et la suivante. */
+    /** Nombre d'années couvertes par les acomptes provisionnels : l'année en cours et les 4 suivantes. */
+    public const ACOMPTES_ANNEES = 5;
+
+    /**
+     * Acomptes provisionnels (spécification §3.3) : juin, septembre et décembre, le 28 pour une personne morale
+     * et le 25 pour une personne physique. Les acomptes déjà passés à la création ne sont pas ajoutés.
+     * Un acompte supprimé n'est jamais recréé ; ceux qui ne sont pas cochés suivent la nature du client.
+     */
     public static function acomptesProvisionnels(Client $c): void
     {
         $jour = $c->estPhysique() ? 25 : 28;
-        foreach ([now()->year, now()->year + 1] as $y) {
+        $existants = Echeance::withTrashed()->where('client_id', $c->id)->where('auto', 'ap')->get()->keyBy('intitule');
+        for ($y = now()->year; $y < now()->year + self::ACOMPTES_ANNEES; $y++) {
             foreach ([6 => '1er', 9 => '2e', 12 => '3e'] as $m => $rang) {
                 $date = Carbon::create($y, $m, $jour);
+                $intitule = "$rang acompte provisionnel $y";
+                if ($e = $existants->get($intitule)) {
+                    if (! $e->trashed() && ! $e->accomplie_le && ! $e->date_echeance->isSameDay($date)) $e->update(['date_echeance' => $date]);
+                    continue;
+                }
                 if ($date->lt(now()->startOfDay())) continue;
-                Echeance::firstOrCreate(['client_id' => $c->id, 'auto' => 'ap', 'date_echeance' => $date],
-                    ['categorie' => 'Échéance fiscale', 'intitule' => "$rang acompte provisionnel $y"]);
+                Echeance::create(['client_id' => $c->id, 'auto' => 'ap', 'date_echeance' => $date, 'categorie' => 'Échéance fiscale', 'intitule' => $intitule]);
             }
         }
     }
