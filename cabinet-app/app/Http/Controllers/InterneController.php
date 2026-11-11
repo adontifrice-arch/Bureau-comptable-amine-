@@ -31,7 +31,7 @@ class InterneController extends Controller
 
     private function rdv(Request $r): array
     {
-        $d = $r->validate(['client_id' => 'nullable|exists:clients,id', 'objet' => 'required|max:255', 'date' => 'required|date', 'heure' => 'nullable|max:5',
+        $d = $r->validate(['client_id' => 'nullable|'.existe_cab('clients'), 'objet' => 'required|max:255', 'date' => 'required|date', 'heure' => 'nullable|max:5',
             'lieu' => 'nullable|max:255', 'participants' => 'nullable|max:255', 'statut' => 'nullable|max:50', 'compte_rendu' => 'nullable|max:5000', 'actions' => 'nullable|max:5000']);
         $d['statut'] = $d['statut'] ?? 'Prévu';
         return $d;

@@ -27,7 +27,7 @@ class FraisController extends Controller
     public function store(Request $r)
     {
         $d = $this->valider($r);
-        if ($r->hasFile('justificatif')) $d['justificatif'] = $r->file('justificatif')->store('justificatifs');
+        if ($r->hasFile('justificatif')) $d['justificatif'] = $r->file('justificatif')->store('justificatifs/'.\App\Support\CabinetCourant::exiger());
         NoteFrais::create($d + ['user_id' => auth()->id()]);
         return back()->with('ok', 'Note de frais ajoutée.');
     }
@@ -37,7 +37,7 @@ class FraisController extends Controller
         $d = $this->valider($r);
         if ($r->hasFile('justificatif')) {
             if ($note->justificatif) Storage::delete($note->justificatif);
-            $d['justificatif'] = $r->file('justificatif')->store('justificatifs');
+            $d['justificatif'] = $r->file('justificatif')->store('justificatifs/'.\App\Support\CabinetCourant::exiger());
         }
         $note->update($d);
         return back()->with('ok', 'Note de frais modifiée.');
@@ -65,7 +65,7 @@ class FraisController extends Controller
     /** Note de frais adressée à un client, à partir des frais sélectionnés (ou saisie libre). */
     public function documentStore(Request $r)
     {
-        $d = $r->validate(['client_id' => 'required|exists:clients,id', 'date' => 'required|date', 'observations' => 'nullable|max:2000',
+        $d = $r->validate(['client_id' => 'required|'.existe_cab('clients'), 'date' => 'required|date', 'observations' => 'nullable|max:2000',
             'ids' => 'nullable|array', 'lignes' => 'nullable|array']);
         $doc = DB::transaction(function () use ($d) {
             $notes = NoteFrais::whereIn('id', $d['ids'] ?? [])->whereNull('document_id')->get();
@@ -95,7 +95,7 @@ class FraisController extends Controller
     private function valider(Request $r): array
     {
         $d = $r->validate(['date' => 'required|date', 'description' => 'required|max:255', 'categorie' => 'nullable|max:100',
-            'client_id' => 'nullable|exists:clients,id', 'montant' => 'required|numeric|min:0.001', 'justificatif' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp']);
+            'client_id' => 'nullable|'.existe_cab('clients'), 'montant' => 'required|numeric|min:0.001', 'justificatif' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp']);
         unset($d['justificatif']);
         return $d;
     }

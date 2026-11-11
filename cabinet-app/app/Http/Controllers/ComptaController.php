@@ -50,7 +50,7 @@ class ComptaController extends Controller
         abort_unless($client, 404);
         if ($r->boolean('ia')) return $this->analyser($r, $client);
         $d = $this->donnees($r);
-        if ($r->hasFile('fichier')) $d['fichier'] = $r->file('fichier')->store('factures-recues');
+        if ($r->hasFile('fichier')) $d['fichier'] = $r->file('fichier')->store('factures-recues/'.\App\Support\CabinetCourant::exiger());
         FactureRecue::create($d + ['client_id' => $client->id, 'statut' => 'prop']);
         return back()->with('ok', 'Facture enregistrée : en attente de validation par le chef comptable.');
     }
@@ -59,7 +59,7 @@ class ComptaController extends Controller
     {
         if ($fr->statut === 'val') return back()->with('err', 'Facture déjà comptabilisée : annulez d’abord l’écriture.');
         $d = $this->donnees($r);
-        if ($r->hasFile('fichier')) $d['fichier'] = $r->file('fichier')->store('factures-recues');
+        if ($r->hasFile('fichier')) $d['fichier'] = $r->file('fichier')->store('factures-recues/'.\App\Support\CabinetCourant::exiger());
         $fr->update($d + ['statut' => 'prop', 'motif_rejet' => null]);
         return back()->with('ok', 'Facture modifiée.');
     }
@@ -150,7 +150,7 @@ class ComptaController extends Controller
 
     public function compteStore(Request $r)
     {
-        $d = $r->validate(['numero' => 'required|max:20|unique:comptes,numero', 'libelle' => 'required|max:255']);
+        $d = $r->validate(['numero' => 'required|max:20|'.unique_cab('comptes', 'numero'), 'libelle' => 'required|max:255']);
         Compte::create($d + ['personnalise' => true]);
         return back()->with('ok', 'Compte ajouté au plan comptable.');
     }
@@ -186,7 +186,7 @@ class ComptaController extends Controller
         $content = [];
         $path = null;
         if ($r->hasFile('fichier')) {
-            $f = $r->file('fichier'); $path = $f->store('factures-recues');
+            $f = $r->file('fichier'); $path = $f->store('factures-recues/'.\App\Support\CabinetCourant::exiger());
             $b64 = base64_encode(file_get_contents($f->getRealPath()));
             $content[] = $f->getMimeType() === 'application/pdf'
                 ? ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => $b64]]

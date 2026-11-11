@@ -10,5 +10,6 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(BaseSeeder::class);
         if (env('SEED_DEMO', true)) $this->call(DemoSeeder::class);
+        \App\Support\CabinetCourant::utiliser(null);
     }
 }

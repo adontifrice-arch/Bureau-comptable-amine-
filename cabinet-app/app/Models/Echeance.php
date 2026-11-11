@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Echeance extends Model
 {
-    use SoftDeletes;
+    use AppartientAuCabinet, SoftDeletes;
 
     protected $table = 'echeances';
     protected $guarded = [];

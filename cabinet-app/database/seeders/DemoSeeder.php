@@ -26,7 +26,7 @@ class DemoSeeder extends Seeder
         $d = fn (int $n) => now()->addDays($n)->format('Y-m-d');
         Setting::put('cabinet', ['nom' => 'Cabinet Amine Boudaya', 'adresse' => 'Rue du Lac Léman, Les Berges du Lac, 1053 Tunis', 'mf' => '1234567/A/P/000',
             'telephone' => '+216 71 000 000', 'email' => 'contact@cabinet-boudaya.tn', 'banque' => 'BIAT', 'titulaire' => 'Cabinet Amine Boudaya', 'rib' => '08 000 0000000000000 00']);
-        User::firstOrCreate(['email' => 'collaborateur@cabinet.tn'], ['name' => 'Sana Collaboratrice', 'password' => 'Cabinet2026!', 'role' => 'collaborateur', 'status' => 'active']);
+        User::firstOrCreate(['email' => 'collaborateur@cabinet.tn'], ['cabinet_id' => \App\Support\CabinetCourant::exiger(), 'name' => 'Sana Collaboratrice', 'password' => 'Cabinet2026!', 'role' => 'collaborateur', 'status' => 'active']);
 
         $clients = [
             ['nom' => 'Boulangerie Dupain', 'forme' => 'SARL', 'type_personne' => 'morale', 'mission' => 'Tenue + bilan', 'honoraires_mensuels' => 450, 'matricule_fiscal' => '1234567/A/M/000', 'matricule_cnss' => '12345678-90', 'capital' => 20000, 'nb_parts' => 2000, 'valeur_nominale' => 10, 'adresse' => '12 rue de la République, Tunis', 'compte_comptable' => '411001', 'gerant_nom' => 'Ben Salah Karim', 'gerant_cin' => '07654321', 'gerant_nationalite' => 'Tunisienne', 'gerant_adresse' => '12 rue de la République, Tunis', 'gerant_naissance_date' => '1978-03-14', 'gerant_naissance_lieu' => 'Tunis', 'gerant_associe' => true, 'gerant_parts' => 1200],

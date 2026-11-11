@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Model;
 
 class ModeleActe extends Model
 {
+    use AppartientAuCabinet;
+
     protected $table = 'modeles_actes';
     protected $guarded = [];
     protected $casts = ['balises' => 'array'];

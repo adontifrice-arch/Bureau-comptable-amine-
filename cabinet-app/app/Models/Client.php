@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Client extends Model
 {
-    use HasFactory;
+    use AppartientAuCabinet, HasFactory;
 
     protected $table = 'clients';
     protected $guarded = [];

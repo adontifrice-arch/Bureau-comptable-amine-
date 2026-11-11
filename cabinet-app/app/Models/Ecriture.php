@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Model;
 
 class Ecriture extends Model
 {
+    use AppartientAuCabinet;
+
     protected $table = 'ecritures';
     protected $guarded = [];
     protected $casts = ['date'=>'date'];

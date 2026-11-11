@@ -10,13 +10,18 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
-    protected $fillable = ['name', 'email', 'password', 'role', 'status'];
+    protected $fillable = ['cabinet_id', 'name', 'email', 'password', 'role', 'status'];
     protected $hidden = ['password', 'remember_token'];
 
     protected function casts(): array
     {
-        return ['email_verified_at' => 'datetime', 'password' => 'hashed'];
+        return ['email_verified_at' => 'datetime', 'password' => 'hashed', 'cabinet_id' => 'integer'];
     }
+
+    public function cabinet() { return $this->belongsTo(Cabinet::class); }
+
+    /** Même cabinet que l'utilisateur donné : les utilisateurs ne sont pas filtrés automatiquement (l'authentification les charge avant de connaître le cabinet). */
+    public function memeCabinet(?User $u): bool { return $u !== null && $this->cabinet_id !== null && $this->cabinet_id === $u->cabinet_id; }
 
     public function estChef(): bool { return $this->role === 'chef'; }
     public function roleLibelle(): string { return $this->role === 'chef' ? 'Chef comptable' : 'Collaborateur'; }

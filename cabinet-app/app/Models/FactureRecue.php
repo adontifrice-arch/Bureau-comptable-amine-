@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Model;
 
 class FactureRecue extends Model
 {
+    use AppartientAuCabinet;
+
     protected $table = 'factures_recues';
     protected $guarded = [];
     protected $casts = ['date'=>'date','tva_deductible'=>'boolean','anomalies'=>'array'];

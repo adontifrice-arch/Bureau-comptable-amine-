@@ -51,7 +51,7 @@ class ActeController extends Controller
 
     public function store(Request $r, Client $client)
     {
-        $d = $r->validate(['type' => 'required|in:'.self::types()->keys()->implode(','), 'date' => 'required|date', 'modele_id' => 'nullable|integer|exists:modeles_actes,id',
+        $d = $r->validate(['type' => 'required|in:'.self::types()->keys()->implode(','), 'date' => 'required|date', 'modele_id' => 'nullable|integer|'.existe_cab('modeles_actes'),
             'objet' => 'nullable|max:2000', 'duree' => 'nullable|integer|min:1|max:99',
             'ordre' => 'nullable|array', 'ordre.*' => 'string|max:500', 'ordre_libre' => 'nullable|max:2000', 'motif' => 'nullable|max:500', 'date_cessation' => 'nullable|date',
             'cedant' => 'nullable|max:255', 'cessionnaire' => 'nullable|max:255', 'cessionnaire_cin' => 'nullable|max:50', 'cessionnaire_adresse' => 'nullable|max:255',

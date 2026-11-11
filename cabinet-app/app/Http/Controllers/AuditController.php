@@ -220,7 +220,7 @@ class AuditController extends Controller
 
     private function constat(Request $r): array
     {
-        return $r->validate(['annee' => 'required|integer', 'mission_id' => 'nullable|exists:missions_audit,id', 'titre' => 'required|max:255',
+        return $r->validate(['annee' => 'required|integer', 'mission_id' => 'nullable|'.existe_cab('missions_audit'), 'titre' => 'required|max:255',
             'gravite' => 'required|in:Faible,Moyenne,Élevée', 'detail' => 'nullable|max:10000', 'statut' => 'required|in:Ouvert,Résolu']);
     }
 }

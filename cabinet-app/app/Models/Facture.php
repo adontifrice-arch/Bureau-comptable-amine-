@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Model;
 
 class Facture extends Model
 {
+    use AppartientAuCabinet;
+
     protected $guarded = [];
     protected $casts = ['date' => 'date', 'echeance' => 'date', 'retenue_source' => 'boolean'];
 

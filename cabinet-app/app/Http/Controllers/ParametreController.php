@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cabinet;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -13,8 +14,10 @@ class ParametreController extends Controller
 {
     public function index(Request $r)
     {
-        return view('parametres.index', ['tab' => $r->input('tab', auth()->user()->estChef() ? 'cabinet' : 'compte'), 'c' => Setting::cabinet(),
-            'users' => User::orderByRaw("status = 'pending' desc")->orderBy('name')->get()]);
+        $cabinet = $r->user()->cabinet;
+        return view('parametres.index', ['tab' => $r->input('tab', $r->user()->estChef() ? 'cabinet' : 'compte'), 'c' => Setting::cabinet(),
+            'users' => User::where('cabinet_id', $r->user()->cabinet_id)->orderByRaw("status = 'pending' desc")->orderBy('name')->get(),
+            'invitation' => $cabinet ? route('register.invitation', $cabinet->code_invitation) : null]);
     }
 
     public function cabinet(Request $r)
@@ -24,10 +27,19 @@ class ParametreController extends Controller
             'slogan' => 'nullable|max:255', 'logo' => 'nullable|image|max:2048']);
         $old = Setting::cabinet();
         $d['logo'] = $old['logo'];
-        if ($r->hasFile('logo')) { if ($old['logo']) Storage::disk('public')->delete($old['logo']); $d['logo'] = $r->file('logo')->store('logo', 'public'); }
+        if ($r->hasFile('logo')) { if ($old['logo']) Storage::disk('public')->delete($old['logo']); $d['logo'] = $r->file('logo')->store('logo/'.$r->user()->cabinet_id, 'public'); }
         if ($r->boolean('retirer_logo') && $old['logo']) { Storage::disk('public')->delete($old['logo']); $d['logo'] = null; }
         Setting::put('cabinet', $d);
+        $r->user()->cabinet?->update(['nom' => $d['nom']]);
         return back()->with('ok', 'Paramètres du cabinet enregistrés.');
+    }
+
+    /** Nouveau lien d'invitation : l'ancien cesse de fonctionner. */
+    public function invitation(Request $r)
+    {
+        $r->user()->cabinet->regenererCode();
+        $this->log('Nouveau lien d’invitation des collaborateurs');
+        return redirect()->route('parametres.index', ['tab' => 'users'])->with('ok', 'Nouveau lien d’invitation créé : l’ancien ne fonctionne plus.');
     }
 
     public function password(Request $r)
@@ -40,18 +52,32 @@ class ParametreController extends Controller
 
     public function user(Request $r, User $user)
     {
+        abort_unless($user->memeCabinet($r->user()), 404);
         if ($user->is($r->user())) return back()->with('err', 'Vous ne pouvez pas modifier votre propre rôle ou statut.');
         $a = $r->input('action');
+        if (in_array($a, ['desactiver', 'role'], true) && $user->estChef() && $this->dernierChef($user)) {
+            return back()->with('err', 'Le cabinet doit garder au moins un chef comptable actif.');
+        }
         if ($a === 'activer') $user->update(['status' => 'active']);
         if ($a === 'desactiver') $user->update(['status' => 'disabled']);
         if ($a === 'role') $user->update(['role' => $user->role === 'chef' ? 'collaborateur' : 'chef']);
+        $this->log('Utilisateur '.$user->email.' : '.$a);
         return back()->with('ok', 'Utilisateur mis à jour.');
     }
 
     public function userDestroy(Request $r, User $user)
     {
+        abort_unless($user->memeCabinet($r->user()), 404);
         if ($user->is($r->user())) return back()->with('err', 'Impossible de supprimer votre propre compte.');
+        if ($user->estChef() && $this->dernierChef($user)) return back()->with('err', 'Impossible de supprimer le dernier chef comptable du cabinet.');
         $user->delete();
+        $this->log('Suppression de l’utilisateur '.$user->email);
         return back()->with('ok', 'Utilisateur supprimé.');
+    }
+
+    /** Vrai si $user est le seul chef comptable actif de son cabinet. */
+    private function dernierChef(User $user): bool
+    {
+        return ! User::where('cabinet_id', $user->cabinet_id)->where('role', 'chef')->where('status', 'active')->whereKeyNot($user->id)->exists();
     }
 }

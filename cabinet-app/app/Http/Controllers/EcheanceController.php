@@ -40,7 +40,7 @@ class EcheanceController extends Controller
 
     public function store(Request $r)
     {
-        $d = $r->validate(['client_id' => 'required|exists:clients,id', 'categorie' => 'nullable|max:100', 'intitule' => 'nullable|max:255', 'date_echeance' => 'required|date']);
+        $d = $r->validate(['client_id' => 'required|'.existe_cab('clients'), 'categorie' => 'nullable|max:100', 'intitule' => 'nullable|max:255', 'date_echeance' => 'required|date']);
         $d['intitule'] = $d['intitule'] ?: ($d['categorie'] ?: 'Échéance');
         Echeance::create($d);
         return back()->with('ok', 'Échéance « '.$d['intitule'].' » ajoutée au '.dfr($d['date_echeance']).'.');
@@ -49,7 +49,7 @@ class EcheanceController extends Controller
     /** Génère une série d'échéances (mensuelle, trimestrielle…) sur plusieurs années. */
     public function serie(Request $r)
     {
-        $d = $r->validate(['client_id' => 'required|exists:clients,id', 'categorie' => 'nullable|max:100', 'intitule' => 'nullable|max:255',
+        $d = $r->validate(['client_id' => 'required|'.existe_cab('clients'), 'categorie' => 'nullable|max:100', 'intitule' => 'nullable|max:255',
             'periodicite' => 'required|in:Mensuelle,Trimestrielle,Semestrielle,Annuelle', 'jour' => 'required|integer|min:1|max:31',
             'mois_debut' => 'required|integer|min:1|max:12', 'annee' => 'required|integer|min:2000|max:2100', 'nb_annees' => 'required|integer|min:1|max:10']);
         foreach (['jour', 'mois_debut', 'annee', 'nb_annees'] as $k) $d[$k] = (int) $d[$k];

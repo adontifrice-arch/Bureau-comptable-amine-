@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Model;
 
 class NoteFrais extends Model
 {
+    use AppartientAuCabinet;
+
     protected $table = 'notes_frais';
     protected $guarded = [];
     protected $casts = ['date'=>'date','rembourse'=>'boolean'];

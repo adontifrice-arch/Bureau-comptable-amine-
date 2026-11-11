@@ -7,7 +7,9 @@ Route::middleware('guest')->group(function () {
     Route::get('/connexion', [C\AuthController::class, 'showLogin'])->name('login');
     Route::post('/connexion', [C\AuthController::class, 'login']);
     Route::get('/inscription', [C\AuthController::class, 'showRegister'])->name('register');
-    Route::post('/inscription', [C\AuthController::class, 'register']);
+    Route::post('/inscription', [C\AuthController::class, 'register'])->middleware('throttle:10,1');
+    Route::get('/invitation/{code}', [C\AuthController::class, 'showRegister'])->name('register.invitation');
+    Route::post('/invitation/{code}', [C\AuthController::class, 'register'])->middleware('throttle:10,1');
 });
 Route::post('/deconnexion', [C\AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
@@ -152,4 +154,5 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('parametres/mot-de-passe', [C\ParametreController::class, 'password'])->name('parametres.password');
     Route::patch('parametres/utilisateurs/{user}', [C\ParametreController::class, 'user'])->middleware('chef')->name('parametres.user');
     Route::delete('parametres/utilisateurs/{user}', [C\ParametreController::class, 'userDestroy'])->middleware('chef')->name('parametres.user.destroy');
+    Route::post('parametres/invitation', [C\ParametreController::class, 'invitation'])->middleware('chef')->name('parametres.invitation');
 });

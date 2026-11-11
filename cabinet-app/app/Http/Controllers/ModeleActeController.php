@@ -38,7 +38,7 @@ class ModeleActeController extends Controller
         }
         $balises = Balises::trouver($texte);
 
-        $m = ModeleActe::create(['type' => $d['type'], 'nom' => $d['nom'], 'format' => $format, 'fichier' => $f->store('modeles-actes'),
+        $m = ModeleActe::create(['type' => $d['type'], 'nom' => $d['nom'], 'format' => $format, 'fichier' => $f->store('modeles-actes/'.\App\Support\CabinetCourant::exiger()),
             'fichier_nom' => $f->getClientOriginalName(), 'balises' => $balises, 'user_id' => auth()->id()]);
         $this->log('Import du modèle d’acte « '.$m->nom.' »');
 

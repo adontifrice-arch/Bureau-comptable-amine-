@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Model;
 
 class MissionAudit extends Model
 {
+    use AppartientAuCabinet;
+
     protected $table = 'missions_audit';
     protected $guarded = [];
     protected $casts = ['date_designation'=>'date','qci'=>'array','travaux'=>'array','revue'=>'array','rapport'=>'array'];

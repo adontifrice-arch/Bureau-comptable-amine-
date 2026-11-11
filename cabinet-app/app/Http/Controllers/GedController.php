@@ -27,11 +27,11 @@ class GedController extends Controller
 
     public function store(Request $r)
     {
-        $d = $r->validate(['client_id' => 'nullable|exists:clients,id', 'categorie' => 'required|max:100', 'description' => 'nullable|max:1000', 'date' => 'nullable|date',
+        $d = $r->validate(['client_id' => 'nullable|'.existe_cab('clients'), 'categorie' => 'required|max:100', 'description' => 'nullable|max:1000', 'date' => 'nullable|date',
             'fichiers' => 'required|array', 'fichiers.*' => 'file|max:20480|mimes:pdf,jpg,jpeg,png,webp,txt,csv,doc,docx,xls,xlsx,odt,ods,zip']);
         foreach ($r->file('fichiers') as $f) {
             Document::create(['client_id' => $d['client_id'] ?: null, 'categorie' => $d['categorie'], 'description' => $d['description'] ?? null, 'date' => $d['date'] ?? now(),
-                'nom' => $f->getClientOriginalName(), 'chemin' => $f->store('ged/'.($d['client_id'] ?: 'cabinet')), 'taille' => $f->getSize(), 'mime' => $f->getMimeType(), 'user_id' => auth()->id()]);
+                'nom' => $f->getClientOriginalName(), 'chemin' => $f->store('ged/'.\App\Support\CabinetCourant::exiger().'/'.($d['client_id'] ?: 'cabinet')), 'taille' => $f->getSize(), 'mime' => $f->getMimeType(), 'user_id' => auth()->id()]);
         }
         $this->log(count($r->file('fichiers')).' document(s) ajouté(s) en GED ('.$d['categorie'].')', $d['client_id'] ?: null);
         return back()->with('ok', count($r->file('fichiers')).' document(s) classé(s).');
@@ -39,7 +39,7 @@ class GedController extends Controller
 
     public function update(Request $r, Document $document)
     {
-        $document->update($r->validate(['client_id' => 'nullable|exists:clients,id', 'categorie' => 'required|max:100', 'description' => 'nullable|max:1000', 'date' => 'nullable|date']));
+        $document->update($r->validate(['client_id' => 'nullable|'.existe_cab('clients'), 'categorie' => 'required|max:100', 'description' => 'nullable|max:1000', 'date' => 'nullable|date']));
         return back()->with('ok', 'Informations enregistrées.');
     }
 

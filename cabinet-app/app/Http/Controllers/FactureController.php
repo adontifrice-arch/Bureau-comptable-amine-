@@ -183,7 +183,7 @@ class FactureController extends Controller
     private function valider(Request $r, ?Facture $f = null): array
     {
         $d = $r->validate([
-            'type' => 'required|in:facture,devis', 'numero' => 'required|max:50', 'client_id' => 'required|exists:clients,id',
+            'type' => 'required|in:facture,devis', 'numero' => 'required|max:50', 'client_id' => 'required|'.existe_cab('clients'),
             'date' => 'required|date', 'echeance' => 'nullable|date', 'tva_taux' => 'required|numeric|min:0|max:100',
             'timbre' => 'nullable|numeric|min:0', 'retenue_source' => 'nullable|boolean', 'notes' => 'nullable|max:2000',
             'lignes' => 'required|array|min:1', 'lignes.*.designation' => 'nullable|max:500',

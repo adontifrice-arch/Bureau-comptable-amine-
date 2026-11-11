@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Model;
 
 class Associe extends Model
 {
+    use AppartientAuCabinet;
+
     protected $table = 'associes';
     protected $guarded = [];
     protected $casts = ['cin_date'=>'date','naissance_date'=>'date','passeport_date'=>'date','passeport_validite'=>'date'];

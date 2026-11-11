@@ -36,3 +36,17 @@ if (! function_exists('mois_fr')) {
         return Carbon::parse($ym.'-01')->locale('fr')->translatedFormat('F Y');
     }
 }
+if (! function_exists('existe_cab')) {
+    /** Règle de validation « exists » limitée au cabinet courant : un identifiant d'un autre cabinet est refusé. */
+    function existe_cab(string $table, string $colonne = 'id'): string
+    {
+        return 'exists:'.$table.','.$colonne.',cabinet_id,'.(\App\Support\CabinetCourant::id() ?? 0);
+    }
+}
+if (! function_exists('unique_cab')) {
+    /** Règle de validation « unique » dans le cabinet courant. */
+    function unique_cab(string $table, string $colonne): string
+    {
+        return 'unique:'.$table.','.$colonne.',NULL,id,cabinet_id,'.(\App\Support\CabinetCourant::id() ?? 0);
+    }
+}

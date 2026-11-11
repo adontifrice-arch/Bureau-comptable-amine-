@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cabinet;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rules\Password;
@@ -32,20 +35,39 @@ class AuthController extends Controller
         return redirect()->intended(route('dashboard'));
     }
 
-    public function showRegister() { return view('auth.register'); }
-
-    public function register(Request $r)
+    /** Inscription : sans invitation, crée un cabinet dont on devient chef ; avec le lien d'invitation, rejoint le cabinet (validation par un chef). */
+    public function showRegister(?string $code = null)
     {
+        return view('auth.register', ['invitation' => $code ? $this->invitation($code) : null]);
+    }
+
+    public function register(Request $r, ?string $code = null)
+    {
+        $invitation = $code ? $this->invitation($code) : null;
         $data = $r->validate([
+            'cabinet' => $invitation ? 'prohibited' : 'required|min:2|max:255',
             'name' => 'required|min:2|max:100',
             'email' => 'required|email|unique:users,email',
             'password' => ['required', 'confirmed', Password::min(8)],
         ]);
-        $premier = User::count() === 0;
-        User::create($data + ['role' => $premier ? 'chef' : 'collaborateur', 'status' => $premier ? 'active' : 'pending']);
-        return redirect()->route('login')->with('ok', $premier
-            ? 'Compte chef comptable créé : vous pouvez vous connecter.'
-            : 'Inscription enregistrée : un chef comptable doit valider votre compte.');
+
+        if ($invitation) {
+            User::create(Arr::except($data, 'cabinet') + ['cabinet_id' => $invitation->id, 'role' => 'collaborateur', 'status' => 'pending']);
+            return redirect()->route('login')->with('ok', 'Inscription enregistrée : un chef comptable de '.$invitation->nom.' doit valider votre compte.');
+        }
+
+        DB::transaction(function () use ($data) {
+            $cabinet = Cabinet::creer($data['cabinet']);
+            User::create(Arr::except($data, 'cabinet') + ['cabinet_id' => $cabinet->id, 'role' => 'chef', 'status' => 'active']);
+        });
+        return redirect()->route('login')->with('ok', 'Cabinet « '.$data['cabinet'].' » créé : connectez-vous en tant que chef comptable.');
+    }
+
+    private function invitation(string $code): Cabinet
+    {
+        $c = strlen($code) >= 20 ? Cabinet::where('code_invitation', $code)->first() : null;
+        abort_unless($c, 404, 'Lien d’invitation invalide ou expiré : demandez un nouveau lien au chef comptable.');
+        return $c;
     }
 
     public function logout(Request $r)

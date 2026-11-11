@@ -28,6 +28,17 @@
             </div>
         </form>
     @elseif($tab === 'users' && $chef)
+        <div class="card card-b mb-6" x-data="{ copie: false }">
+            <h2 class="card-t">Inviter un collaborateur</h2>
+            <p class="mt-1 text-sm text-slate-500">Envoyez ce lien à la personne : elle crée son compte, que vous validez ensuite ci-dessous.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <input class="input flex-1 font-mono text-xs" readonly value="{{ $invitation }}" x-ref="lien" @focus="$el.select()" aria-label="Lien d’invitation">
+                <button type="button" class="btn-secondary" @click="navigator.clipboard.writeText($refs.lien.value); copie = true; setTimeout(() => copie = false, 2000)"><x-icon name="copy" class="h-4 w-4"/> <span x-text="copie ? 'Copié' : 'Copier'"></span></button>
+                <form method="POST" action="{{ route('parametres.invitation') }}" onsubmit="return confirm('Créer un nouveau lien ? L’ancien lien ne fonctionnera plus.')">@csrf
+                    <button class="btn-secondary" title="Désactive l’ancien lien">Nouveau lien</button>
+                </form>
+            </div>
+        </div>
         <div class="card">@foreach($users as $x)
             <div class="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3 last:border-0 dark:border-slate-800">
                 <span class="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-xs font-semibold text-white">{{ $x->initiales() }}</span>
