@@ -2,6 +2,9 @@
     <form method="POST" action="{{ route('actes.update', $acte) }}" x-data @submit="$refs.c.value = $refs.ed.innerHTML">@csrf @method('PUT')
         <div class="no-print">
             <x-page-header :title="$acte->titre" :subtitle="$acte->client->nom.' · brouillon à relire avant signature'" :back="route('clients.show', [$acte->client, 'tab' => 'actes'])">
+                @if($acte->modele?->format === 'docx')
+                    <a href="{{ route('actes.docx', $acte) }}" class="btn-secondary" title="Rempli depuis le modèle « {{ $acte->modele->nom }} » avec les données actuelles de la fiche ; les modifications faites ici n’y figurent pas."><x-icon name="download" class="h-4 w-4"/> Word (modèle)</a>
+                @endif
                 <button type="button" onclick="window.print()" class="btn-secondary"><x-icon name="printer" class="h-4 w-4"/> Imprimer / PDF</button>
                 <button class="btn-primary"><x-icon name="check" class="h-4 w-4"/> Enregistrer</button>
             </x-page-header>

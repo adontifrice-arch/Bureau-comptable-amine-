@@ -4,27 +4,83 @@ namespace App\Http\Controllers;
 
 use App\Models\Acte;
 use App\Models\Client;
+use App\Models\ModeleActe;
+use App\Services\Actes\Balises;
+use App\Services\Actes\ModeleDocx;
+use App\Services\Actes\ModeleTexte;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 /** Rédaction des statuts, PV d'assemblée et contrats de cession de parts. */
 class ActeController extends Controller
 {
     public function create(Client $client)
     {
-        return view('actes.create', ['client' => $client->load('associes'), 'types' => collect(config('cabinet.TY'))->mapWithKeys(fn ($t) => [$t[0] => $t[1]])]);
+        return view('actes.create', ['client' => $client->load('associes'), 'types' => self::types(),
+            'modeles' => ModeleActe::orderBy('nom')->get(['id', 'type', 'nom', 'format'])]);
+    }
+
+    public static function types(): Collection
+    {
+        return collect(config('cabinet.TY'))->mapWithKeys(fn ($t) => [$t[0] => $t[1]]);
     }
 
     public function store(Request $r, Client $client)
     {
-        $d = $r->validate(['type' => 'required|in:suarl,sarl,ago,age,mixte,cess,cession', 'date' => 'required|date', 'objet' => 'nullable|max:2000', 'duree' => 'nullable|integer',
-            'ordre' => 'nullable|array', 'ordre_libre' => 'nullable|max:2000', 'motif' => 'nullable|max:500', 'date_cessation' => 'nullable|date',
+        $d = $r->validate(['type' => 'required|in:'.self::types()->keys()->implode(','), 'date' => 'required|date', 'modele_id' => 'nullable|integer|exists:modeles_actes,id',
+            'objet' => 'nullable|max:2000', 'duree' => 'nullable|integer|min:1|max:99',
+            'ordre' => 'nullable|array', 'ordre.*' => 'string|max:500', 'ordre_libre' => 'nullable|max:2000', 'motif' => 'nullable|max:500', 'date_cessation' => 'nullable|date',
             'cedant' => 'nullable|max:255', 'cessionnaire' => 'nullable|max:255', 'cessionnaire_cin' => 'nullable|max:50', 'cessionnaire_adresse' => 'nullable|max:255',
-            'parts' => 'nullable|integer', 'prix' => 'nullable|numeric']);
-        $d += array_fill_keys(['objet', 'duree', 'ordre', 'ordre_libre', 'motif', 'date_cessation', 'cedant', 'cessionnaire', 'cessionnaire_cin', 'cessionnaire_adresse', 'parts', 'prix'], null);
-        $types = collect(config('cabinet.TY'))->mapWithKeys(fn ($t) => [$t[0] => $t[1]]);
-        $acte = Acte::create(['client_id' => $client->id, 'type' => $d['type'], 'date' => $d['date'], 'titre' => $types[$d['type']].' – '.dfr($d['date']), 'contenu' => $this->generer($client->load('associes'), $d)]);
-        $this->log('Rédaction : '.$acte->titre, $client->id);
+            'parts' => 'nullable|integer|min:1', 'parts_de' => 'nullable|integer|min:1|required_with:parts_a', 'parts_a' => 'nullable|integer|gte:parts_de|required_with:parts_de',
+            'prix' => 'nullable|numeric|min:0']);
+        $d += array_fill_keys(['objet', 'duree', 'ordre', 'ordre_libre', 'motif', 'date_cessation', 'cedant', 'cessionnaire', 'cessionnaire_cin', 'cessionnaire_adresse', 'parts', 'parts_de', 'parts_a', 'prix'], null);
+        if (empty($d['parts']) && $d['parts_de'] && $d['parts_a']) $d['parts'] = $d['parts_a'] - $d['parts_de'] + 1;
+        $modele = ! empty($d['modele_id']) ? ModeleActe::find($d['modele_id']) : null;
+        unset($d['modele_id']);
+        if ($modele && $modele->type !== $d['type']) return back()->withInput()->withErrors(['modele_id' => 'Ce modèle n’est pas prévu pour ce type de document.']);
+
+        $client->load('associes');
+        try {
+            $contenu = $modele ? $this->depuisModele($modele, $client, $d) : $this->generer($client, $d);
+        } catch (RuntimeException $ex) {
+            return back()->withInput()->withErrors(['modele_id' => $ex->getMessage()]);
+        }
+        $acte = Acte::create(['client_id' => $client->id, 'type' => $d['type'], 'modele_id' => $modele?->id, 'date' => $d['date'], 'donnees' => $d,
+            'titre' => self::types()[$d['type']].' – '.dfr($d['date']), 'contenu' => $contenu]);
+        $this->log('Rédaction : '.$acte->titre.($modele ? ' (modèle « '.$modele->nom.' »)' : ''), $client->id);
         return redirect()->route('actes.edit', $acte)->with('ok', 'Brouillon généré : relisez-le et modifiez-le avant signature.');
+    }
+
+    /** Brouillon HTML à partir d'un modèle importé. */
+    private function depuisModele(ModeleActe $m, Client $c, array $d): string
+    {
+        $chemin = Storage::path($m->fichier);
+        if (! is_file($chemin)) throw new RuntimeException('Le fichier du modèle « '.$m->nom.' » est introuvable.');
+        $valeurs = Balises::valeurs($c, $d);
+        if ($m->format === 'txt') return ModeleTexte::html(Balises::remplacer(ModeleTexte::lire($chemin), $valeurs));
+
+        $tmp = tempnam(sys_get_temp_dir(), 'acte');
+        try {
+            ModeleDocx::remplir($chemin, $valeurs, $tmp);
+            return ModeleDocx::html($tmp);
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
+    /** Document Word rempli depuis le modèle d'origine (mise en forme du modèle conservée, données actuelles de la fiche). */
+    public function docx(Acte $acte)
+    {
+        $m = $acte->modele;
+        abort_unless($m && $m->format === 'docx' && Storage::exists($m->fichier), 404);
+        $d = ($acte->donnees ?? []) + ['type' => $acte->type, 'date' => $acte->date?->format('Y-m-d')];
+        $tmp = tempnam(sys_get_temp_dir(), 'acte');
+        ModeleDocx::remplir(Storage::path($m->fichier), Balises::valeurs($acte->client->load('associes'), $d), $tmp);
+        return response()->download($tmp, Str::slug($acte->client->nom.' '.$acte->titre).'.docx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'])->deleteFileAfterSend();
     }
 
     public function edit(Acte $acte) { return view('actes.edit', ['acte' => $acte->load('client')]); }
@@ -47,21 +103,12 @@ class ActeController extends Controller
         $P = fn ($s) => '<p>'.$s.'</p>';
         $H = fn ($s) => '<h3>'.$s.'</h3>';
         $cap = $c->capital > 0 ? tnd($c->capital) : '………';
-        $np = $c->nb_parts ?: $c->associes->sum('parts');
         $vn = $c->valeur_nominale ? tnd($c->valeur_nominale) : '………';
-        $lieu = trim(collect(explode(',', (string) $c->adresse))->last()) ?: '………';
-        $id = function ($x) use ($e) {
-            $s = $e($x['nom']);
-            if (! empty($x['nat'])) $s .= ', de nationalité '.$e($x['nat']);
-            if (! empty($x['dn'])) $s .= ', né(e) le '.dlong($x['dn']).(! empty($x['ln']) ? ' à '.$e($x['ln']) : '');
-            if (! empty($x['cin'])) $s .= ', titulaire de la CIN n° '.$e($x['cin']).(! empty($x['cind']) ? ' délivrée le '.dfr($x['cind']) : '');
-            elseif (! empty($x['pas'])) $s .= ', titulaire du passeport n° '.$e($x['pas']);
-            if (! empty($x['adr'])) $s .= ', demeurant à '.$e($x['adr']);
-            return $s;
-        };
-        $as = $c->associes->map(fn ($a) => ['nom' => $a->nom, 'nat' => $a->nationalite, 'dn' => $a->naissance_date, 'ln' => $a->naissance_lieu, 'cin' => $a->cin, 'cind' => $a->cin_date, 'pas' => $a->passeport, 'adr' => $a->adresse, 'p' => $a->parts, 'pd' => $a->parts_de, 'pf' => $a->parts_a, 'ap' => $a->apport])->values();
-        if ($as->isEmpty() && $c->gerant_nom) $as = collect([['nom' => $c->gerant_nom, 'nat' => $c->gerant_nationalite, 'dn' => $c->gerant_naissance_date, 'ln' => $c->gerant_naissance_lieu, 'cin' => $c->gerant_cin, 'cind' => $c->gerant_cin_date, 'pas' => $c->gerant_passeport, 'adr' => $c->gerant_adresse, 'p' => $c->gerant_parts ?: $np, 'pd' => $c->gerant_parts_de, 'pf' => $c->gerant_parts_a, 'ap' => $c->gerant_apport]]);
-        $ger = ['nom' => $c->gerant_nom ?: '………', 'nat' => $c->gerant_nationalite, 'dn' => $c->gerant_naissance_date, 'ln' => $c->gerant_naissance_lieu, 'cin' => $c->gerant_cin, 'cind' => $c->gerant_cin_date, 'pas' => $c->gerant_passeport, 'adr' => $c->gerant_adresse];
+        $lieu = Balises::lieu($c);
+        $id = fn ($x) => $e(Balises::identite($x));
+        $as = Balises::detenteurs($c);
+        $ger = Balises::gerant($c);
+        $np = $c->nb_parts ?: $as->sum('p');
         $entete = '<p style="text-align:center"><b>'.$e(mb_strtoupper($c->nom)).'</b><br>'.$e($c->forme).' au capital de '.$cap.'<br>Siège social : '.$e($c->adresse ?: '………').($c->matricule_fiscal ? '<br>Matricule fiscal : '.$e($c->matricule_fiscal) : '').'</p>';
         $sig = '<p style="margin-top:30px">'.$as->map(fn ($a) => $e($a['nom']).' : ……………………')->implode('<br>').'</p>';
         $t = $d['type'];
@@ -92,7 +139,7 @@ class ActeController extends Controller
             $ced = $as->first(fn ($a) => mb_strtolower(trim($a['nom'])) === mb_strtolower(trim($d['cedant'] ?? ''))) ?? ['nom' => $d['cedant'] ?: '………'];
             $h = '<h3 style="text-align:center">CONTRAT DE CESSION DE PARTS SOCIALES</h3>'.$entete.$P('<b>ENTRE LES SOUSSIGNÉS :</b>');
             $h .= $P('1) '.$id($ced).', ci-après dénommé(e) « le Cédant »,').$P('ET').$P('2) '.$e($d['cessionnaire'] ?: '………').($d['cessionnaire_cin'] ? ', titulaire de la CIN n° '.$e($d['cessionnaire_cin']) : '').($d['cessionnaire_adresse'] ? ', demeurant à '.$e($d['cessionnaire_adresse']) : '').', ci-après dénommé(e) « le Cessionnaire »,');
-            $h .= $P('<b>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</b>').$H('Article 1 – Cession').$P('Le Cédant cède, sous les garanties ordinaires de fait et de droit, au Cessionnaire qui accepte, '.($d['parts'] ?: '………').' parts sociales de '.$vn.' chacune, qu’il détient dans le capital de la société '.$e($c->nom).'.');
+            $h .= $P('<b>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</b>').$H('Article 1 – Cession').$P('Le Cédant cède, sous les garanties ordinaires de fait et de droit, au Cessionnaire qui accepte, '.($d['parts'] ?: '………').' parts sociales de '.$vn.' chacune'.($d['parts_de'] ? ', numérotées de '.$d['parts_de'].' à '.$d['parts_a'] : '').', qu’il détient dans le capital de la société '.$e($c->nom).'.');
             $h .= $H('Article 2 – Prix').$P('La présente cession est consentie et acceptée moyennant le prix global de '.(! empty($d['prix']) ? tnd($d['prix']) : '………').', que le Cédant reconnaît avoir reçu, dont quittance.');
             $h .= $H('Article 3 – Propriété – Jouissance').$P('Le Cessionnaire est propriétaire des parts cédées à compter de ce jour et a droit aux bénéfices à compter de la même date.');
             $h .= $H('Article 4 – Agrément').$P('La présente cession a été agréée conformément aux statuts et au Code des sociétés commerciales.');
@@ -101,8 +148,7 @@ class ActeController extends Controller
         }
 
         // Procès-verbaux
-        $items = collect($d['ordre'] ?? [])->merge(preg_split('/\r?\n/', (string) ($d['ordre_libre'] ?? '')))->map(fn ($x) => trim($x))->filter()->values();
-        if ($t === 'cess') $items = $items->isEmpty() ? collect(['Cessation définitive de l’activité de la société', 'Dissolution anticipée et mise en liquidation', 'Nomination du liquidateur', 'Pouvoirs pour formalités']) : $items;
+        $items = Balises::ordreDuJour($d);
         $lab = ['ago' => 'ORDINAIRE', 'age' => 'EXTRAORDINAIRE', 'mixte' => 'MIXTE', 'cess' => 'EXTRAORDINAIRE'][$t];
         $h = '<h3 style="text-align:center">'.($t === 'cess' ? 'PROCÈS-VERBAL DE CESSATION DÉFINITIVE D’ACTIVITÉ' : 'PROCÈS-VERBAL DE L’ASSEMBLÉE GÉNÉRALE '.$lab).'</h3>'.$entete;
         $h .= $P('L’an '.\Carbon\Carbon::parse($d['date'])->year.', le '.dlong($d['date']).', à ……… heures, les associés de la société '.$e($c->nom).' se sont réunis au siège social en assemblée générale '.strtolower($lab).', sur convocation de la gérance.');
@@ -110,14 +156,7 @@ class ActeController extends Controller
         $h .= $P('Soit au total '.($np ?: '………').' parts sur les '.($np ?: '………').' parts composant le capital social. L’assemblée, régulièrement constituée, peut valablement délibérer. Elle est présidée par '.$e($c->gerant_nom ?: '………').', gérant.');
         $h .= $P('Le président rappelle que l’assemblée est appelée à délibérer sur l’ordre du jour suivant :').'<ol>'.$items->map(fn ($x) => '<li>'.$e($x).'</li>')->implode('').'</ol>';
         foreach ($items as $i => $x) {
-            $txt = match (true) {
-                str_contains($x, 'Approbation des états financiers') => 'L’assemblée générale, après avoir entendu la lecture du rapport de gestion'.($t !== 'cess' ? ' et, le cas échéant, du rapport du commissaire aux comptes' : '').', approuve les états financiers de l’exercice clos le 31 décembre '.(\Carbon\Carbon::parse($d['date'])->year - 1).' tels qu’ils lui ont été présentés.',
-                str_contains($x, 'Affectation') => 'L’assemblée générale décide d’affecter le résultat de l’exercice comme suit : ……………………',
-                str_contains($x, 'Quitus') => 'L’assemblée générale donne quitus entier et sans réserve au gérant pour sa gestion au titre de l’exercice écoulé.',
-                str_contains($x, 'Cessation') => 'L’assemblée générale décide la cessation définitive de l’activité de la société à compter du '.dlong($d['date_cessation'] ?? $d['date']).($d['motif'] ? ', pour le motif suivant : '.$e($d['motif']) : '').'.',
-                str_contains($x, 'Pouvoirs') => 'L’assemblée générale confère tous pouvoirs au porteur d’une copie ou d’un extrait du présent procès-verbal pour accomplir les formalités légales.',
-                default => 'Après délibération, l’assemblée générale adopte la résolution suivante : '.$e($x).' ……………………',
-            };
+            $txt = $e(Balises::resolution($x, $d));
             $h .= $H(($i + 1).($i ? 'e' : 're').' résolution').$P($txt).$P('<i>Cette résolution, mise aux voix, est adoptée à l’unanimité.</i>');
         }
         $h .= $P('L’ordre du jour étant épuisé, la séance est levée. De tout ce qui précède, il a été dressé le présent procès-verbal signé par les associés présents.');

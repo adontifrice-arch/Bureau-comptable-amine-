@@ -22,6 +22,11 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('exigences/{exigence}/echeance', [C\ClientController::class, 'exigenceToEcheance'])->name('clients.exigences.echeance');
     Route::get('clients/{client}/actes/nouveau', [C\ActeController::class, 'create'])->name('actes.create');
     Route::post('clients/{client}/actes', [C\ActeController::class, 'store'])->name('actes.store');
+    Route::get('actes/modeles', [C\ModeleActeController::class, 'index'])->name('modeles-actes.index');
+    Route::post('actes/modeles', [C\ModeleActeController::class, 'store'])->name('modeles-actes.store');
+    Route::get('actes/modeles/{modele}/fichier', [C\ModeleActeController::class, 'download'])->name('modeles-actes.download');
+    Route::delete('actes/modeles/{modele}', [C\ModeleActeController::class, 'destroy'])->name('modeles-actes.destroy');
+    Route::get('actes/{acte}/word', [C\ActeController::class, 'docx'])->name('actes.docx');
     Route::get('actes/{acte}', [C\ActeController::class, 'edit'])->name('actes.edit');
     Route::put('actes/{acte}', [C\ActeController::class, 'update'])->name('actes.update');
     Route::delete('actes/{acte}', [C\ActeController::class, 'destroy'])->name('actes.destroy');

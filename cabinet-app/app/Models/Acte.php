@@ -8,6 +8,7 @@ class Acte extends Model
 {
     protected $table = 'actes';
     protected $guarded = [];
-    protected $casts = ['date'=>'date'];
+    protected $casts = ['date'=>'date', 'donnees'=>'array'];
     public function client() { return $this->belongsTo(Client::class); }
+    public function modele() { return $this->belongsTo(ModeleActe::class, 'modele_id'); }
 }
