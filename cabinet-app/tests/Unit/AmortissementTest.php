@@ -80,6 +80,8 @@ class AmortissementTest extends TestCase
         $this->assertSame(184.0, Amortissement::plan($b + ['prorata' => 'jour'], 2027)[2027]['dotation']);
         $this->assertSame(365.0, Amortissement::plan($b + ['prorata' => 'aucun'], 2027)[2027]['dotation']);
         $this->assertSame(182.5, Amortissement::plan($b + ['prorata' => 'mois'], 2027)[2027]['dotation']);
+        // Sans prorata précisé : au jour par défaut
+        $this->assertSame(184.0, Amortissement::plan($b, 2027)[2027]['dotation']);
     }
 
     public function test_valeur_residuelle_et_bien_non_amortissable(): void

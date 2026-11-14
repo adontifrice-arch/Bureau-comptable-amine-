@@ -12,8 +12,9 @@ use Carbon\CarbonInterface;
  * - Linéaire : base amortissable × taux × fraction d'année.
  * - Dégressif : VNC × taux × coefficient (1,5 jusqu'à 4 ans, 2 pour 5–6 ans, 2,5 au-delà), avec passage au
  *   linéaire sur la durée restante dès que celui-ci devient plus favorable.
- * - Fraction d'année (prorata temporis) : au mois (défaut, mois de mise en service et mois de cession comptés),
- *   au jour (jours réels / jours de l'année) ou sans prorata (année entière).
+ * - Fraction d'année (prorata temporis) : au jour (défaut, jours réels / jours de l'année, jours de mise en service et de
+ *   cession comptés), au mois (mois de mise en service et mois de cession comptés)
+ *   ou sans prorata (année entière).
  * - Base amortissable = valeur d'origine − valeur résiduelle ; le cumul ne la dépasse jamais.
  * - Plus de dotation après l'année de cession.
  */
@@ -31,7 +32,7 @@ class Amortissement
         'agencement' => ['Agencements et installations', '227', '2287', 10],
     ];
 
-    public const PRORATAS = ['mois' => 'Au mois', 'jour' => 'Au jour', 'aucun' => 'Sans prorata'];
+    public const PRORATAS = ['jour' => 'Au jour', 'mois' => 'Au mois', 'aucun' => 'Sans prorata'];
     public const METHODES = ['lineaire' => 'Linéaire', 'degressif' => 'Dégressif'];
 
     /** Nature déduite d'un compte de classe 2 (import des factures reçues). */
@@ -87,7 +88,7 @@ class Amortissement
         $vo = (float) $b['valeur_origine'];
         $base = max(0.0, $vo - (float) ($b['valeur_residuelle'] ?? 0));
         $taux = (float) $b['taux'];
-        $prorata = $b['prorata'] ?? 'mois';
+        $prorata = $b['prorata'] ?? 'jour';
         $degressif = ($b['methode'] ?? 'lineaire') === 'degressif';
         $amortissable = ($b['amortissable'] ?? true) && $taux > 0 && $base > 0;
         $duree = self::duree($taux);

@@ -15,7 +15,7 @@
 
     <x-tabs :active="$tab" :items="['registre' => ['Registre ('.$biens->count().')', $u('registre')], 'dotations' => ['Dotations '.$exercice, $u('dotations')], 'etats' => ['États imprimables', $u('etats')]]"/>
 
-    <div x-data="{ e: {}, natures: @js($natures), nouveau() { this.e = { nature: 'informatique', methode: 'lineaire', prorata: 'mois', taux: 33.33, date_mise_service: '{{ now()->format('Y-m-d') }}' }; this.$dispatch('open-modal', 'immo') } }">
+    <div x-data="{ e: {}, natures: @js($natures), nouveau() { this.e = { nature: 'informatique', methode: 'lineaire', prorata: 'jour', taux: 33.33, date_mise_service: '{{ now()->format('Y-m-d') }}' }; this.$dispatch('open-modal', 'immo') } }">
     @if($tab === 'registre')
         <div class="mb-4 flex flex-wrap justify-end gap-2">
             @if($aImporter->count())<button class="btn-secondary" @click="$dispatch('open-modal', 'import')"><x-icon name="download" class="h-4 w-4"/> Importer des factures reçues ({{ $aImporter->count() }})</button>@endif
@@ -158,7 +158,7 @@
                     <div><label class="label" for="i-pro">Prorata temporis</label><select id="i-pro" name="prorata" class="input" x-model="e.prorata">@foreach(A::PRORATAS as $k => $l)<option value="{{ $k }}">{{ $l }}</option>@endforeach</select></div>
                     <div><label class="label" for="i-res">Valeur résiduelle</label><input id="i-res" type="number" step="0.001" min="0" name="valeur_residuelle" class="input" x-model="e.valeur_residuelle"></div>
                 </div></template>
-                <template x-if="e.nature === 'terrain'"><div class="md:col-span-3 text-sm text-slate-500"><input type="hidden" name="methode" value="lineaire"><input type="hidden" name="prorata" value="mois">Les terrains ne sont pas amortissables.</div></template>
+                <template x-if="e.nature === 'terrain'"><div class="md:col-span-3 text-sm text-slate-500"><input type="hidden" name="methode" value="lineaire"><input type="hidden" name="prorata" value="jour">Les terrains ne sont pas amortissables.</div></template>
                 <div class="flex justify-end md:col-span-3"><button class="btn-primary">Enregistrer</button></div>
             </form>
         </x-modal>

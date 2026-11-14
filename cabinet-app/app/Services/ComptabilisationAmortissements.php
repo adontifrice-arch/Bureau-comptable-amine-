@@ -111,7 +111,7 @@ class ComptabilisationAmortissements
                 'client_id' => $client->id, 'nature' => $nature, 'designation' => $f->description ?: 'Facture '.$f->reference.' – '.$f->fournisseur,
                 'date_mise_service' => $f->date, 'valeur_origine' => $deductible ? $f->ht : r3($f->ht + $f->tva),   // TVA non déductible : incluse dans le coût
                 'tva' => $deductible ? $f->tva : 0, 'fournisseur' => $f->fournisseur, 'reference' => $f->reference, 'methode' => 'lineaire',
-                'taux' => Amortissement::NATURES[$nature][3], 'prorata' => 'mois', 'facture_recue_id' => $f->id,
+                'taux' => Amortissement::NATURES[$nature][3], 'prorata' => 'jour', 'facture_recue_id' => $f->id,
             ]);
             $n++;
         }
