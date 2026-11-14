@@ -102,6 +102,17 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::get('comptabilite/balance/imprimer', [C\ComptaController::class, 'balancePrint'])->name('compta.balance.print');
     Route::get('comptabilite/balance/export', [C\ComptaController::class, 'balanceCsv'])->name('compta.balance.csv');
 
+    // ---------- Immobilisations et amortissements ----------
+    Route::get('immobilisations', [C\ImmobilisationController::class, 'index'])->name('immobilisations.index');
+    Route::post('immobilisations', [C\ImmobilisationController::class, 'store'])->name('immobilisations.store');
+    Route::post('immobilisations/import', [C\ImmobilisationController::class, 'importer'])->name('immobilisations.importer');
+    Route::post('immobilisations/dotations', [C\ImmobilisationController::class, 'comptabiliser'])->middleware('chef')->name('immobilisations.comptabiliser');
+    Route::post('immobilisations/dotations/annuler', [C\ImmobilisationController::class, 'annuler'])->middleware('chef')->name('immobilisations.annuler');
+    Route::get('immobilisations/etats/{etat}/{format}', [C\ImmobilisationController::class, 'etat'])->name('immobilisations.etat');
+    Route::put('immobilisations/{immobilisation}', [C\ImmobilisationController::class, 'update'])->name('immobilisations.update');
+    Route::delete('immobilisations/{immobilisation}', [C\ImmobilisationController::class, 'destroy'])->name('immobilisations.destroy');
+    Route::post('immobilisations/{immobilisation}/acquisition', [C\ImmobilisationController::class, 'acquisition'])->middleware('chef')->name('immobilisations.acquisition');
+
     // ---------- Paie ----------
     Route::get('paie', [C\PaieController::class, 'index'])->name('paie.index');
     Route::post('paie/salaries', [C\PaieController::class, 'salarieStore'])->name('paie.salaries.store');

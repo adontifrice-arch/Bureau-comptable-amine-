@@ -28,6 +28,7 @@
         ]],
         ['Dossiers clients', [
             ['compta.index', 'Comptabilité', 'book', 'compta.*'],
+            ['immobilisations.index', 'Immobilisations', 'briefcase', 'immobilisations.*'],
             ['paie.index', 'Paie', 'wallet', 'paie.*'],
             ['liasse.index', 'Liasse fiscale', 'scale', 'liasse.*'],
             ['declarations.index', 'Déclarations', 'file-text', 'declarations.*'],
