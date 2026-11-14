@@ -18,7 +18,7 @@ class BaseSeeder extends Seeder
         // Les seeders suivants (DemoSeeder) travaillent dans ce cabinet.
         CabinetCourant::utiliser($cabinet->id);
 
-        foreach (config('cabinet.PCN') as [$n, $l]) Compte::firstOrCreate(['numero' => $n], ['libelle' => $l]);
+        Compte::installerPlan($cabinet->id);
         if (! Service::count()) foreach (config('cabinet.SVC0') as $s) Service::create(['nom' => $s, 'prix' => 0]);
         User::firstOrCreate(['email' => 'admin@cabinet.tn'], [
             'cabinet_id' => $cabinet->id, 'name' => 'Amine Boudaya', 'password' => 'Cabinet2026!', 'role' => 'chef', 'status' => 'active',

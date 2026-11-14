@@ -38,7 +38,7 @@
             @empty <tr><td colspan="8"><x-empty icon="receipt" title="Aucune facture reçue">Saisissez les factures fournisseurs du client : elles seront comptabilisées après validation.</x-empty></td></tr> @endforelse
             </tbody></table>
         </div>
-        @php $imp = collect($plan)->filter(fn($l, $n) => preg_match('/^[26]/', $n) && !str_starts_with($n, '228')); @endphp
+        @php $imp = collect($plan)->filter(fn($l, $n) => preg_match('/^[26]/', $n) && !preg_match('/^2[89]/', $n)); @endphp
         <x-modal name="fr" title="Facture fournisseur" size="max-w-3xl">
             <form method="POST" enctype="multipart/form-data" x-data="{ e: {} }" @fr-edit.window="e = Object.assign({tva_taux: 19, timbre: 1, tva_deductible: '1', date: '{{ now()->format('Y-m-d') }}', retenue_taux: 0}, $event.detail)"
                   :action="e.id ? '{{ url('comptabilite/factures') }}/' + e.id : '{{ route('compta.factures.store') }}'" class="grid gap-4 md:grid-cols-3">@csrf
@@ -53,7 +53,7 @@
                 <div><label class="label">Montant TVA</label><input type="number" step="0.001" name="tva" class="input" x-model="e.tva"></div>
                 <div><label class="label">Droit de timbre</label><input type="number" step="0.001" name="timbre" class="input" x-model="e.timbre"></div>
                 <div class="md:col-span-2"><label class="label">Compte de charge / immobilisation</label><select name="compte" class="input" x-model="e.compte"><option value="">— à choisir —</option>@foreach($imp as $n => $l)<option value="{{ $n }}">{{ $n }} {{ $l }}</option>@endforeach</select></div>
-                <div><label class="label">TVA récupérable</label><select name="tva_deductible" class="input" x-model="e.tva_deductible"><option value="1">Oui (4367)</option><option value="0">Non (incluse en charge)</option></select></div>
+                <div><label class="label">TVA récupérable</label><select name="tva_deductible" class="input" x-model="e.tva_deductible"><option value="1">Oui (4366)</option><option value="0">Non (incluse en charge)</option></select></div>
                 <div><label class="label">Retenue à la source (%)</label><input type="number" step="0.01" name="retenue_taux" class="input" x-model="e.retenue_taux"></div>
                 <div><label class="label">Pièce (PDF / image)</label><input type="file" name="fichier" accept=".pdf,image/*" class="input"></div>
                 <div class="flex justify-end md:col-span-3"><button class="btn-primary">Enregistrer (en attente de validation)</button></div>
@@ -148,7 +148,7 @@
 
     @elseif($tab === 'plan')
         <div class="grid gap-6 lg:grid-cols-3">
-            <div class="card lg:col-span-2"><div class="card-h"><h2 class="card-t">Plan comptable</h2><span class="text-xs text-slate-400">Inspiré du système comptable des entreprises</span></div>
+            <div class="card lg:col-span-2"><div class="card-h"><h2 class="card-t">Plan comptable</h2><span class="text-xs text-slate-400">Plan comptable tunisien (système comptable des entreprises) · {{ count($plan) }} comptes</span></div>
                 <div class="max-h-[70vh] overflow-y-auto"><table class="tbl"><tbody>@foreach($plan as $n => $l)<tr><td class="w-24 font-mono text-xs">{{ $n }}</td><td>{{ $l }}</td></tr>@endforeach</tbody></table></div></div>
             <form method="POST" action="{{ route('compta.comptes.store') }}" class="card card-b space-y-3 self-start">@csrf
                 <h2 class="card-t">Ajouter un compte</h2>

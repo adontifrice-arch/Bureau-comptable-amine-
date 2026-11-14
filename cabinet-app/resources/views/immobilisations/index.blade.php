@@ -38,7 +38,7 @@
                         <td class="text-xs">
                             @if($i->facture_recue_id)<span class="badge-green">Facture reçue</span>
                             @elseif($i->acquisition_ecriture_id)<span class="badge-green">Comptabilisée</span>
-                            @elseif($chef)<form method="POST" action="{{ route('immobilisations.acquisition', $i) }}" onsubmit="return confirm('Passer l’écriture d’acquisition (D {{ $i->compteImmobilisation() }}{{ $i->tva > 0 ? ' + D 4367' : '' }} / C 401) ?')">@csrf<button class="btn-secondary btn-sm">Comptabiliser</button></form>
+                            @elseif($chef)<form method="POST" action="{{ route('immobilisations.acquisition', $i) }}" onsubmit="return confirm('Passer l’écriture d’acquisition (D {{ $i->compteImmobilisation() }}{{ $i->tva > 0 ? ' + D 4366' : '' }} / C 401) ?')">@csrf<button class="btn-secondary btn-sm">Comptabiliser</button></form>
                             @else<span class="badge-amber">À comptabiliser</span>@endif
                         </td>
                         <td class="whitespace-nowrap text-right">
@@ -80,7 +80,7 @@
                 @forelse($etat as $l)
                     <tr>
                         <td class="font-medium">{{ $l['immo']->designation }}<div class="text-xs font-normal text-slate-500">{{ $l['immo']->libelleNature() }}</div></td>
-                        <td class="text-xs">{{ $l['immo']->compteAmortissement() ? '681 / '.$l['immo']->compteAmortissement() : '—' }}</td>
+                        <td class="text-xs">{{ $l['immo']->compteAmortissement() ? '6811 / '.$l['immo']->compteAmortissement() : '—' }}</td>
                         <td class="num">{{ tnd($l['immo']->valeur_origine, false) }}</td>
                         <td class="num">{{ tnd($l['anterieur'], false) }}</td>
                         <td class="num font-semibold">{{ tnd($l['dotation'], false) }}</td>
@@ -172,7 +172,7 @@
                 @foreach($aImporter as $f)
                     <tr><td><input type="checkbox" name="factures[]" value="{{ $f->id }}" checked class="rounded border-slate-300 text-brand-600" aria-label="Importer la facture {{ $f->reference }}"></td>
                         <td>{{ dfr($f->date) }}</td><td>{{ $f->fournisseur }}<div class="text-xs text-slate-500">{{ $f->description ?: $f->reference }}</div></td>
-                        <td>{{ $f->compte }}</td><td class="text-xs">{{ A::NATURES[A::natureDuCompte($f->compte)][0] }}</td><td class="num">{{ tnd($f->ht, false) }}</td></tr>
+                        <td>{{ $f->compte }}</td><td class="text-xs">{{ A::NATURES[A::natureDuCompte($f->compte, $f->description.' '.$f->fournisseur)][0] }}</td><td class="num">{{ tnd($f->ht, false) }}</td></tr>
                 @endforeach
                 </tbody></table>
                 <div class="flex justify-end"><button class="btn-primary">Importer la sélection</button></div>

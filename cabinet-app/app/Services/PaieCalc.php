@@ -49,18 +49,18 @@ class PaieCalc
         return array_map('r3', $t);
     }
 
-    /** Écriture de paie (pLines du prototype). */
+    /** Écriture de paie (plan comptable tunisien) : D 640 salaires, 647 charges sociales, 661 TFP/FOPROLOS / C 425 net, 45311 CNSS, 432 retenues, 437 TFP/FOPROLOS. */
     public static function lignes(array $t): array
     {
         $tf = r3($t['tfp'] + $t['fop']);
         return array_values(array_filter([
-            ['compte' => '661', 'debit' => $t['brut'], 'credit' => 0],
-            ['compte' => '664', 'debit' => $t['cnssP'], 'credit' => 0],
-            ['compte' => '671', 'debit' => $tf, 'credit' => 0],
-            ['compte' => '421', 'debit' => 0, 'credit' => $t['net']],
-            ['compte' => '431', 'debit' => 0, 'credit' => r3($t['cnssS'] + $t['cnssP'])],
-            ['compte' => '4365', 'debit' => 0, 'credit' => $t['ras']],
-            ['compte' => '4369', 'debit' => 0, 'credit' => $tf],
+            ['compte' => '640', 'debit' => $t['brut'], 'credit' => 0],
+            ['compte' => '647', 'debit' => $t['cnssP'], 'credit' => 0],
+            ['compte' => '661', 'debit' => $tf, 'credit' => 0],
+            ['compte' => '425', 'debit' => 0, 'credit' => $t['net']],
+            ['compte' => '45311', 'debit' => 0, 'credit' => r3($t['cnssS'] + $t['cnssP'])],
+            ['compte' => '432', 'debit' => 0, 'credit' => $t['ras']],
+            ['compte' => '437', 'debit' => 0, 'credit' => $tf],
         ], fn ($l) => $l['debit'] || $l['credit']));
     }
 }

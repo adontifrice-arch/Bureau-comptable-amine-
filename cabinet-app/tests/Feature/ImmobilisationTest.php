@@ -82,7 +82,7 @@ class ImmobilisationTest extends TestCase
         $this->post(route('immobilisations.comptabiliser'), ['exercice' => 2026])->assertSessionHas('ok');
         $e = Ecriture::with('lignes')->sole();
         $this->assertSame(['AMO', '2026-12-31', 'amo:2026', 'Dotations aux amortissements 2026', $this->chef->id], [$e->journal, $e->date->format('Y-m-d'), $e->source, $e->libelle, $e->valide_par]);
-        $this->assertEqualsCanonicalizing([['681', 2033.25, 0.0], ['2284', 0.0, 1200.0], ['2286', 0.0, 833.25]], $this->lignes($e));   // 833,250 + 1 200
+        $this->assertEqualsCanonicalizing([['6811', 2033.25, 0.0], ['2824', 0.0, 1200.0], ['28282', 0.0, 833.25]], $this->lignes($e));   // 833,250 + 1 200
 
         // Deuxième clic : rien de nouveau.
         $this->post(route('immobilisations.comptabiliser'), ['exercice' => 2026])->assertSessionHas('err');
@@ -94,7 +94,7 @@ class ImmobilisationTest extends TestCase
         $this->post(route('immobilisations.comptabiliser'), ['exercice' => 2026])->assertSessionHas('ok');
         $c = Ecriture::with('lignes')->latest('id')->first();
         $this->assertSame('Complément de dotations aux amortissements 2026', $c->libelle);
-        $this->assertEqualsCanonicalizing([['681', 166.65, 0.0], ['2286', 0.0, 166.65]], $this->lignes($c));
+        $this->assertEqualsCanonicalizing([['6811', 166.65, 0.0], ['28282', 0.0, 166.65]], $this->lignes($c));
         $this->assertSame(999.9, $serveur->fresh()->load('dotationsComptabilisees')->dejaComptabilise(2026));
 
         // Suppression bloquée tant que des dotations sont comptabilisées.
@@ -126,7 +126,7 @@ class ImmobilisationTest extends TestCase
         $this->post(route('immobilisations.acquisition', $i))->assertSessionHas('ok');
         $e = Ecriture::with('lignes')->sole();
         $this->assertSame(['ACH', '2026-03-15', 'immo:'.$i->id], [$e->journal, $e->date->format('Y-m-d'), $e->source]);
-        $this->assertEqualsCanonicalizing([['223', 10000.0, 0.0], ['4367', 1900.0, 0.0], ['401', 0.0, 11900.0]], $this->lignes($e));
+        $this->assertEqualsCanonicalizing([['223', 10000.0, 0.0], ['4366', 1900.0, 0.0], ['401', 0.0, 11900.0]], $this->lignes($e));
 
         $this->post(route('immobilisations.acquisition', $i))->assertSessionHas('err');                   // pas deux fois
         $this->delete(route('immobilisations.destroy', $i))->assertSessionHas('err');
@@ -139,7 +139,7 @@ class ImmobilisationTest extends TestCase
     public function test_import_des_factures_recues_validees_de_classe_2(): void
     {
         $f = FactureRecue::create(['client_id' => $this->client->id, 'date' => '2026-02-01', 'fournisseur' => 'Tunisie Informatique', 'reference' => 'F-12',
-            'description' => 'Ordinateurs portables', 'ht' => 4500, 'tva' => 855, 'compte' => '226', 'tva_deductible' => true, 'statut' => 'val']);
+            'description' => 'Ordinateurs portables', 'ht' => 4500, 'tva' => 855, 'compte' => '2282', 'tva_deductible' => true, 'statut' => 'val']);
         FactureRecue::create(['client_id' => $this->client->id, 'date' => '2026-02-01', 'fournisseur' => 'Papeterie', 'ht' => 100, 'tva' => 19, 'compte' => '6061', 'statut' => 'val']);
         FactureRecue::create(['client_id' => $this->client->id, 'date' => '2026-02-01', 'fournisseur' => 'Brouillon', 'ht' => 900, 'tva' => 0, 'compte' => '224', 'statut' => 'prop']);
 

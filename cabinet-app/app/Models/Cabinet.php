@@ -30,13 +30,13 @@ class Cabinet extends Model
         $this->update(['code_invitation' => self::nouveauCode()]);
     }
 
-    /** Création d'un cabinet avec ses données de départ : plan comptable indicatif et catalogue de services. */
+    /** Création d'un cabinet avec ses données de départ : plan comptable tunisien et catalogue de services. */
     public static function creer(string $nom): self
     {
         return DB::transaction(function () use ($nom) {
             $c = self::create(['nom' => $nom, 'code_invitation' => self::nouveauCode()]);
             CabinetCourant::pour($c->id, function () use ($c) {
-                foreach (config('cabinet.PCN') as [$n, $l]) Compte::create(['numero' => $n, 'libelle' => $l]);
+                Compte::installerPlan($c->id);
                 foreach (config('cabinet.SVC0') as $s) Service::create(['nom' => $s, 'prix' => 0]);
                 Setting::put('cabinet', ['nom' => $c->nom]);
             });

@@ -107,9 +107,20 @@ class AmortissementTest extends TestCase
 
     public function test_nature_deduite_du_compte(): void
     {
-        $this->assertSame('informatique', Amortissement::natureDuCompte('2261'));
-        $this->assertSame('transport', Amortissement::natureDuCompte('224'));
-        $this->assertSame('terrain', Amortissement::natureDuCompte('220'));
-        $this->assertSame('incorporelle', Amortissement::natureDuCompte('2131'));
+        // Plan comptable tunisien : 2282 équipement de bureau, départagé par le libellé de la facture
+        $this->assertSame('informatique', Amortissement::natureDuCompte('2282', 'Ordinateurs portables'));
+        $this->assertSame('mobilier', Amortissement::natureDuCompte('2282', 'Bureaux et chaises'));
+        $this->assertSame('transport', Amortissement::natureDuCompte('2244'));
+        $this->assertSame('terrain', Amortissement::natureDuCompte('2213'));
+        $this->assertSame('construction', Amortissement::natureDuCompte('2221'));
+        $this->assertSame('agencement', Amortissement::natureDuCompte('2281'));
+        $this->assertSame('incorporelle', Amortissement::natureDuCompte('213'));
+    }
+
+    public function test_compte_d_amortissement_selon_la_ventilation_du_plan_tunisien(): void
+    {
+        $this->assertSame('2813', Amortissement::compteAmortissementDe('213'));
+        $this->assertSame('2822', Amortissement::compteAmortissementDe('222'));
+        $this->assertSame('28282', Amortissement::compteAmortissementDe('2282'));
     }
 }

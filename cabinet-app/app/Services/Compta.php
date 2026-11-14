@@ -6,6 +6,7 @@ use App\Models\Compte;
 use App\Models\Ecriture;
 use App\Models\EcritureLigne;
 use App\Models\FactureRecue;
+use App\Support\CabinetCourant;
 use Illuminate\Support\Facades\DB;
 
 /** Calculs comptables : balance, états financiers (repris du prototype). */
@@ -16,9 +17,18 @@ class Compta
         return Compte::orderBy('numero')->pluck('libelle', 'numero')->all();
     }
 
+    /** Libellés des comptes mis en cache, par cabinet. */
+    private static array $plans = [];
+
+    /** À appeler quand le plan comptable change (installation, ajout ou modification d'un compte). */
+    public static function oublierPlan(): void
+    {
+        self::$plans = [];
+    }
+
     public static function libelle(string $cpt): string
     {
-        static $p; $p ??= static::plan();
+        $p = self::$plans[CabinetCourant::id() ?? 0] ??= static::plan();
         if (isset($p[$cpt])) return $p[$cpt];
         for ($i = strlen($cpt) - 1; $i >= 2; $i--) if (isset($p[substr($cpt, 0, $i)])) return $p[substr($cpt, 0, $i)];
         return '';
@@ -77,7 +87,7 @@ class Compta
     public static function etats(int $client, int $annee): array
     {
         $g = array_fill_keys(['imm', 'stk', 'cli', 'aac', 'liq', 'cap', 'rep', 'emp', 'fou', 'apc', 'cob'], 0);
-        $P = array_fill_keys(['ca', 'ap', 'ach', 'srv', 'per', 'imp', 'dot', 'fin', 'pfi', 'is'], 0);
+        $P = array_fill_keys(['ca', 'ap', 'ach', 'srv', 'per', 'imp', 'dot', 'fin', 'pfi', 'is', 'ext'], 0);
         $B = static::balance($client, $annee);
         foreach ($B as $b) {
             $s = r3($b['sd'] - $b['sc']); $k = $b['compte'];
@@ -89,11 +99,14 @@ class Compta
                 else { if (str_starts_with($k, '40')) $g['fou'] -= $s; elseif ($k[0] === '5') $g['cob'] -= $s; else $g['apc'] -= $s; }
             } elseif ($k[0] === '6') {
                 $p2 = substr($k, 0, 2);
-                $key = match (true) { $p2 === '60' => 'ach', in_array($p2, ['61', '62']) => 'srv', $p2 === '66' => 'per', $p2 === '67' => 'imp', $p2 === '68' => 'dot', $p2 === '65' => 'fin', $p2 === '69' => 'is', default => 'srv' };
+                // Plan comptable tunisien : 64 personnel, 65 financières, 66 impôts et taxes, 67 pertes extraordinaires, 68 dotations, 69 IS
+                $key = match (true) { $p2 === '60' => 'ach', $p2 === '64' => 'per', $p2 === '65' => 'fin', $p2 === '66' => 'imp', $p2 === '68' => 'dot', $p2 === '69' => 'is', default => 'srv' };
+                if ($p2 === '67') { $P['ext'] -= $s; continue; }
                 $P[$key] += $s;
             } elseif ($k[0] === '7') {
                 $v = -$s;
-                if (str_starts_with($k, '70')) $P['ca'] += $v; elseif (str_starts_with($k, '77')) $P['pfi'] += $v; else $P['ap'] += $v;
+                // 70 chiffre d'affaires, 75 produits financiers, 77 gains extraordinaires
+                if (str_starts_with($k, '70')) $P['ca'] += $v; elseif (str_starts_with($k, '75')) $P['pfi'] += $v; elseif (str_starts_with($k, '77')) $P['ext'] += $v; else $P['ap'] += $v;
             }
         }
         $g = array_map('r3', $g); $P = array_map('r3', $P);
@@ -101,7 +114,7 @@ class Compta
         $P['chg'] = r3($P['ach'] + $P['srv'] + $P['per'] + $P['imp'] + $P['dot']);
         $P['rex'] = r3($P['prod'] - $P['chg']);
         $P['rfi'] = r3($P['pfi'] - $P['fin']);
-        $P['rav'] = r3($P['rex'] + $P['rfi']);
+        $P['rav'] = r3($P['rex'] + $P['rfi'] + $P['ext']);     // y compris les éléments extraordinaires (77 − 67), imposables
         $P['res'] = r3($P['rav'] - $P['is']);
         $g['res'] = $P['res'];
         $g['cp'] = r3($g['cap'] + $g['rep'] + $g['res']);

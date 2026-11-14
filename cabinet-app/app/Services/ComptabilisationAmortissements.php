@@ -13,8 +13,8 @@ use RuntimeException;
 
 /**
  * Écritures des immobilisations (spécification §3.8, §5.2) :
- * - dotations de l'exercice : D 681 / C 228x par nature, journal AMO, au 31/12, idempotent (seuls les compléments sont passés) ;
- * - acquisition d'un bien saisi à la main : D 22x [+ D 4367] / C 401, journal ACH ;
+ * - dotations de l'exercice : D 6811 / C 28x selon le compte du bien, journal AMO, au 31/12, idempotent (seuls les compléments sont passés) ;
+ * - acquisition d'un bien saisi à la main : D 2x [+ D 4366] / C 401, journal ACH ;
  * - import des factures reçues validées imputées en classe 2.
  */
 class ComptabilisationAmortissements
@@ -46,7 +46,7 @@ class ComptabilisationAmortissements
         return DB::transaction(function () use ($client, $exercice, $user, $lignes) {
             $complement = $lignes->contains(fn ($l) => $l['deja'] > 0);
             $total = r3($lignes->sum('ecart'));
-            $ecriture = [['compte' => '681', 'debit' => $total, 'credit' => 0]];
+            $ecriture = [['compte' => '6811', 'debit' => $total, 'credit' => 0]];
             foreach ($lignes->groupBy(fn ($l) => $l['immo']->compteAmortissement()) as $compte => $g) {
                 $ecriture[] = ['compte' => $compte, 'debit' => 0, 'credit' => r3($g->sum('ecart'))];
             }
@@ -75,7 +75,7 @@ class ComptabilisationAmortissements
         });
     }
 
-    /** Écriture d'acquisition d'un bien saisi à la main : D 22x (HT) [+ D 4367 TVA] / C 401 (TTC). */
+    /** Écriture d'acquisition d'un bien saisi à la main : D 2x (HT) [+ D 4366 TVA] / C 401 (TTC). */
     public static function acquisition(Immobilisation $i, ?int $user): Ecriture
     {
         if ($i->acquisitionComptabilisee()) throw new RuntimeException('L’acquisition de ce bien est déjà comptabilisée.');
@@ -84,7 +84,7 @@ class ComptabilisationAmortissements
             $tva = r3($i->tva);
             $e = Compta::passer($i->client_id, $i->date_mise_service->format('Y-m-d'), 'ACH', 'Acquisition – '.$i->designation.($i->fournisseur ? ' ('.$i->fournisseur.')' : ''), [
                 ['compte' => $i->compteImmobilisation(), 'debit' => $ht, 'credit' => 0],
-                ['compte' => '4367', 'debit' => $tva, 'credit' => 0],
+                ['compte' => '4366', 'debit' => $tva, 'credit' => 0],
                 ['compte' => '401', 'debit' => 0, 'credit' => r3($ht + $tva)],
             ], 'immo:'.$i->id, $user);
             $i->update(['acquisition_ecriture_id' => $e->id]);
@@ -92,11 +92,11 @@ class ComptabilisationAmortissements
         });
     }
 
-    /** Factures reçues validées imputées en classe 2 (hors amortissements 28x) et pas encore au registre. */
+    /** Factures reçues validées imputées en classe 2 (hors amortissements 28x et provisions 29x) et pas encore au registre. */
     public static function facturesAImporter(Client $client): Collection
     {
         $deja = Immobilisation::where('client_id', $client->id)->whereNotNull('facture_recue_id')->pluck('facture_recue_id');
-        return FactureRecue::where('client_id', $client->id)->where('statut', 'val')->where('compte', 'like', '2%')->where('compte', 'not like', '28%')
+        return FactureRecue::where('client_id', $client->id)->where('statut', 'val')->where('compte', 'like', '2%')->where('compte', 'not like', '28%')->where('compte', 'not like', '29%')
             ->whereNotIn('id', $deja)->orderBy('date')->get();
     }
 
@@ -105,7 +105,7 @@ class ComptabilisationAmortissements
     {
         $n = 0;
         foreach (self::facturesAImporter($client)->whereIn('id', $ids) as $f) {
-            $nature = Amortissement::natureDuCompte((string) $f->compte);
+            $nature = Amortissement::natureDuCompte((string) $f->compte, $f->description.' '.$f->fournisseur);
             $deductible = $f->tva_deductible && $f->tva > 0;
             Immobilisation::create([
                 'client_id' => $client->id, 'nature' => $nature, 'designation' => $f->description ?: 'Facture '.$f->reference.' – '.$f->fournisseur,

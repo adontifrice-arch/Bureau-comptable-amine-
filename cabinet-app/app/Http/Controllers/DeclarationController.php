@@ -155,8 +155,8 @@ class DeclarationController extends Controller
         $from = $mo.'-01'; $to = Carbon::parse($from)->endOfMonth()->format('Y-m-d');
         $S = fn ($pre, $side) => Compta::somme($c->id, $from, $to, $pre, $side);
         $ca = r3($S('70', 'credit') - $S('70', 'debit'));
-        $tvac = r3($S('4366', 'credit') - $S('4366', 'debit'));
-        $dtot = r3($S('4367', 'debit') - $S('4367', 'credit'));
+        $tvac = r3($S('4367', 'credit') - $S('4367', 'debit'));     // 4367 TVA collectée
+        $dtot = r3($S('4366', 'debit') - $S('4366', 'credit'));       // 4366 TVA déductible
         $ks = FactureRecue::where('client_id', $c->id)->where('statut', 'val')->whereBetween('date', [$from, $to])->get();
         $immo = 0; $rh = 0; $rm = 0;
         foreach ($ks as $x) {

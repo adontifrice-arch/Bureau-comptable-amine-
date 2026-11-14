@@ -21,9 +21,20 @@ class Immobilisation extends Model
     public function dotationsComptabilisees() { return $this->hasMany(AmortissementComptabilise::class); }
 
     public function libelleNature(): string { return Amortissement::NATURES[$this->nature][0] ?? $this->nature; }
-    public function compteImmobilisation(): string { return Amortissement::NATURES[$this->nature][1] ?? '22'; }
-    public function compteAmortissement(): ?string { return Amortissement::NATURES[$this->nature][2] ?? null; }
-    public function amortissable(): bool { return $this->compteAmortissement() !== null; }
+    /** Compte de la facture reçue importée (ex. 213 Logiciels), sinon compte de la nature. */
+    public function compteImmobilisation(): string
+    {
+        $c = (string) $this->factureRecue?->compte;
+        return str_starts_with($c, '2') ? $c : (Amortissement::NATURES[$this->nature][1] ?? '22');
+    }
+
+    /** Amortissement selon la ventilation du compte d'immobilisation (plan comptable tunisien) ; null pour un terrain. */
+    public function compteAmortissement(): ?string
+    {
+        return $this->amortissable() ? Amortissement::compteAmortissementDe($this->compteImmobilisation()) : null;
+    }
+
+    public function amortissable(): bool { return (Amortissement::NATURES[$this->nature][2] ?? null) !== null; }
 
     /** L'acquisition figure déjà en comptabilité : via la facture reçue validée, ou par l'écriture d'acquisition. */
     public function acquisitionComptabilisee(): bool { return $this->facture_recue_id !== null || $this->acquisition_ecriture_id !== null; }

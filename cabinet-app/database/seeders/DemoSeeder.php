@@ -58,7 +58,7 @@ class DemoSeeder extends Seeder
         Compta::passer($c0, "$y-01-02", 'OD', 'Apport en capital', [['compte' => '532', 'debit' => 20000], ['compte' => '101', 'credit' => 20000]], null, $chef->id);
         foreach (range(1, max(1, now()->month - 1)) as $m) {
             $dt = sprintf('%d-%02d-25', $y, $m);
-            Compta::passer($c0, $dt, 'VTE', 'Ventes du mois', [['compte' => '411', 'debit' => 17850], ['compte' => '707', 'credit' => 15000], ['compte' => '4366', 'credit' => 2850]], null, $chef->id);
+            Compta::passer($c0, $dt, 'VTE', 'Ventes du mois', [['compte' => '411', 'debit' => 17850], ['compte' => '707', 'credit' => 15000], ['compte' => '4367', 'credit' => 2850]], null, $chef->id);
             Compta::passer($c0, $dt, 'BQ', 'Encaissements clients', [['compte' => '532', 'debit' => 17000], ['compte' => '411', 'credit' => 17000]], null, $chef->id);
         }
         foreach ([['Moulins de Tunis', '1112223/A/M/000', 'Farine T55', 6200, '601', 0], ['STEG', '0000111/X/A/000', 'Électricité', 820, '606', 0], ['Cabinet Juridique Ksouri', '5556667/B/P/000', 'Honoraires avocat', 1200, '622', 3]] as $k => [$fo, $mf, $ds, $ht, $cpt, $rs]) {

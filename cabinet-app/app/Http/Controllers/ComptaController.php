@@ -178,7 +178,7 @@ class ComptaController extends Controller
         if (! $key) return back()->with('err', 'L’analyse IA n’est pas configurée (ANTHROPIC_API_KEY dans le fichier .env).');
         $r->validate(['fichier' => 'nullable|file|max:10240|mimes:pdf,jpg,jpeg,png,webp', 'texte' => 'nullable|max:20000']);
         if (! $r->hasFile('fichier') && ! $r->filled('texte')) return back()->with('err', 'Ajoutez une photo / un PDF de la facture ou collez son texte.');
-        $comptes = collect(Compta::plan())->filter(fn ($l, $n) => preg_match('/^[26]/', $n) && ! str_starts_with($n, '228'))->map(fn ($l, $n) => "$n $l")->implode(' ; ');
+        $comptes = collect(Compta::plan())->filter(fn ($l, $n) => preg_match('/^[26]/', $n) && ! preg_match('/^2[89]/', $n))->map(fn ($l, $n) => "$n $l")->implode(' ; ');
         $prompt = 'Tu es un comptable tunisien (Système comptable des entreprises). Lis la facture fournisseur fournie et réponds UNIQUEMENT par un objet JSON de cette forme : '
             .'{"fournisseur":"","matricule_fiscal":"","reference":"","date":"AAAA-MM-JJ","description":"","ht":0,"taux_tva":19,"tva":0,"timbre":0,"ttc":0,"compte":"","retenue_taux":0,"anomalies":[]}. '
             .'Choisis le compte de charge parmi : '.$comptes.'. Signale dans anomalies toute incohérence (calculs, matricule fiscal absent, date manquante). Montants en dinars avec 3 décimales.'

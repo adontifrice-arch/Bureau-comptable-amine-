@@ -142,7 +142,7 @@ class AuditController extends Controller
             if (str_starts_with($b['compte'], '411') && $s < -0.0005) $an[] = 'Clients créditeurs ('.$b['compte'].' : '.tnd(-$s).')';
             if (str_starts_with($b['compte'], '401') && $s > 0.0005) $an[] = 'Fournisseurs débiteurs ('.$b['compte'].' : '.tnd($s).')';
             if (preg_match('/^5[34]/', $b['compte']) && $s < -0.0005) $an[] = 'Trésorerie créditrice ('.$b['compte'].' : '.tnd(-$s).')';
-            if ($b['compte'] === '4365' && -$s > 0.0005) $add('Retenues à la source à reverser (compte 4365)', 'info', 'Solde à reverser : '.tnd(-$s).'.');
+            if (str_starts_with($b['compte'], '432') && -$s > 0.0005) $add('Retenues à la source à reverser (compte 432)', 'info', 'Solde à reverser : '.tnd(-$s).'.');
         }
         $add('Soldes anormaux (clients, fournisseurs, trésorerie)', $an ? 'warn' : 'ok', $an ? implode(' · ', $an) : 'Aucun solde anormal.');
         $pt = Paie::where('client_id', $c->id)->where('mois', 'like', "$y-%")->where('statut', 'transmise')->pluck('mois');

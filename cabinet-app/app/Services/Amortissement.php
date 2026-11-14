@@ -20,24 +20,39 @@ use Carbon\CarbonInterface;
  */
 class Amortissement
 {
-    /** nature => [libellé, compte d'immobilisation, compte d'amortissement (null : non amortissable), taux par défaut] */
+    /**
+     * nature => [libellé, compte d'immobilisation, compte d'amortissement (null : non amortissable), taux par défaut].
+     * Comptes du plan comptable tunisien : l'amortissement suit la ventilation du compte d'immobilisation (22x → 282x).
+     */
     public const NATURES = [
-        'incorporelle' => ['Immobilisations incorporelles', '211', '2281', 33.33],
-        'terrain' => ['Terrains', '220', null, 0],
-        'construction' => ['Constructions', '221', '2282', 5],
-        'materiel' => ['Matériel et outillage', '223', '2283', 10],
-        'transport' => ['Matériel de transport', '224', '2284', 20],
-        'mobilier' => ['Mobilier et matériel de bureau', '225', '2285', 10],
-        'informatique' => ['Matériel informatique', '226', '2286', 33.33],
-        'agencement' => ['Agencements et installations', '227', '2287', 10],
+        'incorporelle' => ['Immobilisations incorporelles', '218', '2818', 33.33],
+        'terrain' => ['Terrains', '221', null, 0],
+        'construction' => ['Constructions', '222', '2822', 5],
+        'materiel' => ['Installations techniques, matériel et outillage', '223', '2823', 10],
+        'transport' => ['Matériel de transport', '224', '2824', 20],
+        'mobilier' => ['Mobilier et matériel de bureau', '2282', '28282', 10],
+        'informatique' => ['Matériel informatique', '2282', '28282', 33.33],
+        'agencement' => ['Agencements et aménagements divers', '2281', '28281', 10],
     ];
+
+    /** Compte d'amortissement d'un compte d'immobilisation : 28 suivi de la ventilation (2213 → 28213, 2282 → 28282). */
+    public static function compteAmortissementDe(string $compte): string
+    {
+        return '28'.substr($compte, 1);
+    }
 
     public const PRORATAS = ['jour' => 'Au jour', 'mois' => 'Au mois', 'aucun' => 'Sans prorata'];
     public const METHODES = ['lineaire' => 'Linéaire', 'degressif' => 'Dégressif'];
 
-    /** Nature déduite d'un compte de classe 2 (import des factures reçues). */
-    public static function natureDuCompte(string $compte): string
+    /**
+     * Nature déduite d'un compte de classe 2 (import des factures reçues). Le plan tunisien range mobilier et matériel
+     * informatique au même compte 2282 (équipement de bureau) : le libellé de la facture les départage.
+     */
+    public static function natureDuCompte(string $compte, ?string $libelle = null): string
     {
+        if (str_starts_with($compte, '2282') && preg_match('/informati|ordinateur|serveur|imprimante|portable|écran|ecran|onduleur/iu', (string) $libelle)) {
+            return 'informatique';
+        }
         foreach (self::NATURES as $n => [, $cpt]) if (str_starts_with($compte, $cpt)) return $n;
         return str_starts_with($compte, '21') ? 'incorporelle' : 'materiel';
     }
