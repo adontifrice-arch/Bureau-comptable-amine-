@@ -3,14 +3,16 @@
     <x-page-header title="Comptabilité" :subtitle="$client->nom.' · exercice '.$annee">
         <x-client-picker :clients="$clients" :current="$client" :route="route('compta.index')" :params="['tab' => $tab, 'annee' => $annee]"/>
         <form><input type="hidden" name="tab" value="{{ $tab }}"><input type="number" name="annee" value="{{ $annee }}" class="input w-24" onchange="this.form.submit()"></form>
+        <a href="{{ $u('param') }}" class="btn-secondary"><x-icon name="settings" class="h-4 w-4"/> Paramétrage</a>
+        <button class="btn-primary" x-data @click="$dispatch('open-modal', 'releve')"><x-icon name="upload" class="h-4 w-4"/> Importer un relevé bancaire</button>
     </x-page-header>
     @unless($chef)<div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"><x-icon name="lock" class="h-4 w-4"/> Vous saisissez en tant que collaborateur : seule la validation du chef comptable comptabilise les pièces.</div>@endunless
-    <x-tabs :active="$tab" :items="['ach' => ['Factures reçues', $u('ach')], 'pai' => ['Paie à comptabiliser', $u('pai')], 'jnl' => ['Journal & écritures', $u('jnl')], 'bal' => ['Balance générale', $u('bal')], 'gl' => ['Grand livre', $u('gl')], 'plan' => ['Plan comptable', $u('plan')]]"/>
+    <x-tabs :active="$tab" :items="['ach' => ['Factures d’achat', $u('ach')], 'vte' => ['Factures de vente', $u('vte')], 'bq' => ['Banque'.($aTraiter ? ' ('.$aTraiter.')' : ''), $u('bq')], 'pai' => ['Paie à comptabiliser', $u('pai')], 'jnl' => ['Journal & écritures', $u('jnl')], 'bal' => ['Balance générale', $u('bal')], 'gl' => ['Grand livre', $u('gl')], 'plan' => ['Plan comptable', $u('plan')], 'param' => ['Paramétrage', $u('param')]]"/>
 
     @if($tab === 'ach')
         <div class="mb-4 flex flex-wrap justify-end gap-2">
             @if($ia)<button class="btn-secondary" x-data @click="$dispatch('open-modal', 'ia')"><x-icon name="sparkles" class="h-4 w-4"/> Lire une facture avec l’IA</button>@endif
-            <button class="btn-primary" x-data @click="$dispatch('fr-edit', {}); $dispatch('open-modal', 'fr')"><x-icon name="plus" class="h-4 w-4"/> Saisir une facture reçue</button>
+            <button class="btn-primary" x-data @click="$dispatch('fr-edit', {}); $dispatch('open-modal', 'fr')"><x-icon name="plus" class="h-4 w-4"/> Saisir une facture d’achat</button>
         </div>
         <div class="card overflow-x-auto">
             <table class="tbl"><thead><tr><th>Date</th><th>Fournisseur</th><th>Compte</th><th class="text-right">HT</th><th class="text-right">TVA</th><th class="text-right">TTC</th><th>Statut</th><th></th></tr></thead><tbody>
@@ -38,11 +40,13 @@
             @empty <tr><td colspan="8"><x-empty icon="receipt" title="Aucune facture reçue">Saisissez les factures fournisseurs du client : elles seront comptabilisées après validation.</x-empty></td></tr> @endforelse
             </tbody></table>
         </div>
-        @php $imp = collect($plan)->filter(fn($l, $n) => preg_match('/^[26]/', $n) && !preg_match('/^2[89]/', $n)); @endphp
-        <x-modal name="fr" title="Facture fournisseur" size="max-w-3xl">
-            <form method="POST" enctype="multipart/form-data" x-data="{ e: {} }" @fr-edit.window="e = Object.assign({tva_taux: 19, timbre: 1, tva_deductible: '1', date: '{{ now()->format('Y-m-d') }}', retenue_taux: 0}, $event.detail)"
+        @php $imp = collect($plan)->filter(fn($l, $n) => preg_match('/^[26]/', $n) && !preg_match('/^2[89]/', $n)); $pa = $saisie['achat']; $mAch = $modeles->where('type', 'achat'); @endphp
+        <x-modal name="fr" title="Facture d’achat" size="max-w-3xl">
+            <form method="POST" enctype="multipart/form-data" x-data="{ e: {}, modeles: @js($mAch->mapWithKeys(fn ($m) => [$m->id => $m->valeurs()])), appliquer(id) { if (! this.modeles[id]) return; Object.assign(this.e, this.modeles[id]); this.e.tva = (Math.round((+this.e.ht||0) * (+this.e.tva_taux||0) * 10) / 1000).toFixed(3) } }"
+                  @fr-edit.window="e = Object.assign({tva_taux: {{ (float) $pa['tva_taux'] }}, timbre: {{ (float) $pa['timbre'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', compte: @js((string) $pa['compte']), date: '{{ now()->format('Y-m-d') }}', retenue_taux: {{ (float) $pa['retenue_taux'] }}}, $event.detail)"
                   :action="e.id ? '{{ url('comptabilite/factures') }}/' + e.id : '{{ route('compta.factures.store') }}'" class="grid gap-4 md:grid-cols-3">@csrf
                 <template x-if="e.id"><input type="hidden" name="_method" value="PUT"></template>
+                @if($mAch->count())<div class="md:col-span-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40"><label class="label" for="fr-mod">Saisie rapide : partir d’un modèle</label><select id="fr-mod" class="input" @change="appliquer($event.target.value); $event.target.value = ''"><option value="">— choisir un modèle —</option>@foreach($mAch as $m)<option value="{{ $m->id }}">{{ $m->nom }}{{ $m->compte ? ' · '.$m->compte : '' }}</option>@endforeach</select></div>@endif
                 <div><label class="label">Date *</label><input type="date" name="date" class="input" x-model="e.date" required></div>
                 <div class="md:col-span-2"><label class="label">Fournisseur *</label><input name="fournisseur" class="input" x-model="e.fournisseur" required></div>
                 <div><label class="label">Matricule fiscal</label><input name="matricule_fiscal" class="input" x-model="e.matricule_fiscal"></div>
@@ -56,7 +60,7 @@
                 <div><label class="label">TVA récupérable</label><select name="tva_deductible" class="input" x-model="e.tva_deductible"><option value="1">Oui (4366)</option><option value="0">Non (incluse en charge)</option></select></div>
                 <div><label class="label">Retenue à la source (%)</label><input type="number" step="0.01" name="retenue_taux" class="input" x-model="e.retenue_taux"></div>
                 <div><label class="label">Pièce (PDF / image)</label><input type="file" name="fichier" accept=".pdf,image/*" class="input"></div>
-                <div class="flex justify-end md:col-span-3"><button class="btn-primary">Enregistrer (en attente de validation)</button></div>
+                <div class="flex flex-wrap items-center justify-between gap-3 md:col-span-3"><label class="flex items-center gap-2 text-sm"><input type="checkbox" name="memoriser" value="1" class="rounded border-slate-300 text-brand-600"> Mémoriser comme modèle pour ce fournisseur</label><button class="btn-primary">Enregistrer (en attente de validation)</button></div>
             </form>
         </x-modal>
         @if($ia)
@@ -157,5 +161,16 @@
                 <button class="btn-primary w-full">Ajouter</button>
             </form>
         </div>
+
+    @elseif($tab === 'vte')
+        @include('compta._ventes')
+
+    @elseif($tab === 'bq')
+        @include('compta._banque')
+
+    @elseif($tab === 'param')
+        @include('compta._parametrage')
     @endif
+
+    @include('compta._import-releve')
 </x-layouts.app>

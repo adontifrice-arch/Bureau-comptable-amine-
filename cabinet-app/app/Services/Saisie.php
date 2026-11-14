@@ -1,0 +1,48 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Setting;
+
+/**
+ * Paramètres de saisie d'un dossier client (bouton « Paramétrage » de la comptabilité) :
+ * valeurs proposées pour les factures d'achat et de vente, compte de banque, compte d'attente
+ * et règles d'affectation des lignes de relevé bancaire (mot-clé du libellé → compte).
+ */
+class Saisie
+{
+    public const DEFAUTS = [
+        'achat' => ['compte_tiers' => '401', 'compte' => '', 'tva_taux' => 19, 'timbre' => 1, 'retenue_taux' => 0, 'tva_deductible' => true],
+        'vente' => ['compte_tiers' => '411', 'compte' => '705', 'tva_taux' => 19, 'timbre' => 1, 'compte_timbre' => '437'],
+        'banque' => ['compte' => '532', 'attente' => '461', 'regles' => [
+            ['mot_cle' => 'CNSS', 'compte' => '45311'],
+            ['mot_cle' => 'AGIOS', 'compte' => '6511'],
+            ['mot_cle' => 'FRAIS', 'compte' => '6278'],
+            ['mot_cle' => 'COMMISSION', 'compte' => '6278'],
+            ['mot_cle' => 'TENUE DE COMPTE', 'compte' => '6278'],
+            ['mot_cle' => 'SALAIRE', 'compte' => '425'],
+        ]],
+    ];
+
+    private static function cle(int $client): string
+    {
+        return 'saisie.'.$client;
+    }
+
+    public static function parametres(int $client): array
+    {
+        $p = Setting::get(self::cle($client), []);
+        $r = [];
+        foreach (self::DEFAUTS as $k => $d) $r[$k] = array_merge($d, (array) ($p[$k] ?? []));
+        return $r;
+    }
+
+    public static function enregistrer(int $client, array $p): void
+    {
+        Setting::put(self::cle($client), $p);
+    }
+
+    public static function achat(int $client): array { return self::parametres($client)['achat']; }
+    public static function vente(int $client): array { return self::parametres($client)['vente']; }
+    public static function banque(int $client): array { return self::parametres($client)['banque']; }
+}

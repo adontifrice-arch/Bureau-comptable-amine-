@@ -6,8 +6,13 @@ use App\Models\Client;
 use App\Models\Compte;
 use App\Models\Ecriture;
 use App\Models\FactureRecue;
+use App\Models\FactureVente;
+use App\Models\ModeleSaisie;
+use App\Models\Releve;
+use App\Models\ReleveLigne;
 use App\Models\Paie;
 use App\Services\Compta;
+use App\Services\Saisie;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -21,10 +26,20 @@ class ComptaController extends Controller
         if (! $client) return view('compta.vide');
         $tab = $r->input('tab', 'ach');
         $annee = (int) $r->input('annee', now()->year);
-        $data = ['client' => $client, 'tab' => $tab, 'annee' => $annee, 'clients' => Client::orderBy('nom')->get(['id', 'nom']), 'plan' => Compta::plan()];
+        $data = ['client' => $client, 'tab' => $tab, 'annee' => $annee, 'clients' => Client::orderBy('nom')->get(['id', 'nom']), 'plan' => Compta::plan(),
+            'saisie' => Saisie::parametres($client->id), 'aTraiter' => ReleveLigne::where('client_id', $client->id)->where('statut', 'att')->count()];
+        if (in_array($tab, ['ach', 'vte', 'param'], true)) $data['modeles'] = ModeleSaisie::where('client_id', $client->id)->orderBy('type')->orderBy('nom')->get();
         if ($tab === 'ach') {
             $data['factures'] = FactureRecue::with('validePar')->where('client_id', $client->id)->orderByRaw("CASE statut WHEN 'prop' THEN 0 WHEN 'rej' THEN 1 ELSE 2 END")->orderByDesc('date')->get();
             $data['ia'] = (bool) config('services.anthropic.key');
+        } elseif ($tab === 'vte') {
+            $data['ventes'] = FactureVente::with('validePar')->where('client_id', $client->id)->orderByRaw("CASE statut WHEN 'prop' THEN 0 WHEN 'rej' THEN 1 ELSE 2 END")->orderByDesc('date')->get();
+        } elseif ($tab === 'bq') {
+            $data['releves'] = Releve::withCount(['lignes', 'lignes as a_traiter' => fn ($q) => $q->where('statut', 'att')])->with('importePar')->where('client_id', $client->id)->latest()->get();
+            $data['releve'] = $r->filled('releve') ? $data['releves']->firstWhere('id', (int) $r->input('releve')) : null;
+            $data['filtre'] = $r->input('statut', 'att');
+            $data['lignes'] = ReleveLigne::where('client_id', $client->id)->when($data['releve'], fn ($q, $rl) => $q->where('releve_id', $rl->id))
+                ->when($data['filtre'] !== 'tout', fn ($q) => $q->where('statut', $data['filtre']))->orderBy('date')->orderBy('id')->paginate(100)->withQueryString();
         } elseif ($tab === 'pai') {
             $data['paies'] = Paie::where('client_id', $client->id)->whereIn('statut', ['transmise', 'val'])->orderByDesc('mois')->get();
         } elseif ($tab === 'jnl') {
@@ -52,6 +67,7 @@ class ComptaController extends Controller
         $d = $this->donnees($r);
         if ($r->hasFile('fichier')) $d['fichier'] = $r->file('fichier')->store('factures-recues/'.\App\Support\CabinetCourant::exiger());
         FactureRecue::create($d + ['client_id' => $client->id, 'statut' => 'prop']);
+        if ($r->boolean('memoriser')) ModeleSaisie::memoriser($client->id, 'achat', $d, $d['fournisseur']);
         return back()->with('ok', 'Facture enregistrée : en attente de validation par le chef comptable.');
     }
 
@@ -61,6 +77,7 @@ class ComptaController extends Controller
         $d = $this->donnees($r);
         if ($r->hasFile('fichier')) $d['fichier'] = $r->file('fichier')->store('factures-recues/'.\App\Support\CabinetCourant::exiger());
         $fr->update($d + ['statut' => 'prop', 'motif_rejet' => null]);
+        if ($r->boolean('memoriser')) ModeleSaisie::memoriser($fr->client_id, 'achat', $d, $d['fournisseur']);
         return back()->with('ok', 'Facture modifiée.');
     }
 
@@ -113,12 +130,14 @@ class ComptaController extends Controller
         return back()->with('ok', 'Facture rejetée.');
     }
 
-    /** Annule une écriture (et remet la facture / paie d'origine en attente). */
+    /** Annule une écriture (et remet la facture, la paie ou la ligne de relevé d'origine en attente). */
     public function annuler(Ecriture $ecriture)
     {
         DB::transaction(function () use ($ecriture) {
             if ($ecriture->source && str_starts_with($ecriture->source, 'fr:')) FactureRecue::whereKey(substr($ecriture->source, 3))->update(['statut' => 'prop', 'valide_par' => null]);
             if ($ecriture->source && str_starts_with($ecriture->source, 'paie:')) Paie::whereKey(substr($ecriture->source, 5))->update(['statut' => 'transmise']);
+            if ($ecriture->source && str_starts_with($ecriture->source, 'fv:')) FactureVente::whereKey(substr($ecriture->source, 3))->update(['statut' => 'prop', 'valide_par' => null]);
+            if ($ecriture->source && str_starts_with($ecriture->source, 'rb:')) ReleveLigne::whereKey(substr($ecriture->source, 3))->update(['statut' => 'att', 'ecriture_id' => null]);
             $ecriture->delete();
         });
         $this->log('Annulation de l’écriture '.$ecriture->libelle, $ecriture->client_id);

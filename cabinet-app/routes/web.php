@@ -102,6 +102,24 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::get('comptabilite/balance/imprimer', [C\ComptaController::class, 'balancePrint'])->name('compta.balance.print');
     Route::get('comptabilite/balance/export', [C\ComptaController::class, 'balanceCsv'])->name('compta.balance.csv');
 
+    // ---------- Saisie rapide : paramétrage, modèles, factures de vente ----------
+    Route::post('comptabilite/parametres', [C\SaisieController::class, 'parametres'])->middleware('chef')->name('compta.parametres');
+    Route::post('comptabilite/modeles', [C\SaisieController::class, 'modeleStore'])->name('compta.modeles.store');
+    Route::put('comptabilite/modeles/{modele}', [C\SaisieController::class, 'modeleUpdate'])->name('compta.modeles.update');
+    Route::delete('comptabilite/modeles/{modele}', [C\SaisieController::class, 'modeleDestroy'])->name('compta.modeles.destroy');
+    Route::post('comptabilite/ventes', [C\SaisieController::class, 'venteStore'])->name('compta.ventes.store');
+    Route::put('comptabilite/ventes/{fv}', [C\SaisieController::class, 'venteUpdate'])->name('compta.ventes.update');
+    Route::delete('comptabilite/ventes/{fv}', [C\SaisieController::class, 'venteDestroy'])->name('compta.ventes.destroy');
+    Route::get('comptabilite/ventes/{fv}/fichier', [C\SaisieController::class, 'venteFichier'])->name('compta.ventes.fichier');
+    Route::post('comptabilite/ventes/{fv}/valider', [C\SaisieController::class, 'venteValider'])->middleware('chef')->name('compta.ventes.valider');
+    Route::post('comptabilite/ventes/{fv}/rejeter', [C\SaisieController::class, 'venteRejeter'])->middleware('chef')->name('compta.ventes.rejeter');
+
+    // ---------- Relevés bancaires ----------
+    Route::post('comptabilite/releves', [C\ReleveController::class, 'importer'])->name('compta.releves.importer');
+    Route::post('comptabilite/releves/lignes', [C\ReleveController::class, 'lignes'])->name('compta.releves.lignes');
+    Route::get('comptabilite/releves/{releve}/fichier', [C\ReleveController::class, 'fichier'])->name('compta.releves.fichier');
+    Route::delete('comptabilite/releves/{releve}', [C\ReleveController::class, 'destroy'])->name('compta.releves.destroy');
+
     // ---------- Immobilisations et amortissements ----------
     Route::get('immobilisations', [C\ImmobilisationController::class, 'index'])->name('immobilisations.index');
     Route::post('immobilisations', [C\ImmobilisationController::class, 'store'])->name('immobilisations.store');
