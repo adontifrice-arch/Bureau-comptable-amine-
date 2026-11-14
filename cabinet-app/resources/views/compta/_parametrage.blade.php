@@ -5,45 +5,68 @@
     $produits = collect($plan)->filter(fn ($l, $n) => str_starts_with($n, '7') && strlen($n) >= 3);
     $lib = fn ($n) => $n ? $n.' '.\App\Services\Compta::libelle((string) $n) : '—';
 @endphp
-<datalist id="cpts-param">@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist>
+<datalist id="cpts-param" data-plan>@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist>
 
 <div class="grid gap-6 xl:grid-cols-2">
-    <form method="POST" action="{{ route('compta.parametres') }}" class="card" x-data="{ regles: @js(array_values($pb['regles'])) }">@csrf
+    <form method="POST" action="{{ route('compta.parametres') }}" class="card" x-data="{ regles: @js(array_values($pb['regles'])), achats: @js($pa['comptes']), ventes: @js($pv['comptes']) }">@csrf
+        <datalist id="taux-tva">@foreach(\App\Services\Saisie::TAUX_TVA as $t)<option value="{{ $t }}">{{ $t }} %</option>@endforeach</datalist>
         <div class="card-h"><h2 class="card-t">Paramétrage de la saisie — {{ $client->nom }}</h2>@unless($chef)<span class="badge-gray">Lecture seule</span>@endunless</div>
         <fieldset @disabled(! $chef) class="space-y-6 p-5">
             <div>
                 <h3 class="mb-2 text-sm font-semibold">Factures d’achat</h3>
                 <div class="grid gap-3 md:grid-cols-3">
-                    <div><label class="label" for="pa-t">Compte fournisseur</label><input id="pa-t" name="achat[compte_tiers]" value="{{ $pa['compte_tiers'] }}" list="cpts-param" class="input font-mono" required></div>
-                    <div class="md:col-span-2"><label class="label" for="pa-c">Compte de charge proposé</label><select id="pa-c" name="achat[compte]" class="input"><option value="">— aucun —</option>@foreach($charges as $n => $l)<option value="{{ $n }}" @selected((string) $pa['compte'] === (string) $n)>{{ $n }} {{ $l }}</option>@endforeach</select></div>
-                    <div><label class="label" for="pa-tx">Taux de TVA (%)</label><input id="pa-tx" type="number" step="0.01" min="0" max="100" name="achat[tva_taux]" value="{{ $pa['tva_taux'] }}" class="input" required></div>
+                    <div><label class="label" for="pa-t">Compte fournisseur</label><input id="pa-t" name="achat[compte_tiers]" value="{{ $pa['compte_tiers'] }}" list="cpts-param" class="input font-mono" required data-compte autocomplete="off"><p data-compte-libelle class="mt-1 truncate text-xs text-slate-400">{{ \App\Services\Compta::libelle((string) $pa['compte_tiers']) }}</p></div>
+                    <div><label class="label" for="pa-tx">Taux de TVA général (%)</label><input id="pa-tx" type="number" step="0.01" min="0" max="100" name="achat[tva_taux]" value="{{ $pa['tva_taux'] }}" list="taux-tva" class="input" required><p class="mt-1 text-xs text-slate-400">Comptes non listés ci-dessous</p></div>
                     <div><label class="label" for="pa-tim">Droit de timbre</label><input id="pa-tim" type="number" step="0.001" min="0" name="achat[timbre]" value="{{ $pa['timbre'] }}" class="input"></div>
                     <div><label class="label" for="pa-rs">Retenue à la source (%)</label><input id="pa-rs" type="number" step="0.01" min="0" max="100" name="achat[retenue_taux]" value="{{ $pa['retenue_taux'] }}" class="input"></div>
                     <label class="flex items-center gap-2 text-sm md:col-span-3"><input type="hidden" name="achat[tva_deductible]" value="0"><input type="checkbox" name="achat[tva_deductible]" value="1" @checked($pa['tva_deductible']) class="rounded border-slate-300 text-brand-600"> TVA récupérable par défaut (4366)</label>
+                </div>
+                <datalist id="cpts-charges" data-plan>@foreach($charges as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist>
+                <div class="mt-3">
+                    <div class="label">Comptes de charge proposés et leur taux de TVA <span class="font-normal text-slate-400">— le premier est proposé par défaut</span></div>
+                    <template x-for="(x, i) in achats" :key="i">
+                        <div class="mb-2 grid grid-cols-12 items-start gap-2">
+                            <div class="col-span-7"><input class="input font-mono" placeholder="Compte (ex. 6061)" list="cpts-charges" :name="`achat[comptes][${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte de charge"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-init="$el.textContent = (window.PLAN || {})[x.compte] || ''"></p></div>
+                            <div class="col-span-4"><input type="number" step="0.01" min="0" max="100" class="input" list="taux-tva" placeholder="TVA %" :name="`achat[comptes][${i}][tva_taux]`" x-model="x.tva_taux" aria-label="Taux de TVA"></div>
+                            <button type="button" class="btn-icon col-span-1" @click="achats.splice(i, 1)" title="Retirer"><x-icon name="trash" class="h-4 w-4"/></button>
+                        </div>
+                    </template>
+                    <button type="button" class="btn-secondary btn-sm" @click="achats.push({compte: '', tva_taux: 19})">+ Compte de charge</button>
                 </div>
             </div>
             <div>
                 <h3 class="mb-2 text-sm font-semibold">Factures de vente</h3>
                 <div class="grid gap-3 md:grid-cols-3">
-                    <div><label class="label" for="pv-t">Compte client</label><input id="pv-t" name="vente[compte_tiers]" value="{{ $pv['compte_tiers'] }}" list="cpts-param" class="input font-mono" required></div>
-                    <div class="md:col-span-2"><label class="label" for="pv-c">Compte de vente proposé</label><select id="pv-c" name="vente[compte]" class="input"><option value="">— aucun —</option>@foreach($produits as $n => $l)<option value="{{ $n }}" @selected((string) $pv['compte'] === (string) $n)>{{ $n }} {{ $l }}</option>@endforeach</select></div>
-                    <div><label class="label" for="pv-tx">Taux de TVA (%)</label><input id="pv-tx" type="number" step="0.01" min="0" max="100" name="vente[tva_taux]" value="{{ $pv['tva_taux'] }}" class="input" required></div>
+                    <div><label class="label" for="pv-t">Compte client</label><input id="pv-t" name="vente[compte_tiers]" value="{{ $pv['compte_tiers'] }}" list="cpts-param" class="input font-mono" required data-compte autocomplete="off"><p data-compte-libelle class="mt-1 truncate text-xs text-slate-400">{{ \App\Services\Compta::libelle((string) $pv['compte_tiers']) }}</p></div>
+                    <div><label class="label" for="pv-tx">Taux de TVA général (%)</label><input id="pv-tx" type="number" step="0.01" min="0" max="100" name="vente[tva_taux]" value="{{ $pv['tva_taux'] }}" list="taux-tva" class="input" required><p class="mt-1 text-xs text-slate-400">Comptes non listés ci-dessous</p></div>
                     <div><label class="label" for="pv-tim">Droit de timbre</label><input id="pv-tim" type="number" step="0.001" min="0" name="vente[timbre]" value="{{ $pv['timbre'] }}" class="input"></div>
-                    <div><label class="label" for="pv-ct">Compte du timbre</label><input id="pv-ct" name="vente[compte_timbre]" value="{{ $pv['compte_timbre'] }}" list="cpts-param" class="input font-mono" required></div>
+                    <div><label class="label" for="pv-ct">Compte du timbre</label><input id="pv-ct" name="vente[compte_timbre]" value="{{ $pv['compte_timbre'] }}" list="cpts-param" class="input font-mono" required data-compte autocomplete="off"><p data-compte-libelle class="mt-1 truncate text-xs text-slate-400">{{ \App\Services\Compta::libelle((string) $pv['compte_timbre']) }}</p></div>
+                </div>
+                <datalist id="cpts-produits" data-plan>@foreach($produits as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist>
+                <div class="mt-3">
+                    <div class="label">Comptes de vente proposés et leur taux de TVA <span class="font-normal text-slate-400">— le premier est proposé par défaut</span></div>
+                    <template x-for="(x, i) in ventes" :key="i">
+                        <div class="mb-2 grid grid-cols-12 items-start gap-2">
+                            <div class="col-span-7"><input class="input font-mono" placeholder="Compte (ex. 705)" list="cpts-produits" :name="`vente[comptes][${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte de vente"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-init="$el.textContent = (window.PLAN || {})[x.compte] || ''"></p></div>
+                            <div class="col-span-4"><input type="number" step="0.01" min="0" max="100" class="input" list="taux-tva" placeholder="TVA %" :name="`vente[comptes][${i}][tva_taux]`" x-model="x.tva_taux" aria-label="Taux de TVA"></div>
+                            <button type="button" class="btn-icon col-span-1" @click="ventes.splice(i, 1)" title="Retirer"><x-icon name="trash" class="h-4 w-4"/></button>
+                        </div>
+                    </template>
+                    <button type="button" class="btn-secondary btn-sm" @click="ventes.push({compte: '', tva_taux: 19})">+ Compte de vente</button>
                 </div>
             </div>
             <div>
                 <h3 class="mb-2 text-sm font-semibold">Banque (import des relevés)</h3>
                 <div class="grid gap-3 md:grid-cols-2">
-                    <div><label class="label" for="pb-c">Compte de banque</label><input id="pb-c" name="banque[compte]" value="{{ $pb['compte'] }}" list="cpts-param" class="input font-mono" required><p class="mt-1 text-xs text-slate-400">{{ \App\Services\Compta::libelle((string) $pb['compte']) }}</p></div>
-                    <div><label class="label" for="pb-a">Compte d’attente</label><input id="pb-a" name="banque[attente]" value="{{ $pb['attente'] }}" list="cpts-param" class="input font-mono" required><p class="mt-1 text-xs text-slate-400">{{ \App\Services\Compta::libelle((string) $pb['attente']) }} — contrepartie des opérations non reconnues</p></div>
+                    <div><label class="label" for="pb-c">Compte de banque</label><input id="pb-c" name="banque[compte]" value="{{ $pb['compte'] }}" list="cpts-param" class="input font-mono" required data-compte autocomplete="off"><p data-compte-libelle class="mt-1 text-xs text-slate-400">{{ \App\Services\Compta::libelle((string) $pb['compte']) }}</p></div>
+                    <div><label class="label" for="pb-a">Compte d’attente</label><input id="pb-a" name="banque[attente]" value="{{ $pb['attente'] }}" list="cpts-param" class="input font-mono" required data-compte autocomplete="off"><p class="mt-1 text-xs text-slate-400"><span data-compte-libelle>{{ \App\Services\Compta::libelle((string) $pb['attente']) }}</span> — contrepartie des opérations non reconnues</p></div>
                 </div>
                 <div class="mt-3">
                     <div class="label">Règles d’affectation : si le libellé contient…</div>
                     <template x-for="(x, i) in regles" :key="i">
                         <div class="mb-2 grid grid-cols-12 gap-2">
                             <input class="input col-span-6" placeholder="Mot-clé (ex. STEG)" :name="`banque[regles][${i}][mot_cle]`" x-model="x.mot_cle" aria-label="Mot-clé">
-                            <input class="input col-span-5 font-mono" placeholder="Compte" list="cpts-param" :name="`banque[regles][${i}][compte]`" x-model="x.compte" aria-label="Compte">
+                            <input class="input col-span-5 font-mono" placeholder="Compte" list="cpts-param" :name="`banque[regles][${i}][compte]`" x-model="x.compte" aria-label="Compte" data-compte autocomplete="off">
                             <button type="button" class="btn-icon col-span-1" @click="regles.splice(i, 1)" title="Retirer"><x-icon name="trash" class="h-4 w-4"/></button>
                         </div>
                     </template>
@@ -57,8 +80,8 @@
     <div class="card self-start" x-data="{ m: {} }" @mod-edit.window="m = $event.detail">
         <div class="card-h"><h2 class="card-t">Modèles de saisie rapide</h2>
             <div class="flex gap-2">
-                <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'achat', tva_taux: {{ (float) $pa['tva_taux'] }}, timbre: {{ (float) $pa['timbre'] }}, retenue_taux: {{ (float) $pa['retenue_taux'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', compte: @js((string) $pa['compte'])}); $dispatch('open-modal', 'modele')">+ Achat</button>
-                <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'vente', tva_taux: {{ (float) $pv['tva_taux'] }}, timbre: {{ (float) $pv['timbre'] }}, compte: @js((string) $pv['compte'])}); $dispatch('open-modal', 'modele')">+ Vente</button>
+                <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'achat', tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }}, timbre: {{ (float) $pa['timbre'] }}, retenue_taux: {{ (float) $pa['retenue_taux'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', compte: @js((string) $pa['compte'])}); $dispatch('open-modal', 'modele')">+ Achat</button>
+                <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'vente', tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pv) }}, timbre: {{ (float) $pv['timbre'] }}, compte: @js((string) $pv['compte'])}); $dispatch('open-modal', 'modele')">+ Vente</button>
             </div>
         </div>
         @forelse($modeles->groupBy('type') as $type => $liste)
@@ -83,7 +106,7 @@
                 <div><label class="label" for="mo-tiers" x-text="m.type === 'vente' ? 'Client' : 'Fournisseur'"></label><input id="mo-tiers" name="tiers" class="input" x-model="m.tiers"></div>
                 <div><label class="label" for="mo-mf">Matricule fiscal</label><input id="mo-mf" name="matricule_fiscal" class="input" x-model="m.matricule_fiscal"></div>
                 <div class="md:col-span-2"><label class="label" for="mo-desc">Description proposée</label><input id="mo-desc" name="description" class="input" x-model="m.description"></div>
-                <div class="md:col-span-2"><label class="label" for="mo-cpt" x-text="m.type === 'vente' ? 'Compte de vente' : 'Compte de charge / immobilisation'"></label><input id="mo-cpt" name="compte" class="input font-mono" list="cpts-param" x-model="m.compte"></div>
+                <div class="md:col-span-2"><label class="label" for="mo-cpt" x-text="m.type === 'vente' ? 'Compte de vente' : 'Compte de charge / immobilisation'"></label><input id="mo-cpt" name="compte" class="input font-mono" list="cpts-param" x-model="m.compte" data-compte autocomplete="off"><p data-compte-libelle class="mt-1 truncate text-xs text-slate-400"></p></div>
                 <div><label class="label" for="mo-tx">Taux de TVA (%)</label><input id="mo-tx" type="number" step="0.01" min="0" max="100" name="tva_taux" class="input" x-model="m.tva_taux" required></div>
                 <div><label class="label" for="mo-tim">Droit de timbre</label><input id="mo-tim" type="number" step="0.001" min="0" name="timbre" class="input" x-model="m.timbre"></div>
                 <template x-if="m.type === 'achat'"><div><label class="label" for="mo-rs">Retenue à la source (%)</label><input id="mo-rs" type="number" step="0.01" min="0" max="100" name="retenue_taux" class="input" x-model="m.retenue_taux"></div></template>

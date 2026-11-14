@@ -39,8 +39,8 @@
 
 <x-modal name="fv" title="Facture de vente" size="max-w-3xl">
     <form method="POST" enctype="multipart/form-data"
-          x-data="{ e: {}, modeles: @js($mVte->mapWithKeys(fn ($m) => [$m->id => $m->valeurs()])), calc() { this.e.tva = (Math.round((+this.e.ht||0) * (+this.e.tva_taux||0) * 10) / 1000).toFixed(3) }, appliquer(id) { if (! this.modeles[id]) return; Object.assign(this.e, this.modeles[id]); this.calc() } }"
-          @fv-edit.window="e = Object.assign({tva_taux: {{ (float) $pv['tva_taux'] }}, timbre: {{ (float) $pv['timbre'] }}, compte: @js((string) $pv['compte']), date: '{{ now()->format('Y-m-d') }}'}, $event.detail)"
+          x-data="{ e: {}, modeles: @js($mVte->mapWithKeys(fn ($m) => [$m->id => $m->valeurs()])), taux: @js((object) \App\Services\Saisie::tauxParCompte($pv)), calc() { this.e.tva = (Math.round((+this.e.ht||0) * (+this.e.tva_taux||0) * 10) / 1000).toFixed(3) }, appliquer(id) { if (! this.modeles[id]) return; Object.assign(this.e, this.modeles[id]); this.calc() }, choisirCompte(c) { if (c !== undefined) this.e.compte = c; if (this.taux[this.e.compte] !== undefined) { this.e.tva_taux = this.taux[this.e.compte]; this.calc() } } }"
+          @fv-edit.window="e = Object.assign({tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pv) }}, timbre: {{ (float) $pv['timbre'] }}, compte: @js((string) $pv['compte']), date: '{{ now()->format('Y-m-d') }}'}, $event.detail)"
           :action="e.id ? '{{ url('comptabilite/ventes') }}/' + e.id : '{{ route('compta.ventes.store') }}'" class="grid gap-4 md:grid-cols-3">@csrf
         <template x-if="e.id"><input type="hidden" name="_method" value="PUT"></template>
         @if($mVte->count())
@@ -56,7 +56,10 @@
         <div><label class="label" for="fv-tx">Taux TVA (%)</label><input id="fv-tx" type="number" step="0.01" name="tva_taux" class="input" x-model="e.tva_taux" @input="calc()"></div>
         <div><label class="label" for="fv-tva">Montant TVA (4367)</label><input id="fv-tva" type="number" step="0.001" name="tva" class="input" x-model="e.tva"></div>
         <div><label class="label" for="fv-tim">Droit de timbre ({{ $pv['compte_timbre'] }})</label><input id="fv-tim" type="number" step="0.001" name="timbre" class="input" x-model="e.timbre"></div>
-        <div class="md:col-span-2"><label class="label" for="fv-cpt">Compte de vente</label><select id="fv-cpt" name="compte" class="input" x-model="e.compte"><option value="">— à choisir —</option>@foreach($produits as $n => $l)<option value="{{ $n }}">{{ $n }} {{ $l }}</option>@endforeach</select></div>
+        <div class="md:col-span-2"><label class="label" for="fv-cpt">Compte de vente</label><input id="fv-cpt" name="compte" class="input font-mono" list="cpts-vte" x-model="e.compte" @change="choisirCompte()" data-compte autocomplete="off" placeholder="ex. 705 — un nouveau numéro peut être créé"><p data-compte-libelle class="mt-1 truncate text-xs text-slate-400"></p>
+            @if($pv['comptes'])<div class="mt-1 flex flex-wrap gap-1">@foreach($pv['comptes'] as $c)<button type="button" class="!py-0.5" :class="e.compte === @js($c['compte']) ? 'badge-blue' : 'badge-gray'" @click="choisirCompte(@js($c['compte']))" title="{{ \App\Services\Compta::libelle($c['compte']) }}">{{ $c['compte'] }} · {{ rtrim(rtrim(number_format($c['tva_taux'], 2, ',', ''), '0'), ',') }} %</button>@endforeach</div>@endif
+            @php $propV = collect($pv['comptes'])->pluck('compte')->all(); @endphp
+            <datalist id="cpts-vte" data-plan>@foreach($pv['comptes'] as $c)<option value="{{ $c['compte'] }}">★ TVA {{ (float) $c['tva_taux'] }} % — {{ \App\Services\Compta::libelle($c['compte']) }}</option>@endforeach @foreach($produits as $n => $l)@continue(in_array((string) $n, $propV, true))<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist></div>
         <div class="md:col-span-2"><label class="label" for="fv-fic">Pièce (PDF / image)</label><input id="fv-fic" type="file" name="fichier" accept=".pdf,image/*" class="input"></div>
         <div class="self-end text-right text-sm">TTC <b class="font-mono" x-text="tnd((+e.ht||0) + (+e.tva||0) + (+e.timbre||0))"></b></div>
         <div class="flex flex-wrap items-center justify-between gap-3 md:col-span-3">

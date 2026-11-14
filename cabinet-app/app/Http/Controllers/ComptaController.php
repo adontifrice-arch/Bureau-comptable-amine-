@@ -167,10 +167,15 @@ class ComptaController extends Controller
         return back()->with('ok', 'Écriture enregistrée.');
     }
 
+    /** Ajout d'un compte (onglet Plan comptable, ou création d'un sous-compte depuis un champ de saisie : réponse JSON). */
     public function compteStore(Request $r)
     {
-        $d = $r->validate(['numero' => 'required|max:20|'.unique_cab('comptes', 'numero'), 'libelle' => 'required|max:255']);
+        $d = $r->validate(['numero' => 'required|regex:/^\d{1,8}$/|'.unique_cab('comptes', 'numero'), 'libelle' => 'required|max:255'],
+            ['numero.regex' => 'Le numéro de compte ne comporte que des chiffres (8 au plus).', 'numero.unique' => 'Ce compte existe déjà dans le plan comptable.']);
+        $d['libelle'] = trim($d['libelle']);
         Compte::create($d + ['personnalise' => true]);
+        $this->log('Compte '.$d['numero'].' '.$d['libelle'].' ajouté au plan comptable');
+        if ($r->expectsJson()) return response()->json(['numero' => $d['numero'], 'libelle' => $d['libelle']], 201);
         return back()->with('ok', 'Compte ajouté au plan comptable.');
     }
 

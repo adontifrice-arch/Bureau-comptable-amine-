@@ -1,5 +1,7 @@
 @php $chef = auth()->user()->estChef(); $u = fn($t, $x = []) => route('compta.index', ['tab' => $t, 'annee' => $annee] + $x); @endphp
 <x-layouts.app title="Comptabilité">
+    {{-- Plan comptable pour les champs de compte : un numéro absent propose la création du sous-compte (resources/js/comptes.js) --}}
+    <script>window.PLAN = @js((object) $plan); window.URL_COMPTES = @js(route('compta.comptes.store'));</script>
     <x-page-header title="Comptabilité" :subtitle="$client->nom.' · exercice '.$annee">
         <x-client-picker :clients="$clients" :current="$client" :route="route('compta.index')" :params="['tab' => $tab, 'annee' => $annee]"/>
         <form><input type="hidden" name="tab" value="{{ $tab }}"><input type="number" name="annee" value="{{ $annee }}" class="input w-24" onchange="this.form.submit()"></form>
@@ -42,8 +44,8 @@
         </div>
         @php $imp = collect($plan)->filter(fn($l, $n) => preg_match('/^[26]/', $n) && !preg_match('/^2[89]/', $n)); $pa = $saisie['achat']; $mAch = $modeles->where('type', 'achat'); @endphp
         <x-modal name="fr" title="Facture d’achat" size="max-w-3xl">
-            <form method="POST" enctype="multipart/form-data" x-data="{ e: {}, modeles: @js($mAch->mapWithKeys(fn ($m) => [$m->id => $m->valeurs()])), appliquer(id) { if (! this.modeles[id]) return; Object.assign(this.e, this.modeles[id]); this.e.tva = (Math.round((+this.e.ht||0) * (+this.e.tva_taux||0) * 10) / 1000).toFixed(3) } }"
-                  @fr-edit.window="e = Object.assign({tva_taux: {{ (float) $pa['tva_taux'] }}, timbre: {{ (float) $pa['timbre'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', compte: @js((string) $pa['compte']), date: '{{ now()->format('Y-m-d') }}', retenue_taux: {{ (float) $pa['retenue_taux'] }}}, $event.detail)"
+            <form method="POST" enctype="multipart/form-data" x-data="{ e: {}, modeles: @js($mAch->mapWithKeys(fn ($m) => [$m->id => $m->valeurs()])), taux: @js((object) \App\Services\Saisie::tauxParCompte($pa)), calc() { this.e.tva = (Math.round((+this.e.ht||0) * (+this.e.tva_taux||0) * 10) / 1000).toFixed(3) }, appliquer(id) { if (! this.modeles[id]) return; Object.assign(this.e, this.modeles[id]); this.calc() }, choisirCompte(c) { if (c !== undefined) this.e.compte = c; if (this.taux[this.e.compte] !== undefined) { this.e.tva_taux = this.taux[this.e.compte]; this.calc() } } }"
+                  @fr-edit.window="e = Object.assign({tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }}, timbre: {{ (float) $pa['timbre'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', compte: @js((string) $pa['compte']), date: '{{ now()->format('Y-m-d') }}', retenue_taux: {{ (float) $pa['retenue_taux'] }}}, $event.detail)"
                   :action="e.id ? '{{ url('comptabilite/factures') }}/' + e.id : '{{ route('compta.factures.store') }}'" class="grid gap-4 md:grid-cols-3">@csrf
                 <template x-if="e.id"><input type="hidden" name="_method" value="PUT"></template>
                 @if($mAch->count())<div class="md:col-span-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40"><label class="label" for="fr-mod">Saisie rapide : partir d’un modèle</label><select id="fr-mod" class="input" @change="appliquer($event.target.value); $event.target.value = ''"><option value="">— choisir un modèle —</option>@foreach($mAch as $m)<option value="{{ $m->id }}">{{ $m->nom }}{{ $m->compte ? ' · '.$m->compte : '' }}</option>@endforeach</select></div>@endif
@@ -56,7 +58,10 @@
                 <div><label class="label">Taux TVA (%)</label><input type="number" step="0.01" name="tva_taux" class="input" x-model="e.tva_taux" @input="e.tva = (Math.round((+e.ht||0) * (+e.tva_taux||0) * 10) / 1000).toFixed(3)"></div>
                 <div><label class="label">Montant TVA</label><input type="number" step="0.001" name="tva" class="input" x-model="e.tva"></div>
                 <div><label class="label">Droit de timbre</label><input type="number" step="0.001" name="timbre" class="input" x-model="e.timbre"></div>
-                <div class="md:col-span-2"><label class="label">Compte de charge / immobilisation</label><select name="compte" class="input" x-model="e.compte"><option value="">— à choisir —</option>@foreach($imp as $n => $l)<option value="{{ $n }}">{{ $n }} {{ $l }}</option>@endforeach</select></div>
+                <div class="md:col-span-2"><label class="label" for="fr-cpt">Compte de charge / immobilisation</label><input id="fr-cpt" name="compte" class="input font-mono" list="cpts-ach" x-model="e.compte" @change="choisirCompte()" data-compte autocomplete="off" placeholder="ex. 6061 — un nouveau numéro peut être créé"><p data-compte-libelle class="mt-1 truncate text-xs text-slate-400"></p>
+                    @if($pa['comptes'])<div class="mt-1 flex flex-wrap gap-1">@foreach($pa['comptes'] as $c)<button type="button" class="!py-0.5" :class="e.compte === @js($c['compte']) ? 'badge-blue' : 'badge-gray'" @click="choisirCompte(@js($c['compte']))" title="{{ \App\Services\Compta::libelle($c['compte']) }}">{{ $c['compte'] }} · {{ rtrim(rtrim(number_format($c['tva_taux'], 2, ',', ''), '0'), ',') }} %</button>@endforeach</div>@endif
+                    @php $propA = collect($pa['comptes'])->pluck('compte')->all(); @endphp
+                    <datalist id="cpts-ach" data-plan>@foreach($pa['comptes'] as $c)<option value="{{ $c['compte'] }}">★ TVA {{ (float) $c['tva_taux'] }} % — {{ \App\Services\Compta::libelle($c['compte']) }}</option>@endforeach @foreach($imp as $n => $l)@continue(in_array((string) $n, $propA, true))<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist></div>
                 <div><label class="label">TVA récupérable</label><select name="tva_deductible" class="input" x-model="e.tva_deductible"><option value="1">Oui (4366)</option><option value="0">Non (incluse en charge)</option></select></div>
                 <div><label class="label">Retenue à la source (%)</label><input type="number" step="0.01" name="retenue_taux" class="input" x-model="e.retenue_taux"></div>
                 <div><label class="label">Pièce (PDF / image)</label><input type="file" name="fichier" accept=".pdf,image/*" class="input"></div>
@@ -112,9 +117,9 @@
                     <div><label class="label">Journal</label><select name="journal" class="input">@foreach(['OD' => 'Opérations diverses', 'VTE' => 'Ventes', 'ACH' => 'Achats', 'BQ' => 'Banque', 'CAI' => 'Caisse', 'AN' => 'À-nouveaux'] as $k => $l)<option value="{{ $k }}">{{ $l }}</option>@endforeach</select></div>
                     <div class="md:col-span-2"><label class="label">Libellé</label><input name="libelle" class="input" required></div>
                 </div>
-                <datalist id="cpts">@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist>
+                <datalist id="cpts" data-plan>@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist>
                 <template x-for="(x, i) in l" :key="i"><div class="grid grid-cols-12 gap-2">
-                    <input class="input col-span-5" list="cpts" placeholder="Compte" :name="`lignes[${i}][compte]`" x-model="x.compte">
+                    <input class="input col-span-5 font-mono" list="cpts" placeholder="Compte" :name="`lignes[${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte">
                     <input type="number" step="0.001" class="input col-span-3" placeholder="Débit" :name="`lignes[${i}][debit]`" x-model="x.debit">
                     <input type="number" step="0.001" class="input col-span-3" placeholder="Crédit" :name="`lignes[${i}][credit]`" x-model="x.credit">
                     <button type="button" class="btn-icon col-span-1" @click="l.splice(i,1)"><x-icon name="trash" class="h-4 w-4"/></button>
@@ -136,7 +141,7 @@
 
     @elseif($tab === 'gl')
         <form class="card mb-4 flex flex-wrap items-end gap-3 p-4"><input type="hidden" name="tab" value="gl"><input type="hidden" name="annee" value="{{ $annee }}">
-            <div class="w-72"><label class="label">Compte (ou racine, ex. 6)</label><input name="compte" value="{{ $compte }}" class="input" list="cpts2"><datalist id="cpts2">@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist></div>
+            <div class="w-72"><label class="label">Compte (ou racine, ex. 6)</label><input name="compte" value="{{ $compte }}" class="input" list="cpts2"><datalist id="cpts2" data-plan>@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist></div>
             <button class="btn-primary">Afficher</button>
         </form>
         @if($compte)

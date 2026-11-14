@@ -52,6 +52,21 @@ class PlanComptableTest extends TestCase
         $this->assertSame('Banque BIAT', Compta::plan()['532']);
     }
 
+    public function test_creation_d_un_sous_compte_depuis_un_champ_de_saisie(): void
+    {
+        $this->get(route('compta.index', ['tab' => 'ach']))->assertOk()->assertSee('window.PLAN', false)->assertSee('data-compte', false);
+
+        $this->postJson(route('compta.comptes.store'), ['numero' => '411000', 'libelle' => 'Clients adhérents'])
+            ->assertCreated()->assertExactJson(['numero' => '411000', 'libelle' => 'Clients adhérents']);
+        $this->assertSame('Clients adhérents', Compta::libelle('411000'));
+        $this->assertTrue((bool) Compte::where('numero', '411000')->value('personnalise'));
+
+        $this->postJson(route('compta.comptes.store'), ['numero' => '411000', 'libelle' => 'Doublon'])->assertStatus(422)->assertJsonValidationErrors('numero');
+        $this->postJson(route('compta.comptes.store'), ['numero' => '41A', 'libelle' => 'Lettres'])->assertStatus(422)->assertJsonValidationErrors('numero');
+        $this->postJson(route('compta.comptes.store'), ['numero' => '6061001', 'libelle' => ''])->assertStatus(422)->assertJsonValidationErrors('libelle');
+        $this->post(route('compta.comptes.store'), ['numero' => '6061001', 'libelle' => 'Eau'])->assertSessionHas('ok');   // formulaire du plan comptable
+    }
+
     public function test_ecriture_de_paie_sur_les_comptes_officiels(): void
     {
         $l = PaieCalc::lignes(['brut' => 1000, 'cnssS' => 91.8, 'cnssP' => 165.7, 'ras' => 80, 'net' => 828.2, 'tfp' => 20, 'fop' => 10]);

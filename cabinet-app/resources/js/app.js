@@ -1,4 +1,5 @@
 import Alpine from 'alpinejs';
+import './comptes';
 
 window.Alpine = Alpine;
 

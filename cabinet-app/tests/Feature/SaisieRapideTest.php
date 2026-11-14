@@ -45,8 +45,10 @@ class SaisieRapideTest extends TestCase
 
     private function parametres(array $banque = []): array
     {
-        return ['achat' => ['compte_tiers' => '4011', 'compte' => '606', 'tva_taux' => 19, 'timbre' => 1, 'retenue_taux' => 0, 'tva_deductible' => '1'],
-            'vente' => ['compte_tiers' => '4111', 'compte' => '705', 'tva_taux' => 19, 'timbre' => 1, 'compte_timbre' => '437'],
+        return ['achat' => ['compte_tiers' => '4011', 'tva_taux' => 19, 'timbre' => 1, 'retenue_taux' => 0, 'tva_deductible' => '1',
+                'comptes' => [['compte' => '6061', 'tva_taux' => 7], ['compte' => '6062', 'tva_taux' => 13], ['compte' => '', 'tva_taux' => 19], ['compte' => '622', 'tva_taux' => '']]],
+            'vente' => ['compte_tiers' => '4111', 'tva_taux' => 19, 'timbre' => 1, 'compte_timbre' => '437',
+                'comptes' => [['compte' => '705', 'tva_taux' => 19], ['compte' => '706', 'tva_taux' => 7]]],
             'banque' => $banque + ['compte' => '5321', 'attente' => '461', 'regles' => [['mot_cle' => 'frais', 'compte' => '6278'], ['mot_cle' => 'CNSS', 'compte' => '45311'], ['mot_cle' => '', 'compte' => '']]]];
     }
 
@@ -69,6 +71,36 @@ class SaisieRapideTest extends TestCase
         $f = FactureRecue::create(['client_id' => $this->client->id, 'date' => '2026-03-01', 'fournisseur' => 'STEG', 'ht' => 100, 'tva' => 19, 'timbre' => 1, 'compte' => '6061', 'statut' => 'prop']);
         $this->assertSame('4011', collect($f->lignesEcriture())->firstWhere('credit', '>', 0)['compte']);
         $this->post(route('compta.parametres'), $this->parametres(['compte' => 'abc']))->assertSessionHasErrors('banque.compte');
+    }
+
+    public function test_plusieurs_comptes_proposes_avec_leur_taux_de_tva(): void
+    {
+        $this->post(route('compta.parametres'), $this->parametres())->assertSessionHas('ok');
+        $p = Saisie::parametres($this->client->id);
+
+        // Ligne sans compte écartée ; taux absent → taux général
+        $this->assertSame([['compte' => '6061', 'tva_taux' => 7.0], ['compte' => '6062', 'tva_taux' => 13.0], ['compte' => '622', 'tva_taux' => 19.0]], $p['achat']['comptes']);
+        $this->assertSame(['6061', 7.0], [$p['achat']['compte'], Saisie::tauxParDefaut($p['achat'])]);     // le premier est proposé par défaut
+        $this->assertSame(['705' => 19.0, '706' => 7.0], Saisie::tauxParCompte($p['vente']));
+
+        // Les factures proposent ces comptes, avec leur taux
+        $this->get(route('compta.index', ['tab' => 'ach']))->assertSee('6062 · 13 %')->assertSee('★ TVA 7 %', false);
+        $this->get(route('compta.index', ['tab' => 'vte']))->assertSee('706 · 7 %');
+        $this->get(route('compta.index', ['tab' => 'param']))->assertOk()->assertSee('Comptes de charge proposés', false);
+
+        // Un compte de vente proposé doit être de classe 7
+        $mauvais = $this->parametres();
+        $mauvais['vente']['comptes'][] = ['compte' => '606', 'tva_taux' => 19];
+        $this->post(route('compta.parametres'), $mauvais)->assertSessionHasErrors('vente.comptes.2.compte');
+    }
+
+    public function test_ancien_parametrage_a_compte_unique_repris(): void
+    {
+        \App\Models\Setting::put('saisie.'.$this->client->id, ['achat' => ['compte_tiers' => '401', 'compte' => '6061', 'tva_taux' => 7]]);
+
+        $p = Saisie::parametres($this->client->id);
+        $this->assertSame([['compte' => '6061', 'tva_taux' => 7.0]], $p['achat']['comptes']);
+        $this->assertSame([['compte' => '705', 'tva_taux' => 19.0]], $p['vente']['comptes']);      // valeurs par défaut
     }
 
     public function test_modeles_et_memorisation_depuis_une_facture(): void

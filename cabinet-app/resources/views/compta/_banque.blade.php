@@ -52,8 +52,8 @@
                             @if($l->statut === 'cpt')
                                 <span class="font-mono text-xs">{{ $l->compte }}</span> <span class="text-xs text-slate-500">{{ \App\Services\Compta::libelle($l->compte) }}</span>
                             @else
-                                <input name="comptes[{{ $l->id }}]" value="{{ $l->compte }}" list="cpts-bq" class="input !py-1 font-mono text-xs" aria-label="Contrepartie">
-                                <div class="mt-0.5 truncate text-[11px] text-slate-400">{{ \App\Services\Compta::libelle((string) $l->compte) }}</div>
+                                <input name="comptes[{{ $l->id }}]" value="{{ $l->compte }}" list="cpts-bq" class="input !py-1 font-mono text-xs" aria-label="Contrepartie" data-compte autocomplete="off">
+                                <div data-compte-libelle class="mt-0.5 truncate text-[11px] text-slate-400">{{ \App\Services\Compta::libelle((string) $l->compte) }}</div>
                             @endif
                         </td>
                         <td>@if($l->statut === 'cpt')<span class="badge-green">Comptabilisée</span>@elseif($l->statut === 'ign')<span class="badge-gray">Ignorée</span>@else<span class="badge-amber">À traiter</span>@endif</td>
@@ -64,7 +64,7 @@
                 @endforelse
                 </tbody>
             </table>
-            <datalist id="cpts-bq">@foreach($plan as $n => $lib)<option value="{{ $n }}">{{ $lib }}</option>@endforeach</datalist>
+            <datalist id="cpts-bq" data-plan>@foreach($plan as $n => $lib)<option value="{{ $n }}">{{ $lib }}</option>@endforeach</datalist>
             @if($lignes->count())
                 <div class="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 p-3 dark:border-slate-800">
                     <span class="mr-auto text-xs text-slate-500">Les contreparties modifiées sont enregistrées avec chaque action.</span>

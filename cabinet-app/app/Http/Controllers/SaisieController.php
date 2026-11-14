@@ -21,15 +21,25 @@ class SaisieController extends Controller
         abort_unless($client, 404);
         $cpt = 'nullable|regex:/^\d{1,8}$/';
         $d = $r->validate([
-            'achat.compte_tiers' => 'required|regex:/^\d{1,8}$/', 'achat.compte' => $cpt, 'achat.tva_taux' => 'required|numeric|min:0|max:100',
+            'achat.compte_tiers' => 'required|regex:/^\d{1,8}$/', 'achat.tva_taux' => 'required|numeric|min:0|max:100',
             'achat.timbre' => 'nullable|numeric|min:0', 'achat.retenue_taux' => 'nullable|numeric|min:0|max:100', 'achat.tva_deductible' => 'nullable|boolean',
-            'vente.compte_tiers' => 'required|regex:/^\d{1,8}$/', 'vente.compte' => $cpt, 'vente.tva_taux' => 'required|numeric|min:0|max:100',
+            'achat.comptes' => 'nullable|array|max:60', 'achat.comptes.*.compte' => $cpt, 'achat.comptes.*.tva_taux' => 'nullable|numeric|min:0|max:100',
+            'vente.compte_tiers' => 'required|regex:/^\d{1,8}$/', 'vente.tva_taux' => 'required|numeric|min:0|max:100',
             'vente.timbre' => 'nullable|numeric|min:0', 'vente.compte_timbre' => 'required|regex:/^\d{1,8}$/',
+            'vente.comptes' => 'nullable|array|max:60', 'vente.comptes.*.compte' => 'nullable|regex:/^7\d{0,7}$/', 'vente.comptes.*.tva_taux' => 'nullable|numeric|min:0|max:100',
             'banque.compte' => 'required|regex:/^\d{1,8}$/', 'banque.attente' => 'required|regex:/^\d{1,8}$/',
             'banque.regles' => 'nullable|array|max:100', 'banque.regles.*.mot_cle' => 'nullable|max:100', 'banque.regles.*.compte' => $cpt,
-        ], ['regex' => 'Le compte doit être un numéro du plan comptable (chiffres uniquement).']);
+        ], ['regex' => 'Le compte doit être un numéro du plan comptable (chiffres uniquement).',
+            'vente.comptes.*.compte.regex' => 'Un compte de vente proposé doit être un compte de produits (classe 7).']);
         $d['achat']['tva_deductible'] = $r->boolean('achat.tva_deductible');
-        foreach (['achat', 'vente'] as $k) { $d[$k]['timbre'] = (float) ($d[$k]['timbre'] ?? 0); $d[$k]['compte'] = (string) ($d[$k]['compte'] ?? ''); }
+        foreach (['achat', 'vente'] as $k) {
+            $d[$k]['timbre'] = (float) ($d[$k]['timbre'] ?? 0);
+            // Comptes proposés : lignes sans compte écartées, un compte une seule fois, taux général à défaut de taux
+            $d[$k]['comptes'] = collect($d[$k]['comptes'] ?? [])->filter(fn ($x) => trim((string) ($x['compte'] ?? '')) !== '')
+                ->map(fn ($x) => ['compte' => trim($x['compte']), 'tva_taux' => (float) ($x['tva_taux'] ?? $d[$k]['tva_taux'])])
+                ->unique('compte')->values()->all();
+            $d[$k]['compte'] = $d[$k]['comptes'][0]['compte'] ?? '';
+        }
         $d['achat']['retenue_taux'] = (float) ($d['achat']['retenue_taux'] ?? 0);
         $d['banque']['regles'] = collect($d['banque']['regles'] ?? [])->filter(fn ($x) => trim($x['mot_cle'] ?? '') !== '' && trim($x['compte'] ?? '') !== '')
             ->map(fn ($x) => ['mot_cle' => trim($x['mot_cle']), 'compte' => trim($x['compte'])])->values()->all();
