@@ -1,14 +1,14 @@
 {{-- Relevés bancaires importés : contrepartie de chaque opération, puis comptabilisation au journal BQ (chef comptable) --}}
-@php $ub = fn ($x = []) => route('compta.index', array_filter(['tab' => 'bq', 'annee' => $annee, 'releve' => $releve?->id, 'statut' => $filtre] , fn ($v) => $v !== null) + $x); @endphp
+@php $ub = fn ($x = []) => route('compta.index', $x + array_filter(['tab' => 'bq', 'annee' => $annee, 'releve' => $releve?->id, 'statut' => $filtre], fn ($v) => $v !== null) + $rech->parametres()); @endphp
 
 <div class="grid gap-6 lg:grid-cols-4">
     <div class="space-y-3 lg:col-span-1">
         <div class="card">
             <div class="card-h"><h2 class="card-t">Relevés importés</h2></div>
-            <a href="{{ route('compta.index', ['tab' => 'bq', 'annee' => $annee, 'statut' => $filtre]) }}" class="block border-b border-slate-100 px-4 py-2.5 text-sm dark:border-slate-800 {{ $releve ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40' : 'bg-slate-50 font-semibold dark:bg-slate-800/40' }}">Tous les relevés</a>
+            <a href="{{ route('compta.index', ['tab' => 'bq', 'annee' => $annee, 'statut' => $filtre] + $rech->parametres()) }}" class="block border-b border-slate-100 px-4 py-2.5 text-sm dark:border-slate-800 {{ $releve ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40' : 'bg-slate-50 font-semibold dark:bg-slate-800/40' }}">Tous les relevés</a>
             @forelse($releves as $rl)
                 <div class="flex items-start gap-2 border-b border-slate-100 px-4 py-2.5 text-sm last:border-0 dark:border-slate-800 {{ $releve?->id === $rl->id ? 'bg-slate-50 dark:bg-slate-800/40' : '' }}">
-                    <a href="{{ route('compta.index', ['tab' => 'bq', 'annee' => $annee, 'releve' => $rl->id, 'statut' => $filtre]) }}" class="min-w-0 flex-1">
+                    <a href="{{ route('compta.index', ['tab' => 'bq', 'annee' => $annee, 'releve' => $rl->id, 'statut' => $filtre] + $rech->parametres()) }}" class="min-w-0 flex-1">
                         <div class="truncate font-medium" title="{{ $rl->nom_fichier }}">{{ $rl->nom_fichier }}</div>
                         <div class="text-xs text-slate-500">{{ $rl->created_at->format('d/m/Y') }} · {{ \App\Models\Releve::METHODES[$rl->methode] ?? $rl->methode }} · {{ $rl->compte_banque }}</div>
                         <div class="text-xs">{{ $rl->lignes_count }} opération(s) @if($rl->a_traiter)<span class="badge-amber">{{ $rl->a_traiter }} à traiter</span>@else<span class="badge-green">traité</span>@endif</div>

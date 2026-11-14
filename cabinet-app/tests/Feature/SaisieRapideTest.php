@@ -84,8 +84,9 @@ class SaisieRapideTest extends TestCase
         $this->assertSame(['705' => 19.0, '706' => 7.0], Saisie::tauxParCompte($p['vente']));
 
         // Les factures proposent ces comptes, avec leur taux
-        $this->get(route('compta.index', ['tab' => 'ach']))->assertSee('6062 · 13 %')->assertSee('★ TVA 7 %', false);
-        $this->get(route('compta.index', ['tab' => 'vte']))->assertSee('706 · 7 %');
+        // Boutons rapides (dessinés par le navigateur à partir des propositions) et suggestions marquées ★
+        $this->get(route('compta.index', ['tab' => 'ach']))->assertSee('★ TVA 13 %', false)->assertSee('x-text="c.compte', false);
+        $this->get(route('compta.index', ['tab' => 'vte']))->assertSee('★ TVA 7 %', false);
         $this->get(route('compta.index', ['tab' => 'param']))->assertOk()->assertSee('Comptes de charge proposés', false);
 
         // Un compte de vente proposé doit être de classe 7
@@ -101,6 +102,28 @@ class SaisieRapideTest extends TestCase
         $p = Saisie::parametres($this->client->id);
         $this->assertSame([['compte' => '6061', 'tva_taux' => 7.0]], $p['achat']['comptes']);
         $this->assertSame([['compte' => '705', 'tva_taux' => 19.0]], $p['vente']['comptes']);      // valeurs par défaut
+    }
+
+    public function test_modele_a_plusieurs_comptes_et_taux(): void
+    {
+        $this->post(route('compta.modeles.store'), ['type' => 'achat', 'nom' => 'Monoprix', 'tiers' => 'MONOPRIX', 'timbre' => 1,
+            'comptes' => [['compte' => '6061', 'tva_taux' => 7], ['compte' => '', 'tva_taux' => 19], ['compte' => '6063', 'tva_taux' => 19], ['compte' => '6061', 'tva_taux' => 13]]])->assertSessionHas('ok');
+        $m = ModeleSaisie::sole();
+        $this->assertSame([['compte' => '6061', 'tva_taux' => 7.0], ['compte' => '6063', 'tva_taux' => 19.0]], $m->lignes());      // vide et doublon écartés
+        $this->assertSame(['6061', 7.0], [$m->compte, $m->tva_taux]);                                                               // la première ligne est appliquée
+        $this->assertSame($m->lignes(), $m->valeurs()['comptes']);
+        $this->get(route('compta.index', ['tab' => 'param']))->assertSee('+ Ligne compte · TVA')->assertSee('6063</span> 19 %', false);
+
+        // Mémoriser une facture de ce fournisseur sur un autre compte : ajouté en tête, les autres lignes conservées
+        $this->post(route('compta.factures.store'), ['date' => '2026-03-02', 'fournisseur' => 'MONOPRIX', 'ht' => 50, 'tva_taux' => 13, 'compte' => '6064', 'memoriser' => '1']);
+        $this->assertSame(['6064', '6061', '6063'], array_column($m->fresh()->lignes(), 'compte'));
+        $this->assertSame([13.0, 7.0], [$m->fresh()->lignes()[0]['tva_taux'], $m->fresh()->lignes()[1]['tva_taux']]);
+
+        // Ancien modèle à compte unique
+        $ancien = ModeleSaisie::create(['client_id' => $this->client->id, 'type' => 'vente', 'nom' => 'Ancien', 'compte' => '705', 'tva_taux' => 19]);
+        $this->assertSame([['compte' => '705', 'tva_taux' => 19.0]], $ancien->lignes());
+        $this->post(route('compta.modeles.store'), ['type' => 'achat', 'nom' => 'Sans compte', 'comptes' => [['compte' => '', 'tva_taux' => 7]]])->assertSessionHas('ok');
+        $this->assertSame([null, 7.0, []], [ModeleSaisie::where('nom', 'Sans compte')->value('compte'), ModeleSaisie::where('nom', 'Sans compte')->first()->tva_taux, ModeleSaisie::where('nom', 'Sans compte')->first()->lignes()]);
     }
 
     public function test_modeles_et_memorisation_depuis_une_facture(): void

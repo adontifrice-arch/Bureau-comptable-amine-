@@ -12,6 +12,7 @@ use App\Models\Releve;
 use App\Models\ReleveLigne;
 use App\Models\Paie;
 use App\Services\Compta;
+use App\Services\Recherche;
 use App\Services\Saisie;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,22 +30,39 @@ class ComptaController extends Controller
         $data = ['client' => $client, 'tab' => $tab, 'annee' => $annee, 'clients' => Client::orderBy('nom')->get(['id', 'nom']), 'plan' => Compta::plan(),
             'saisie' => Saisie::parametres($client->id), 'aTraiter' => ReleveLigne::where('client_id', $client->id)->where('statut', 'att')->count()];
         if (in_array($tab, ['ach', 'vte', 'param'], true)) $data['modeles'] = ModeleSaisie::where('client_id', $client->id)->orderBy('type')->orderBy('nom')->get();
+        // Recherche multicritère (bouton « Rechercher ») : période, montant, partie du libellé, compte
+        $rech = $data['rech'] = Recherche::depuis($r);
         if ($tab === 'ach') {
-            $data['factures'] = FactureRecue::with('validePar')->where('client_id', $client->id)->orderByRaw("CASE statut WHEN 'prop' THEN 0 WHEN 'rej' THEN 1 ELSE 2 END")->orderByDesc('date')->get();
+            $q = FactureRecue::with('validePar')->where('client_id', $client->id);
+            $rech->dates($q, 'date'); $rech->montants($q, ['ht', 'ht + tva + timbre']); $rech->texte($q, ['fournisseur', 'description', 'reference', 'matricule_fiscal']); $rech->compte($q, 'compte');
+            $data['factures'] = $q->orderByRaw("CASE statut WHEN 'prop' THEN 0 WHEN 'rej' THEN 1 ELSE 2 END")->orderByDesc('date')->get();
+            $data['resultats'] = ['n' => $data['factures']->count(), 'total' => $data['factures']->sum(fn ($f) => $f->ttc()), 'unite' => 'TTC'];
             $data['ia'] = (bool) config('services.anthropic.key');
         } elseif ($tab === 'vte') {
-            $data['ventes'] = FactureVente::with('validePar')->where('client_id', $client->id)->orderByRaw("CASE statut WHEN 'prop' THEN 0 WHEN 'rej' THEN 1 ELSE 2 END")->orderByDesc('date')->get();
+            $q = FactureVente::with('validePar')->where('client_id', $client->id);
+            $rech->dates($q, 'date'); $rech->montants($q, ['ht', 'ht + tva + timbre']); $rech->texte($q, ['tiers', 'description', 'reference', 'matricule_fiscal']); $rech->compte($q, 'compte');
+            $data['ventes'] = $q->orderByRaw("CASE statut WHEN 'prop' THEN 0 WHEN 'rej' THEN 1 ELSE 2 END")->orderByDesc('date')->get();
+            $data['resultats'] = ['n' => $data['ventes']->count(), 'total' => $data['ventes']->sum(fn ($f) => $f->ttc()), 'unite' => 'TTC'];
         } elseif ($tab === 'bq') {
             $data['releves'] = Releve::withCount(['lignes', 'lignes as a_traiter' => fn ($q) => $q->where('statut', 'att')])->with('importePar')->where('client_id', $client->id)->latest()->get();
             $data['releve'] = $r->filled('releve') ? $data['releves']->firstWhere('id', (int) $r->input('releve')) : null;
-            $data['filtre'] = $r->input('statut', 'att');
-            $data['lignes'] = ReleveLigne::where('client_id', $client->id)->when($data['releve'], fn ($q, $rl) => $q->where('releve_id', $rl->id))
-                ->when($data['filtre'] !== 'tout', fn ($q) => $q->where('statut', $data['filtre']))->orderBy('date')->orderBy('id')->paginate(100)->withQueryString();
+            $data['filtre'] = $r->input('statut', $rech->active() ? 'tout' : 'att');      // une recherche porte sur toutes les lignes
+            $q = ReleveLigne::where('client_id', $client->id)->when($data['releve'], fn ($q, $rl) => $q->where('releve_id', $rl->id))
+                ->when($data['filtre'] !== 'tout', fn ($q) => $q->where('statut', $data['filtre']));
+            $rech->dates($q, 'date'); $rech->montants($q, ['debit', 'credit']); $rech->texte($q, ['libelle']); $rech->compte($q, 'compte');
+            $data['resultats'] = ['n' => (clone $q)->count(), 'debit' => (float) (clone $q)->sum('debit'), 'credit' => (float) (clone $q)->sum('credit')];
+            $data['lignes'] = $q->orderBy('date')->orderBy('id')->paginate(100)->withQueryString();
         } elseif ($tab === 'pai') {
             $data['paies'] = Paie::where('client_id', $client->id)->whereIn('statut', ['transmise', 'val'])->orderByDesc('mois')->get();
         } elseif ($tab === 'jnl') {
-            $data['ecritures'] = Ecriture::with(['lignes', 'validePar'])->where('client_id', $client->id)->whereYear('date', $annee)
-                ->when($r->input('journal'), fn ($q, $j) => $q->where('journal', $j))->orderByDesc('date')->orderByDesc('id')->paginate(30)->withQueryString();
+            // Une période recherchée remplace l'exercice affiché
+            $q = Ecriture::with(['lignes', 'validePar'])->where('client_id', $client->id)->when(! $rech->du && ! $rech->au, fn ($q) => $q->whereYear('date', $annee))
+                ->when($r->input('journal'), fn ($q, $j) => $q->where('journal', $j));
+            $rech->dates($q, 'date'); $rech->texte($q, ['libelle']);
+            if ($rech->min !== null || $rech->max !== null) $q->whereHas('lignes', fn ($l) => $rech->montants($l, ['debit', 'credit']));
+            if ($rech->compte) $q->whereHas('lignes', fn ($l) => $rech->compte($l, 'compte'));
+            $data['resultats'] = ['n' => (clone $q)->count()];
+            $data['ecritures'] = $q->orderByDesc('date')->orderByDesc('id')->paginate(30)->withQueryString();
         } elseif ($tab === 'bal') {
             $data['B'] = Compta::balance($client->id, $annee);
             $data['T'] = Compta::totaux($data['B']);

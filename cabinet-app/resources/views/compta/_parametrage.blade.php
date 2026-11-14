@@ -77,11 +77,11 @@
         </fieldset>
     </form>
 
-    <div class="card self-start" x-data="{ m: {} }" @mod-edit.window="m = $event.detail">
+    <div class="card self-start" x-data="{ m: { comptes: [] } }" @mod-edit.window="m = Object.assign({ comptes: [] }, $event.detail); if (! m.comptes.length) m.comptes.push({ compte: '', tva_taux: 19 })">
         <div class="card-h"><h2 class="card-t">Modèles de saisie rapide</h2>
             <div class="flex gap-2">
-                <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'achat', tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }}, timbre: {{ (float) $pa['timbre'] }}, retenue_taux: {{ (float) $pa['retenue_taux'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', compte: @js((string) $pa['compte'])}); $dispatch('open-modal', 'modele')">+ Achat</button>
-                <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'vente', tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pv) }}, timbre: {{ (float) $pv['timbre'] }}, compte: @js((string) $pv['compte'])}); $dispatch('open-modal', 'modele')">+ Vente</button>
+                <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'achat', tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }}, timbre: {{ (float) $pa['timbre'] }}, retenue_taux: {{ (float) $pa['retenue_taux'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', comptes: [{ compte: @js((string) $pa['compte']), tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }} }]}); $dispatch('open-modal', 'modele')">+ Achat</button>
+                <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'vente', tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pv) }}, timbre: {{ (float) $pv['timbre'] }}, comptes: [{ compte: @js((string) $pv['compte']), tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pv) }} }]}); $dispatch('open-modal', 'modele')">+ Vente</button>
             </div>
         </div>
         @forelse($modeles->groupBy('type') as $type => $liste)
@@ -89,8 +89,8 @@
             @foreach($liste as $mo)
                 <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-2.5 text-sm last:border-0 dark:border-slate-800">
                     <div class="min-w-0 flex-1"><div class="font-medium">{{ $mo->nom }}</div>
-                        <div class="text-xs text-slate-500">{{ $mo->tiers }}{{ $mo->tiers ? ' · ' : '' }}{{ $lib($mo->compte) }} · TVA {{ (float) $mo->tva_taux }} %{{ $mo->timbre > 0 ? ' · timbre '.n3($mo->timbre) : '' }}{{ $mo->retenue_taux > 0 ? ' · RS '.(float) $mo->retenue_taux.' %' : '' }}</div></div>
-                    <button class="btn-icon" title="Modifier" @click="$dispatch('mod-edit', @js($mo->only(['id', 'type', 'nom', 'tiers', 'matricule_fiscal', 'description', 'compte', 'tva_taux', 'timbre', 'retenue_taux']) + ['tva_deductible' => $mo->tva_deductible ? '1' : '0'])); $dispatch('open-modal', 'modele')"><x-icon name="edit" class="h-4 w-4"/></button>
+                        <div class="text-xs text-slate-500">{{ $mo->tiers }}{{ $mo->tiers ? ' · ' : '' }}@forelse($mo->lignes() as $i => $c){{ $i ? ' · ' : '' }}<span class="font-mono">{{ $c['compte'] }}</span> {{ (float) $c['tva_taux'] }} %@empty TVA {{ (float) $mo->tva_taux }} %@endforelse{{ $mo->timbre > 0 ? ' · timbre '.n3($mo->timbre) : '' }}{{ $mo->retenue_taux > 0 ? ' · RS '.(float) $mo->retenue_taux.' %' : '' }}</div></div>
+                    <button class="btn-icon" title="Modifier" @click="$dispatch('mod-edit', @js($mo->only(['id', 'type', 'nom', 'tiers', 'matricule_fiscal', 'description', 'tva_taux', 'timbre', 'retenue_taux']) + ['tva_deductible' => $mo->tva_deductible ? '1' : '0', 'comptes' => $mo->lignes()])); $dispatch('open-modal', 'modele')"><x-icon name="edit" class="h-4 w-4"/></button>
                     <x-confirm-delete :action="route('compta.modeles.destroy', $mo)" message="Supprimer ce modèle ?"/>
                 </div>
             @endforeach
@@ -106,8 +106,17 @@
                 <div><label class="label" for="mo-tiers" x-text="m.type === 'vente' ? 'Client' : 'Fournisseur'"></label><input id="mo-tiers" name="tiers" class="input" x-model="m.tiers"></div>
                 <div><label class="label" for="mo-mf">Matricule fiscal</label><input id="mo-mf" name="matricule_fiscal" class="input" x-model="m.matricule_fiscal"></div>
                 <div class="md:col-span-2"><label class="label" for="mo-desc">Description proposée</label><input id="mo-desc" name="description" class="input" x-model="m.description"></div>
-                <div class="md:col-span-2"><label class="label" for="mo-cpt" x-text="m.type === 'vente' ? 'Compte de vente' : 'Compte de charge / immobilisation'"></label><input id="mo-cpt" name="compte" class="input font-mono" list="cpts-param" x-model="m.compte" data-compte autocomplete="off"><p data-compte-libelle class="mt-1 truncate text-xs text-slate-400"></p></div>
-                <div><label class="label" for="mo-tx">Taux de TVA (%)</label><input id="mo-tx" type="number" step="0.01" min="0" max="100" name="tva_taux" class="input" x-model="m.tva_taux" required></div>
+                <div class="md:col-span-2">
+                    <div class="label"><span x-text="m.type === 'vente' ? 'Comptes de vente' : 'Comptes de charge / immobilisation'"></span> et leur taux de TVA <span class="font-normal text-slate-400">— le premier est appliqué</span></div>
+                    <template x-for="(x, i) in m.comptes" :key="i">
+                        <div class="mb-2 grid grid-cols-12 items-start gap-2">
+                            <div class="col-span-7"><input class="input font-mono" placeholder="Compte" list="cpts-param" :name="`comptes[${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-init="$el.textContent = (window.PLAN || {})[x.compte] || ''"></p></div>
+                            <div class="col-span-4"><input type="number" step="0.01" min="0" max="100" class="input" list="taux-tva" placeholder="TVA %" :name="`comptes[${i}][tva_taux]`" x-model="x.tva_taux" aria-label="Taux de TVA" required></div>
+                            <button type="button" class="btn-icon col-span-1" @click="m.comptes.length > 1 ? m.comptes.splice(i, 1) : (m.comptes[0] = { compte: '', tva_taux: 19 })" title="Retirer"><x-icon name="trash" class="h-4 w-4"/></button>
+                        </div>
+                    </template>
+                    <button type="button" class="btn-secondary btn-sm" @click="m.comptes.push({ compte: '', tva_taux: 19 })">+ Ligne compte · TVA</button>
+                </div>
                 <div><label class="label" for="mo-tim">Droit de timbre</label><input id="mo-tim" type="number" step="0.001" min="0" name="timbre" class="input" x-model="m.timbre"></div>
                 <template x-if="m.type === 'achat'"><div><label class="label" for="mo-rs">Retenue à la source (%)</label><input id="mo-rs" type="number" step="0.01" min="0" max="100" name="retenue_taux" class="input" x-model="m.retenue_taux"></div></template>
                 <template x-if="m.type === 'achat'"><div><label class="label" for="mo-ded">TVA récupérable</label><select id="mo-ded" name="tva_deductible" class="input" x-model="m.tva_deductible"><option value="1">Oui (4366)</option><option value="0">Non (incluse en charge)</option></select></div></template>

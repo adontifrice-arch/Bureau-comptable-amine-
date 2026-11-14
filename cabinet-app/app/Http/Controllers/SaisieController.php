@@ -52,8 +52,18 @@ class SaisieController extends Controller
     private function modele(Request $r): array
     {
         $d = $r->validate(['type' => 'required|in:achat,vente', 'nom' => 'required|max:100', 'tiers' => 'nullable|max:255', 'matricule_fiscal' => 'nullable|max:50',
-            'description' => 'nullable|max:255', 'compte' => 'nullable|regex:/^\d{1,8}$/', 'tva_taux' => 'required|numeric|min:0|max:100',
-            'timbre' => 'nullable|numeric|min:0', 'retenue_taux' => 'nullable|numeric|min:0|max:100', 'tva_deductible' => 'nullable|boolean']);
+            'description' => 'nullable|max:255', 'compte' => 'nullable|regex:/^\d{1,8}$/', 'tva_taux' => 'nullable|numeric|min:0|max:100',
+            'comptes' => 'nullable|array|max:30', 'comptes.*.compte' => 'nullable|regex:/^\d{1,8}$/', 'comptes.*.tva_taux' => 'nullable|numeric|min:0|max:100',
+            'timbre' => 'nullable|numeric|min:0', 'retenue_taux' => 'nullable|numeric|min:0|max:100', 'tva_deductible' => 'nullable|boolean'],
+            ['regex' => 'Le compte doit être un numéro du plan comptable (chiffres uniquement).']);
+        // Lignes « compte · taux » : sans compte écartées, un compte une seule fois ; le premier est appliqué au modèle
+        $lignes = $d['comptes'] ?? ($d['compte'] ?? null ? [['compte' => $d['compte'], 'tva_taux' => $d['tva_taux'] ?? null]] : []);
+        $taux = (float) ($d['tva_taux'] ?? ($lignes[0]['tva_taux'] ?? null) ?? 19);
+        $lignes = collect($lignes)->filter(fn ($x) => trim((string) ($x['compte'] ?? '')) !== '')
+            ->map(fn ($x) => ['compte' => trim($x['compte']), 'tva_taux' => (float) ($x['tva_taux'] ?? $taux)])->unique('compte')->values()->all();
+        $d['comptes'] = $lignes;
+        $d['compte'] = $lignes[0]['compte'] ?? null;
+        $d['tva_taux'] = $lignes[0]['tva_taux'] ?? $taux;
         return ['timbre' => (float) ($d['timbre'] ?? 0), 'retenue_taux' => (float) ($d['retenue_taux'] ?? 0), 'tva_deductible' => $r->boolean('tva_deductible', true)] + $d;
     }
 

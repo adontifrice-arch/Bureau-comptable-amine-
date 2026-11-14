@@ -5,7 +5,10 @@ namespace App\Models;
 use App\Models\Concerns\AppartientAuCabinet;
 use Illuminate\Database\Eloquent\Model;
 
-/** Modèle de saisie rapide d'une facture d'achat ou de vente (fournisseur / client habituel). */
+/**
+ * Modèle de saisie rapide d'une facture d'achat ou de vente (fournisseur / client habituel).
+ * « comptes » : comptes proposés avec leur taux de TVA ; le premier est appliqué (« compte » et « tva_taux » en sont la copie).
+ */
 class ModeleSaisie extends Model
 {
     use AppartientAuCabinet;
@@ -14,23 +17,41 @@ class ModeleSaisie extends Model
 
     protected $table = 'modeles_saisie';
     protected $guarded = [];
-    protected $casts = ['tva_taux' => 'float', 'timbre' => 'float', 'retenue_taux' => 'float', 'tva_deductible' => 'boolean'];
+    protected $casts = ['tva_taux' => 'float', 'timbre' => 'float', 'retenue_taux' => 'float', 'tva_deductible' => 'boolean', 'comptes' => 'array'];
 
-    /** « Mémoriser comme modèle » coché lors de la saisie d'une facture : crée ou met à jour le modèle de ce tiers. */
+    /** Comptes proposés (le compte unique d'un modèle antérieur devient la seule ligne). */
+    public function lignes(): array
+    {
+        $l = array_values(array_filter((array) $this->comptes, fn ($c) => ($c['compte'] ?? '') !== ''));
+        if (! $l && $this->compte) $l = [['compte' => (string) $this->compte, 'tva_taux' => (float) $this->tva_taux]];
+        return array_map(fn ($c) => ['compte' => (string) $c['compte'], 'tva_taux' => (float) ($c['tva_taux'] ?? $this->tva_taux)], $l);
+    }
+
+    /**
+     * « Mémoriser comme modèle » coché lors de la saisie d'une facture : crée le modèle de ce tiers, ou met à jour le modèle
+     * existant en ajoutant le compte de la facture à ses lignes (les autres lignes sont conservées).
+     */
     public static function memoriser(int $client, string $type, array $d, string $tiers): void
     {
         if (trim($tiers) === '') return;
-        static::updateOrCreate(['client_id' => $client, 'type' => $type, 'tiers' => $tiers], [
-            'nom' => $tiers, 'matricule_fiscal' => $d['matricule_fiscal'] ?? null, 'description' => $d['description'] ?? null, 'compte' => $d['compte'] ?? null,
-            'tva_taux' => $d['tva_taux'] ?? 19, 'timbre' => $d['timbre'] ?? 0, 'retenue_taux' => $d['retenue_taux'] ?? 0, 'tva_deductible' => $d['tva_deductible'] ?? true,
-        ]);
+        $m = static::firstOrNew(['client_id' => $client, 'type' => $type, 'tiers' => $tiers]);
+        $lignes = $m->exists ? $m->lignes() : [];
+        $compte = (string) ($d['compte'] ?? '');
+        $taux = (float) ($d['tva_taux'] ?? 19);
+        if ($compte !== '') {
+            $lignes = array_values(array_filter($lignes, fn ($l) => $l['compte'] !== $compte));
+            array_unshift($lignes, ['compte' => $compte, 'tva_taux' => $taux]);      // le dernier compte utilisé passe en tête
+        }
+        $m->fill(['nom' => $m->nom ?: $tiers, 'matricule_fiscal' => $d['matricule_fiscal'] ?? $m->matricule_fiscal, 'description' => $d['description'] ?? $m->description,
+            'comptes' => $lignes, 'compte' => $lignes[0]['compte'] ?? null, 'tva_taux' => $lignes[0]['tva_taux'] ?? $taux,
+            'timbre' => $d['timbre'] ?? 0, 'retenue_taux' => $d['retenue_taux'] ?? 0, 'tva_deductible' => $d['tva_deductible'] ?? true])->save();
     }
 
-    /** Valeurs reprises dans le formulaire de saisie. */
+    /** Valeurs reprises dans le formulaire de saisie (« comptes » : boutons rapides du modèle). */
     public function valeurs(): array
     {
         $v = ['tva_taux' => $this->tva_taux, 'timbre' => $this->timbre, 'description' => $this->description, 'compte' => $this->compte,
-            'matricule_fiscal' => $this->matricule_fiscal];
+            'matricule_fiscal' => $this->matricule_fiscal, 'comptes' => $this->lignes()];
         return $this->type === 'achat'
             ? $v + ['fournisseur' => $this->tiers, 'retenue_taux' => $this->retenue_taux, 'tva_deductible' => $this->tva_deductible ? '1' : '0']
             : $v + ['tiers' => $this->tiers];

@@ -5,11 +5,14 @@
     <x-page-header title="Comptabilité" :subtitle="$client->nom.' · exercice '.$annee">
         <x-client-picker :clients="$clients" :current="$client" :route="route('compta.index')" :params="['tab' => $tab, 'annee' => $annee]"/>
         <form><input type="hidden" name="tab" value="{{ $tab }}"><input type="number" name="annee" value="{{ $annee }}" class="input w-24" onchange="this.form.submit()"></form>
+        @if(in_array($tab, ['ach', 'vte', 'bq', 'jnl'], true))<button class="btn-secondary" x-data @click="$dispatch('recherche')" title="Recherche par date, montant, libellé ou compte"><x-icon name="search" class="h-4 w-4"/> Rechercher @if($rech->active())<span class="badge-blue !py-0">{{ $rech->nombre() }}</span>@endif</button>@endif
         <a href="{{ $u('param') }}" class="btn-secondary"><x-icon name="settings" class="h-4 w-4"/> Paramétrage</a>
         <button class="btn-primary" x-data @click="$dispatch('open-modal', 'releve')"><x-icon name="upload" class="h-4 w-4"/> Importer un relevé bancaire</button>
     </x-page-header>
     @unless($chef)<div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"><x-icon name="lock" class="h-4 w-4"/> Vous saisissez en tant que collaborateur : seule la validation du chef comptable comptabilise les pièces.</div>@endunless
     <x-tabs :active="$tab" :items="['ach' => ['Factures d’achat', $u('ach')], 'vte' => ['Factures de vente', $u('vte')], 'bq' => ['Banque'.($aTraiter ? ' ('.$aTraiter.')' : ''), $u('bq')], 'pai' => ['Paie à comptabiliser', $u('pai')], 'jnl' => ['Journal & écritures', $u('jnl')], 'bal' => ['Balance générale', $u('bal')], 'gl' => ['Grand livre', $u('gl')], 'plan' => ['Plan comptable', $u('plan')], 'param' => ['Paramétrage', $u('param')]]"/>
+
+    @if(in_array($tab, ['ach', 'vte', 'bq', 'jnl'], true))@include('compta._recherche')@endif
 
     @if($tab === 'ach')
         <div class="mb-4 flex flex-wrap justify-end gap-2">
@@ -44,8 +47,8 @@
         </div>
         @php $imp = collect($plan)->filter(fn($l, $n) => preg_match('/^[26]/', $n) && !preg_match('/^2[89]/', $n)); $pa = $saisie['achat']; $mAch = $modeles->where('type', 'achat'); @endphp
         <x-modal name="fr" title="Facture d’achat" size="max-w-3xl">
-            <form method="POST" enctype="multipart/form-data" x-data="{ e: {}, modeles: @js($mAch->mapWithKeys(fn ($m) => [$m->id => $m->valeurs()])), taux: @js((object) \App\Services\Saisie::tauxParCompte($pa)), calc() { this.e.tva = (Math.round((+this.e.ht||0) * (+this.e.tva_taux||0) * 10) / 1000).toFixed(3) }, appliquer(id) { if (! this.modeles[id]) return; Object.assign(this.e, this.modeles[id]); this.calc() }, choisirCompte(c) { if (c !== undefined) this.e.compte = c; if (this.taux[this.e.compte] !== undefined) { this.e.tva_taux = this.taux[this.e.compte]; this.calc() } } }"
-                  @fr-edit.window="e = Object.assign({tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }}, timbre: {{ (float) $pa['timbre'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', compte: @js((string) $pa['compte']), date: '{{ now()->format('Y-m-d') }}', retenue_taux: {{ (float) $pa['retenue_taux'] }}}, $event.detail)"
+            <form method="POST" enctype="multipart/form-data" x-data="{ e: {}, modeles: @js($mAch->mapWithKeys(fn ($m) => [$m->id => $m->valeurs()])), defaut: @js($pa['comptes']), propositions: @js($pa['comptes']), deModele: false, calc() { this.e.tva = (Math.round((+this.e.ht||0) * (+this.e.tva_taux||0) * 10) / 1000).toFixed(3) }, tauxDe(c) { const p = this.propositions.find(x => x.compte === c) || this.defaut.find(x => x.compte === c); return p ? +p.tva_taux : undefined }, appliquer(id) { const m = this.modeles[id]; if (! m) return; const { comptes, ...v } = m; Object.assign(this.e, v); this.deModele = !! (comptes && comptes.length); this.propositions = this.deModele ? comptes : this.defaut; this.calc() }, choisirCompte(c) { if (c !== undefined) this.e.compte = c; const t = this.tauxDe(this.e.compte); if (t !== undefined) { this.e.tva_taux = t; this.calc() } }, pourcent(t) { return String(+t).replace('.', ',') + ' %' } }"
+                  @fr-edit.window="propositions = defaut; deModele = false; e = Object.assign({tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }}, timbre: {{ (float) $pa['timbre'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', compte: @js((string) $pa['compte']), date: '{{ now()->format('Y-m-d') }}', retenue_taux: {{ (float) $pa['retenue_taux'] }}}, $event.detail)"
                   :action="e.id ? '{{ url('comptabilite/factures') }}/' + e.id : '{{ route('compta.factures.store') }}'" class="grid gap-4 md:grid-cols-3">@csrf
                 <template x-if="e.id"><input type="hidden" name="_method" value="PUT"></template>
                 @if($mAch->count())<div class="md:col-span-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40"><label class="label" for="fr-mod">Saisie rapide : partir d’un modèle</label><select id="fr-mod" class="input" @change="appliquer($event.target.value); $event.target.value = ''"><option value="">— choisir un modèle —</option>@foreach($mAch as $m)<option value="{{ $m->id }}">{{ $m->nom }}{{ $m->compte ? ' · '.$m->compte : '' }}</option>@endforeach</select></div>@endif
@@ -59,7 +62,7 @@
                 <div><label class="label">Montant TVA</label><input type="number" step="0.001" name="tva" class="input" x-model="e.tva"></div>
                 <div><label class="label">Droit de timbre</label><input type="number" step="0.001" name="timbre" class="input" x-model="e.timbre"></div>
                 <div class="md:col-span-2"><label class="label" for="fr-cpt">Compte de charge / immobilisation</label><input id="fr-cpt" name="compte" class="input font-mono" list="cpts-ach" x-model="e.compte" @change="choisirCompte()" data-compte autocomplete="off" placeholder="ex. 6061 — un nouveau numéro peut être créé"><p data-compte-libelle class="mt-1 truncate text-xs text-slate-400"></p>
-                    @if($pa['comptes'])<div class="mt-1 flex flex-wrap gap-1">@foreach($pa['comptes'] as $c)<button type="button" class="!py-0.5" :class="e.compte === @js($c['compte']) ? 'badge-blue' : 'badge-gray'" @click="choisirCompte(@js($c['compte']))" title="{{ \App\Services\Compta::libelle($c['compte']) }}">{{ $c['compte'] }} · {{ rtrim(rtrim(number_format($c['tva_taux'], 2, ',', ''), '0'), ',') }} %</button>@endforeach</div>@endif
+                    <div class="mt-1 flex flex-wrap items-center gap-1" x-show="propositions.length"><span class="text-[11px] text-slate-400" x-text="deModele ? 'Modèle :' : 'Proposés :'"></span><template x-for="c in propositions" :key="c.compte"><button type="button" class="!py-0.5" :class="e.compte === c.compte ? 'badge-blue' : 'badge-gray'" @click="choisirCompte(c.compte)" :title="(window.PLAN || {})[c.compte] || ''" x-text="c.compte + ' · ' + pourcent(c.tva_taux)"></button></template></div>
                     @php $propA = collect($pa['comptes'])->pluck('compte')->all(); @endphp
                     <datalist id="cpts-ach" data-plan>@foreach($pa['comptes'] as $c)<option value="{{ $c['compte'] }}">★ TVA {{ (float) $c['tva_taux'] }} % — {{ \App\Services\Compta::libelle($c['compte']) }}</option>@endforeach @foreach($imp as $n => $l)@continue(in_array((string) $n, $propA, true))<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist></div>
                 <div><label class="label">TVA récupérable</label><select name="tva_deductible" class="input" x-model="e.tva_deductible"><option value="1">Oui (4366)</option><option value="0">Non (incluse en charge)</option></select></div>
@@ -94,7 +97,7 @@
 
     @elseif($tab === 'jnl')
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div class="flex flex-wrap gap-1">@foreach(['' => 'Tous', 'ACH' => 'Achats', 'VTE' => 'Ventes', 'PAI' => 'Paie', 'BQ' => 'Banque', 'OD' => 'OD'] as $k => $l)<a href="{{ $u('jnl', ['journal' => $k]) }}" class="{{ request('journal', '') === $k ? 'badge-blue' : 'badge-gray' }} !py-1">{{ $l }}</a>@endforeach</div>
+            <div class="flex flex-wrap gap-1">@foreach(['' => 'Tous', 'ACH' => 'Achats', 'VTE' => 'Ventes', 'PAI' => 'Paie', 'BQ' => 'Banque', 'OD' => 'OD'] as $k => $l)<a href="{{ $u('jnl', ['journal' => $k] + $rech->parametres()) }}" class="{{ request('journal', '') === $k ? 'badge-blue' : 'badge-gray' }} !py-1">{{ $l }}</a>@endforeach</div>
             @if($chef)<button class="btn-primary" x-data @click="$dispatch('open-modal', 'od')"><x-icon name="plus" class="h-4 w-4"/> Saisir une écriture</button>@endif
         </div>
         <div class="space-y-3">
