@@ -21,16 +21,18 @@ class ReleveController extends Controller
         $r->validate(['fichier' => 'required|file|max:20480|extensions:'.implode(',', LecteurReleve::EXTENSIONS)],
             ['fichier.extensions' => 'Formats acceptés : Excel (.xlsx, .xls, .ods), CSV, Word (.docx), PDF ou image.']);
         try {
-            [$releve, $doublons] = ImportReleve::importer($client, $r->file('fichier'), auth()->id());
+            [$releve, $doublons, $controle] = ImportReleve::importer($client, $r->file('fichier'), auth()->id());
         } catch (\Throwable $e) {
             return back()->with('err', 'Import impossible : '.$e->getMessage());
         }
         $n = $releve->lignes()->count();
         $incertains = $releve->lignes()->where('sens_incertain', true)->count();
         $this->log('Import du relevé bancaire '.$releve->nom_fichier, $client->id);
-        return redirect()->route('compta.index', ['tab' => 'bq', 'releve' => $releve->id])->with('ok', $n.' opération(s) importée(s) ('.Releve::METHODES[$releve->methode].')'
+        $msg = $n.' opération(s) importée(s) ('.Releve::METHODES[$releve->methode].')'
             .($doublons ? ', '.$doublons.' déjà importée(s) écartée(s)' : '').($incertains ? ' — '.$incertains.' dont le sens (débit / crédit) est à vérifier' : '')
-            .'. Vérifiez les contreparties proposées puis comptabilisez.');
+            .($controle ? ' — '.$controle['message'] : '').'. Vérifiez les contreparties proposées puis comptabilisez.';
+        // Un écart avec les totaux du relevé est signalé comme une alerte
+        return redirect()->route('compta.index', ['tab' => 'bq', 'releve' => $releve->id])->with($controle && ! $controle['ok'] ? 'err' : 'ok', $msg);
     }
 
     public function destroy(Releve $releve)
@@ -50,14 +52,24 @@ class ReleveController extends Controller
     /** Actions sur les lignes : enregistrer les contreparties, comptabiliser (chef), ignorer, rétablir, confirmer ou inverser le sens. */
     public function lignes(Request $r)
     {
-        $d = $r->validate(['action' => 'required|in:enregistrer,comptabiliser,ignorer,retablir,inverser,confirmer', 'comptes' => 'nullable|array', 'comptes.*' => 'nullable|regex:/^\d{1,8}$/',
-            'sel' => 'nullable|array', 'sel.*' => 'integer', 'ligne' => 'nullable|integer'], ['comptes.*.regex' => 'Une contrepartie doit être un numéro de compte (chiffres uniquement).']);
+        $d = $r->validate(['action' => 'required|in:enregistrer,comptabiliser,comptabiliser_tout,ignorer,retablir,inverser,confirmer', 'comptes' => 'nullable|array', 'comptes.*' => 'nullable|regex:/^\d{1,8}$/',
+            'sel' => 'nullable|array', 'sel.*' => 'integer', 'ligne' => 'nullable|integer', 'releve' => 'nullable|integer'],
+            ['comptes.*.regex' => 'Une contrepartie doit être un numéro de compte (chiffres uniquement).']);
 
         // Les contreparties saisies sont toujours enregistrées (lignes non comptabilisées)
         foreach ((array) ($d['comptes'] ?? []) as $id => $compte) {
             ReleveLigne::whereKey($id)->where('statut', '!=', 'cpt')->update(['compte' => $compte ?: null]);
         }
         $sel = ReleveLigne::whereKey((array) ($d['sel'] ?? []))->get();
+
+        if ($d['action'] === 'comptabiliser_tout') {
+            // Toutes les lignes à traiter du relevé affiché (ou du dossier), au-delà de la page courante
+            $client = $this->dossier($r);
+            abort_unless($client, 404);
+            $sel = ReleveLigne::with('releve')->where('client_id', $client->id)->where('statut', 'att')
+                ->when($d['releve'] ?? null, fn ($q, $id) => $q->where('releve_id', $id))->orderBy('date')->orderBy('id')->get();
+            $d['action'] = 'comptabiliser';
+        }
 
         switch ($d['action']) {
             case 'inverser':
@@ -87,6 +99,7 @@ class ReleveController extends Controller
                     }
                 });
                 if ($n) $this->log($n.' ligne(s) de relevé bancaire comptabilisée(s)', $sel->first()?->client_id);
+                if (! $n && $aPasser->isEmpty()) return back()->with('err', 'Aucune ligne à comptabiliser : sélectionnez des lignes « À traiter ».');
                 $msg = $n.' opération(s) comptabilisée(s) au journal de banque.';
                 if ($sansCompte) $msg .= ' '.$sansCompte.' ligne(s) sans contrepartie non passée(s).';
                 if ($incertains) $msg .= ' '.$incertains.' ligne(s) au sens à vérifier non passée(s) : confirmez ou inversez le sens (⇄).';

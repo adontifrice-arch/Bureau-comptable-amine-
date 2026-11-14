@@ -15,12 +15,15 @@ class Saisie
         'achat' => ['compte_tiers' => '401', 'compte' => '', 'tva_taux' => 19, 'timbre' => 1, 'retenue_taux' => 0, 'tva_deductible' => true],
         'vente' => ['compte_tiers' => '411', 'compte' => '705', 'tva_taux' => 19, 'timbre' => 1, 'compte_timbre' => '437'],
         'banque' => ['compte' => '532', 'attente' => '461', 'regles' => [
-            ['mot_cle' => 'CNSS', 'compte' => '45311'],
+            // Dans l'ordre : la première règle trouvée s'applique (« COMMISSION PRELEVEMENT … CNSS » reste un frais bancaire)
             ['mot_cle' => 'AGIOS', 'compte' => '6511'],
             ['mot_cle' => 'FRAIS', 'compte' => '6278'],
             ['mot_cle' => 'COMMISSION', 'compte' => '6278'],
+            ['mot_cle' => 'COMM ', 'compte' => '6278'],
             ['mot_cle' => 'TENUE DE COMPTE', 'compte' => '6278'],
+            ['mot_cle' => 'CNSS', 'compte' => '45311'],
             ['mot_cle' => 'SALAIRE', 'compte' => '425'],
+            ['mot_cle' => 'REM TPE', 'compte' => '411000'],      // remises de paiements par carte (après « COMM » : la commission reste un frais)
         ]],
     ];
 

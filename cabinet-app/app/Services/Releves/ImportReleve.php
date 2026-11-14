@@ -21,7 +21,7 @@ use RuntimeException;
  */
 class ImportReleve
 {
-    /** @return array{0: Releve, 1: int} le relevé créé et le nombre de lignes écartées comme doublons */
+    /** @return array{0: Releve, 1: int, 2: ?array} le relevé créé, le nombre de lignes déjà importées écartées, le contrôle des totaux (PDF) */
     public static function importer(Client $client, UploadedFile $fichier, ?int $user): array
     {
         $ext = strtolower($fichier->getClientOriginalExtension());
@@ -29,14 +29,16 @@ class ImportReleve
             throw new RuntimeException('Format non pris en charge : '.$ext.'. Formats acceptés : Excel, CSV, Word (.docx), PDF ou image.');
         }
         $chemin = $fichier->getRealPath();
-        ['methode' => $methode, 'lignes' => $lignes] = LecteurReleve::lire($chemin, $ext);
+        $lu = LecteurReleve::lire($chemin, $ext);
+        ['methode' => $methode, 'lignes' => $lignes] = $lu;
+        $controle = $lu['controle'] ?? null;
 
         // Rien de lisible en local (PDF scanné, image) ou sens des opérations indéterminable : lecture par l'IA si elle est configurée
         $incertain = $lignes && collect($lignes)->every(fn ($l) => $l['sens_incertain']);
         if ((! $lignes || $incertain) && config('services.anthropic.key')) {
             $texte = $ext === 'docx' ? null : ($ext === 'pdf' ? LecteurReleve::pdfTexte($chemin) : null);
             $lignesIa = LecteurReleve::ia($chemin, $ext, $texte ?: null);
-            if ($lignesIa) [$methode, $lignes] = ['ia', $lignesIa];
+            if ($lignesIa) [$methode, $lignes, $controle] = ['ia', $lignesIa, null];
         }
         if (! $lignes) {
             throw new RuntimeException(in_array($ext, ['pdf', 'jpg', 'jpeg', 'png'], true) && ! config('services.anthropic.key')
@@ -46,18 +48,28 @@ class ImportReleve
 
         $banque = Saisie::banque($client->id);
         $proposer = self::proposeur($client->id, $banque);
-        return DB::transaction(function () use ($client, $fichier, $user, $methode, $lignes, $banque, $proposer) {
+        $cle = fn ($date, $libelle, $debit, $credit) => $date.'|'.$libelle.'|'.number_format((float) $debit, 3, '.', '').'|'.number_format((float) $credit, 3, '.', '');
+        return DB::transaction(function () use ($client, $fichier, $user, $methode, $lignes, $banque, $proposer, $cle, $controle) {
+            // Opérations déjà importées (relevés précédents), comptées : deux opérations identiques d'un même relevé restent deux lignes
+            $dejaLa = [];
+            $dates = array_column($lignes, 'date');
+            ReleveLigne::where('client_id', $client->id)->whereBetween('date', [min($dates), max($dates)])->get(['date', 'libelle', 'debit', 'credit'])
+                ->each(function ($l) use (&$dejaLa, $cle) { $k = $cle($l->date->format('Y-m-d'), $l->libelle, $l->debit, $l->credit); $dejaLa[$k] = ($dejaLa[$k] ?? 0) + 1; });
+
             $releve = Releve::create(['client_id' => $client->id, 'nom_fichier' => Str::limit($fichier->getClientOriginalName(), 250, ''),
                 'fichier' => $fichier->store('releves/'.CabinetCourant::exiger()), 'compte_banque' => $banque['compte'] ?: '532',
                 'methode' => $methode, 'importe_par' => $user]);
-            $doublons = 0;
+            $doublons = 0; $maintenant = now();
+            $nouvelles = [];
             foreach ($lignes as $l) {
-                $existe = ReleveLigne::where('client_id', $client->id)->whereDate('date', $l['date'])->where('libelle', $l['libelle'])
-                    ->where('debit', $l['debit'])->where('credit', $l['credit'])->exists();
-                if ($existe) { $doublons++; continue; }
-                ReleveLigne::create($l + ['client_id' => $client->id, 'releve_id' => $releve->id, 'compte' => $proposer($l['libelle'])]);
+                $k = $cle($l['date'], $l['libelle'], $l['debit'], $l['credit']);
+                if (($dejaLa[$k] ?? 0) > 0) { $dejaLa[$k]--; $doublons++; continue; }
+                $nouvelles[] = ['cabinet_id' => CabinetCourant::exiger(), 'client_id' => $client->id, 'releve_id' => $releve->id, 'date' => $l['date'],
+                    'libelle' => $l['libelle'], 'debit' => $l['debit'], 'credit' => $l['credit'], 'sens_incertain' => $l['sens_incertain'],
+                    'compte' => $proposer($l['libelle']), 'statut' => 'att', 'created_at' => $maintenant, 'updated_at' => $maintenant];
             }
-            return [$releve, $doublons];
+            foreach (array_chunk($nouvelles, 200) as $lot) ReleveLigne::insert($lot);      // relevés de plus de mille opérations
+            return [$releve, $doublons, $controle];
         });
     }
 

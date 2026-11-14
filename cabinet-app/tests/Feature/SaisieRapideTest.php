@@ -164,6 +164,24 @@ class SaisieRapideTest extends TestCase
         $this->assertSame('cpt', $l[0]->fresh()->statut);
     }
 
+    public function test_operations_identiques_conservees_et_comptabilisation_de_tout_le_releve(): void
+    {
+        $csv = "Date;Libellé;Débit;Crédit\n02/01/2026;REM TPE;;7,000\n02/01/2026;REM TPE;;7,000\n02/01/2026;COMM REM TPE 123;0,780;\n";
+        $this->post(route('compta.releves.importer'), ['fichier' => UploadedFile::fake()->createWithContent('janvier.csv', $csv)])->assertSessionHas('ok');
+        $this->assertSame(3, ReleveLigne::count());                                    // deux encaissements identiques : deux lignes
+        $this->assertSame('6278', ReleveLigne::where('debit', '>', 0)->value('compte'));   // règle par défaut « COMM »
+        $this->assertSame(['411000'], ReleveLigne::where('credit', '>', 0)->distinct()->pluck('compte')->all());   // règle par défaut « REM TPE »
+
+        // Réimport du même relevé avec une opération de plus : seule la nouvelle entre
+        $this->post(route('compta.releves.importer'), ['fichier' => UploadedFile::fake()->createWithContent('janvier-bis.csv', $csv."03/01/2026;REM TPE;;9,000\n")]);
+        $this->assertSame(4, ReleveLigne::count());
+
+        $this->post(route('compta.releves.lignes'), ['action' => 'comptabiliser_tout'])->assertSessionHas('ok');
+        $this->assertSame(4, ReleveLigne::where('statut', 'cpt')->count());
+        $this->assertSame(4, Ecriture::where('journal', 'BQ')->count());
+        $this->post(route('compta.releves.lignes'), ['action' => 'comptabiliser_tout'])->assertSessionHas('err');
+    }
+
     public function test_fichier_illisible_ou_format_refuse(): void
     {
         $this->post(route('compta.releves.importer'), ['fichier' => UploadedFile::fake()->createWithContent('vide.csv', "a;b\n1;2\n")])->assertSessionHas('err');

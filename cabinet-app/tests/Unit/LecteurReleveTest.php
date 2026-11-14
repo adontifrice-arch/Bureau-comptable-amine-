@@ -121,6 +121,47 @@ class LecteurReleveTest extends TestCase
         $this->assertFalse(collect($r['lignes'])->contains('sens_incertain', true));
     }
 
+    /** Mise en page type Attijari : « jj  mm » sans année, date de valeur, colonnes Débit / Crédit sans solde, lignes de suite, totaux. */
+    public function test_pdf_par_positions_sans_annee_ni_solde_avec_controle_des_totaux(): void
+    {
+        $cell = fn ($t, $x) => '<span style="position:absolute; left:'.$x.'pt">'.$t.'</span>';
+        $ligne = fn ($y, array $c) => '<div style="position:absolute; top:'.$y.'pt; left:0; width:560pt; height:10pt">'.implode('', $c).'</div>';
+        $ops = [
+            ['31  12', 'REM TPE 301225 0004797', '30  12 2025', '', '73,000'],
+            ['02  01', 'TICD TUNIS', '31  12 2025', '114,000', ''],
+            ['02  01', 'REGLEMENT PRELEVEMENT 1250562', '02  01 2026', '1 250,750', ''],
+            [null, 'ORG: CNSS', null, null, null],
+            ['05  01', 'COMMISSION VIR AUT BQ 020253', '05  01 2026', '1,785', ''],
+            [null, 'DONT TVA: 0,285', null, null, null],
+            ['09  01', 'ENCAISSEMENT CHEQUE 472727', '09  01 2026', '', '10 104,000'],
+        ];
+        $h = '<html><body style="font-family: DejaVu Sans; font-size:7pt">'.$ligne(20, [$cell('DATE LIBELLE VALEUR DEBIT CREDIT', 15)])
+            .$ligne(40, [$cell('SOLDE AU 31/12/2025', 180), $cell('2 526,313', 440)]);
+        $y = 60;
+        foreach ($ops as [$d, $lib, $val, $deb, $cre]) {
+            $c = [$cell($lib, 60)];
+            if ($d) $c = array_merge([$cell($d, 15)], $c, [$cell($val, 290)]);
+            if ($deb) $c[] = $cell($deb, 360);
+            if ($cre) $c[] = $cell($cre, 440);
+            $h .= $ligne($y, $c); $y += 14;
+        }
+        $h .= $ligne($y + 10, [$cell('TOTAUX', 180), $cell('1 366,535', 360), $cell('12 703,313', 440)]).'</body></html>';
+        $f = $this->fichier('pdf');
+        file_put_contents($f, Pdf::loadHTML($h)->output());
+
+        $r = L::lire($f, 'pdf');
+
+        $this->assertSame([
+            ['2025-12-31', 'REM TPE 301225 0004797', 0.0, 73.0],                          // année de la date de valeur
+            ['2026-01-02', 'TICD TUNIS', 114.0, 0.0],                                     // valeur en 2025, opération en janvier : 2026
+            ['2026-01-02', 'REGLEMENT PRELEVEMENT 1250562 ORG: CNSS', 1250.75, 0.0],      // ligne de suite rattachée
+            ['2026-01-05', 'COMMISSION VIR AUT BQ 020253 DONT TVA: 0,285', 1.785, 0.0],   // « 0,285 » n'est pas un montant de l'opération
+            ['2026-01-09', 'ENCAISSEMENT CHEQUE 472727', 0.0, 10104.0],
+        ], $this->resume($r['lignes']));
+        $this->assertFalse(collect($r['lignes'])->contains('sens_incertain', true));
+        $this->assertTrue($r['controle']['ok'], $r['controle']['message']);              // crédits 10 177 + solde initial 2 526,313 = 12 703,313
+    }
+
     public function test_texte_sans_solde_sens_selon_le_libelle(): void
     {
         $l = L::texte("12/03/2026 VERSEMENT ESPECES 500,000\n13/03/2026 PRELEVEMENT LOYER 900,000\n14/03/2026 OPERATION 42 75,000");

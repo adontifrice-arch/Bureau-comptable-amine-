@@ -34,7 +34,7 @@ class LecteurReleve
     /** Date jj/mm/aaaa (éventuellement collée au texte suivant) ou jj/mm/aa. */
     private const DATE = '\d{1,2}[\/.\-]\d{1,2}[\/.\-](?:\d{4}|\d{2}(?!\d))';
 
-    /** @return array{methode: string, lignes: array<int, array>} */
+    /** @return array{methode: string, lignes: array<int, array>, controle?: ?array{ok: bool, message: string}} */
     public static function lire(string $chemin, string $extension): array
     {
         $ext = strtolower($extension);
@@ -42,7 +42,7 @@ class LecteurReleve
             in_array($ext, ['csv', 'txt'], true) => ['methode' => 'csv', 'lignes' => self::tableau(self::csv($chemin), self::texteFichier($chemin))],
             in_array($ext, ['xlsx', 'xls', 'ods'], true) => ['methode' => 'xlsx', 'lignes' => self::tableau(self::tableur($chemin))],
             $ext === 'docx' => ['methode' => 'docx', 'lignes' => self::word($chemin)],
-            $ext === 'pdf' => ['methode' => 'pdf', 'lignes' => self::texte(self::pdfTexte($chemin))],
+            $ext === 'pdf' => self::pdf($chemin),
             in_array($ext, ['jpg', 'jpeg', 'png'], true) => ['methode' => 'ia', 'lignes' => []],     // image : seule l'IA peut la lire
             default => throw new RuntimeException('Format non pris en charge : '.$ext.'. Formats acceptés : Excel, CSV, Word (.docx), PDF.'),
         };
@@ -98,6 +98,146 @@ class LecteurReleve
             return implode($sep, array_map(fn ($e) => self::texteWord($e), $el->getElements()));
         }
         return method_exists($el, 'getText') && is_string($el->getText()) ? $el->getText() : '';
+    }
+
+    /** PDF : lecture par positions (colonnes Débit / Crédit), sinon lecture du texte. */
+    public static function pdf(string $chemin): array
+    {
+        $p = self::pdfPositions($chemin);
+        if ($p && $p['lignes']) return ['methode' => 'pdf', 'lignes' => $p['lignes'], 'controle' => $p['controle']];
+        return ['methode' => 'pdf', 'lignes' => self::texte(self::pdfTexte($chemin))];
+    }
+
+    /**
+     * Lecture d'un PDF par la position des textes sur la page (relevés dont l'extraction colle les colonnes,
+     * ex. Attijari : « 02  01 » sans année, montant collé à la date de valeur).
+     * - une opération = une ligne dont le premier texte, à gauche, est une date (jj mm, jj/mm/aaaa…) ;
+     * - l'année manquante vient de la date de valeur ;
+     * - la colonne d'un montant (débit, crédit, solde) se déduit de sa position horizontale : les positions forment
+     *   des groupes séparés, de gauche à droite débit, crédit, puis solde éventuel ;
+     * - les lignes sans date sous une opération complètent son libellé (« ORG: CNSS », « DONT TVA… ») ;
+     * - « SOLDE AU » et « TOTAUX » permettent de contrôler la lecture.
+     *
+     * @return ?array{lignes: array, controle: ?array{ok: bool, message: string}}
+     */
+    public static function pdfPositions(string $chemin): ?array
+    {
+        try {
+            $pages = (new Pdf)->parseFile($chemin)->getPages();
+        } catch (\Throwable) {
+            return null;
+        }
+        $ops = []; $soldeInitial = null; $totaux = null; $xsMontants = [];
+        foreach ($pages as $page) {
+            try { $items = $page->getDataTm(); } catch (\Throwable) { continue; }
+            $elements = [];
+            foreach ($items as [$m, $t]) {
+                $t = trim(preg_replace('/\s+/u', ' ', str_replace("\u{00A0}", ' ', (string) $t)));
+                if ($t === '' || preg_match('/\p{Arabic}/u', $t)) continue;
+                $elements[] = ['x' => (float) $m[4], 'y' => (float) $m[5], 't' => $t];
+            }
+            // Regroupement en lignes (même hauteur à 2,5 points près), de haut en bas puis de gauche à droite
+            usort($elements, fn ($a, $b) => $b['y'] <=> $a['y'] ?: $a['x'] <=> $b['x']);
+            $lignes = [];
+            foreach ($elements as $e) {
+                $k = array_key_last($lignes);
+                if ($k !== null && abs($lignes[$k]['y'] - $e['y']) <= 2.5) $lignes[$k]['el'][] = $e;
+                else $lignes[] = ['y' => $e['y'], 'el' => [$e]];
+            }
+            $derniere = null;                                    // dernière opération de la page (lignes de suite)
+            foreach ($lignes as $l) {
+                $el = $l['el'];
+                usort($el, fn ($a, $b) => $a['x'] <=> $b['x']);
+                $texte = Str::upper(Str::ascii(implode(' ', array_column($el, 't'))));
+                $montants = array_values(array_filter($el, fn ($e) => preg_match('/^'.self::MONTANT.'$/u', $e['t'])));
+                if (preg_match('/^(SOLDE|REPORT|TOTAUX|TOTAL|NOUVEAU SOLDE|ANCIEN SOLDE)\b/', ltrim($texte))) {
+                    if (preg_match('/^SOLDE AU/', ltrim($texte)) && $montants && $soldeInitial === null) $soldeInitial = ['x' => $montants[0]['x'], 'v' => self::montant($montants[0]['t'])];
+                    if (preg_match('/^TOTA(UX|L)\b/', ltrim($texte))) $totaux = count($montants) >= 2 ? $montants : [];   // [] : montants sur une ligne suivante
+                    $derniere = null;
+                    continue;
+                }
+                // Totaux sur une ligne suivant « TOTAUX » : montants seuls
+                if ($totaux === [] && count($montants) >= 2 && count($montants) === count($el)) { $totaux = $montants; continue; }
+
+                $premier = $el[0];
+                $date = null;
+                if ($premier['x'] < 60 && preg_match('/^(\d{1,2})[\s\/.\-]+(\d{1,2})(?:[\s\/.\-]+(\d{2,4}))?$/', $premier['t'], $d) && (int) $d[1] >= 1 && (int) $d[1] <= 31 && (int) $d[2] >= 1 && (int) $d[2] <= 12) {
+                    $date = ['j' => (int) $d[1], 'm' => (int) $d[2], 'a' => isset($d[3]) ? ((int) $d[3] < 100 ? 2000 + (int) $d[3] : (int) $d[3]) : null];
+                }
+                if (! $date) {
+                    // Suite du libellé de l'opération précédente (juste en dessous, sans montant)
+                    if ($derniere !== null && ! $montants && $premier['x'] >= 40 && $derniere['y'] - $l['y'] < 30) {
+                        $ops[$derniere['i']]['libelle'] .= ' '.implode(' ', array_column($el, 't'));
+                        $derniere['y'] = $l['y'];
+                    }
+                    continue;
+                }
+                $valeur = null; $libelle = [];
+                foreach (array_slice($el, 1) as $e) {
+                    if (in_array($e, $montants, true)) continue;
+                    if (! $valeur && preg_match('/^(\d{1,2})[\s\/.\-]+(\d{1,2})[\s\/.\-]+(\d{4})$/', $e['t'], $v)) { $valeur = ['m' => (int) $v[2], 'a' => (int) $v[3]]; continue; }
+                    $libelle[] = $e['t'];
+                }
+                if (! $montants) continue;
+                $a = $date['a'];
+                if (! $a && $valeur) $a = $valeur['a'] + ($date['m'] === 1 && $valeur['m'] === 12 ? 1 : 0) - ($date['m'] === 12 && $valeur['m'] === 1 ? 1 : 0);
+                $a ??= (int) now()->year;
+                if (! checkdate($date['m'], $date['j'], $a)) continue;
+                $ops[] = ['date' => sprintf('%04d-%02d-%02d', $a, $date['m'], $date['j']), 'libelle' => trim(implode(' ', $libelle)) ?: 'Opération',
+                    'montants' => array_map(fn ($e) => ['x' => $e['x'], 'v' => abs((float) self::montant($e['t']))], $montants)];
+                foreach ($montants as $e) $xsMontants[] = $e['x'];
+                $derniere = ['i' => array_key_last($ops), 'y' => $l['y']];
+            }
+        }
+        if (! $ops) return null;
+
+        // Colonnes : groupes de positions séparés d'au moins 25 points
+        sort($xsMontants);
+        $groupes = [[$xsMontants[0]]];
+        foreach (array_slice($xsMontants, 1) as $x) {
+            if ($x - end($groupes[array_key_last($groupes)]) > 25) $groupes[] = [$x];
+            else $groupes[array_key_last($groupes)][] = $x;
+        }
+        $colonne = function (float $x) use ($groupes): ?int {
+            foreach ($groupes as $i => $g) if ($x >= min($g) - 12 && $x <= max($g) + 12) return $i;
+            return null;
+        };
+        $deuxColonnes = count($groupes) >= 2;
+
+        $out = [];
+        foreach ($ops as $o) {
+            $debit = 0.0; $credit = 0.0; $incertain = false;
+            if ($deuxColonnes) {
+                foreach ($o['montants'] as $mt) {
+                    $c = $colonne($mt['x']);
+                    if ($c === 0) $debit += $mt['v'];
+                    elseif ($c === 1) $credit += $mt['v'];          // groupe 2 et suivants : solde, ignoré
+                }
+            } else {
+                $v = $o['montants'][0]['v'];
+                $sens = self::sensDuLibelle($o['libelle']);
+                [$debit, $credit, $incertain] = $sens ? [0.0, $v, false] : [$v, 0.0, $sens === null];
+            }
+            if ($debit < 0.0005 && $credit < 0.0005) continue;
+            $out[] = ['date' => $o['date'], 'libelle' => Str::limit(trim(preg_replace('/\s+/u', ' ', $o['libelle'])), 250, ''),
+                'debit' => round($debit, 3), 'credit' => round($credit, 3), 'sens_incertain' => $incertain];
+        }
+
+        // Contrôle avec les totaux du relevé (le total crédit inclut souvent le solde initial créditeur)
+        $controle = null;
+        if ($deuxColonnes && $totaux && count($totaux) >= 2) {
+            $tot = [0 => 0.0, 1 => 0.0];
+            foreach ($totaux as $t) { $c = $colonne($t['x']); if ($c === 0 || $c === 1) $tot[$c] += abs((float) self::montant($t['t'])); }
+            $sd = round(array_sum(array_column($out, 'debit')), 3); $sc = round(array_sum(array_column($out, 'credit')), 3);
+            $si = $soldeInitial ? ['c' => $colonne($soldeInitial['x']), 'v' => abs((float) $soldeInitial['v'])] : null;
+            $okD = abs($sd - $tot[0]) < 0.01 || ($si && $si['c'] === 0 && abs($sd + $si['v'] - $tot[0]) < 0.01);
+            $okC = abs($sc - $tot[1]) < 0.01 || ($si && $si['c'] === 1 && abs($sc + $si['v'] - $tot[1]) < 0.01);
+            $controle = ['ok' => $okD && $okC, 'message' => $okD && $okC
+                ? 'totaux du relevé vérifiés (débits '.number_format($sd, 3, ',', ' ').', crédits '.number_format($sc, 3, ',', ' ').')'
+                : 'écart avec les totaux du relevé : débits lus '.number_format($sd, 3, ',', ' ').' / relevé '.number_format($tot[0], 3, ',', ' ')
+                    .', crédits lus '.number_format($sc, 3, ',', ' ').' / relevé '.number_format($tot[1], 3, ',', ' ').' — vérifiez les lignes'];
+        }
+        return ['lignes' => $out, 'controle' => $controle];
     }
 
     public static function pdfTexte(string $chemin): string
