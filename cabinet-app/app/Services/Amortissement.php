@@ -41,10 +41,13 @@ class Amortissement
         return str_starts_with($compte, '21') ? 'incorporelle' : 'materiel';
     }
 
-    /** Durée d'amortissement en années, déduite du taux linéaire. */
+    /**
+     * Durée d'amortissement en années, déduite du taux linéaire. Arrondie au centième : un taux arrondi
+     * comme 33,33 % (100 / 33,33 = 3,0003) correspond à 3 ans, pas à 3 ans et une fraction.
+     */
     public static function duree(float $taux): float
     {
-        return $taux > 0 ? 100 / $taux : 0;
+        return $taux > 0 ? round(100 / $taux, 2) : 0;
     }
 
     /** Coefficient du dégressif selon la durée : 1,5 jusqu'à 4 ans, 2 pour 5–6 ans, 2,5 au-delà. */
@@ -102,6 +105,8 @@ class Amortissement
                     $restant = $duree - $ecoule;
                     $lineaireRestant = $restant > 0 ? $reste * min(1, $f / $restant) : $reste;
                     $dot = max(($vo - $cumul) * $tauxDegressif * $f, $lineaireRestant);
+                } elseif ($ecoule + $f >= $duree - 1e-9) {
+                    $dot = $reste;      // dernière annuité : solde le reliquat dû à l'arrondi du taux (ex. 33,33 %)
                 } else {
                     $dot = $base * $taux / 100 * $f;
                 }

@@ -27,6 +27,21 @@ class AmortissementTest extends TestCase
         $this->assertSame(0.0, $p[2029]['vnc']);
     }
 
+    public function test_taux_arrondi_33_33_amorti_en_trois_ans_sans_reliquat(): void
+    {
+        // 100 / 33,33 = 3,0003 ans : sans correction, 1 TND restait à amortir une 4e année
+        $p = Amortissement::plan(['valeur_origine' => 10000, 'methode' => 'lineaire', 'taux' => 33.33, 'prorata' => 'mois', 'date_mise_service' => '2026-01-01'], 2030);
+
+        $this->assertSame(3.0, Amortissement::duree(33.33));
+        $this->assertSame([2026 => 3333.0, 2027 => 3333.0, 2028 => 3334.0, 2029 => 0.0, 2030 => 0.0], $this->dotations($p));
+        $this->assertSame(0.0, $p[2028]['vnc']);
+
+        // Même chose en dégressif (coefficient 1,5) : la dernière annuité solde la base
+        $d = Amortissement::plan(['valeur_origine' => 10000, 'methode' => 'degressif', 'taux' => 33.33, 'prorata' => 'mois', 'date_mise_service' => '2026-01-01'], 2030);
+        $this->assertSame(0.0, $d[2028]['vnc']);
+        $this->assertSame(0.0, $d[2029]['dotation']);
+    }
+
     public function test_recette_machine_degressif_avec_passage_au_lineaire(): void
     {
         // Machine 10 000 TND, durée 5 ans (taux linéaire 20 %, coefficient 2) → 4 000, 2 400, 1 440, 1 080, 1 080
