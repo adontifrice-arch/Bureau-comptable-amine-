@@ -160,7 +160,7 @@ class DeclarationController extends Controller
         $ks = FactureRecue::where('client_id', $c->id)->where('statut', 'val')->whereBetween('date', [$from, $to])->get();
         $immo = 0; $rh = 0; $rm = 0;
         foreach ($ks as $x) {
-            if (str_starts_with((string) $x->compte, '2') && $x->tva_deductible) $immo += $x->tva;
+            if ($x->tva_deductible) $immo += array_sum(array_column($x->lignesImmobilisations(), 'tva'));    // lignes de la facture imputées en classe 2
             if (($rs = $x->retenue()) > 0) { if (in_array(Compta::categorieRetenue($x), ['hon', 'loy', 'com', 'cou'])) $rh += $rs; else $rm += $rs; }
         }
         $f = $d->champs ?? [];

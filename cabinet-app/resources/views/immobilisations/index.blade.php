@@ -172,7 +172,7 @@
                 @foreach($aImporter as $f)
                     <tr><td><input type="checkbox" name="factures[]" value="{{ $f->id }}" checked class="rounded border-slate-300 text-brand-600" aria-label="Importer la facture {{ $f->reference }}"></td>
                         <td>{{ dfr($f->date) }}</td><td>{{ $f->fournisseur }}<div class="text-xs text-slate-500">{{ $f->description ?: $f->reference }}</div></td>
-                        <td>{{ $f->compte }}</td><td class="text-xs">{{ A::NATURES[A::natureDuCompte($f->compte, $f->description.' '.$f->fournisseur)][0] }}</td><td class="num">{{ tnd($f->ht, false) }}</td></tr>
+                        @php $immo = $f->lignesImmobilisations(); @endphp<td>{{ implode(', ', array_unique(array_column($immo, 'compte'))) }}</td><td class="text-xs">{{ A::NATURES[A::natureDuCompte($immo[0]['compte'], $f->description.' '.$f->fournisseur)][0] }}</td><td class="num">{{ tnd(array_sum(array_column($immo, 'ht')), false) }}</td></tr>
                 @endforeach
                 </tbody></table>
                 <div class="flex justify-end"><button class="btn-primary">Importer la sélection</button></div>

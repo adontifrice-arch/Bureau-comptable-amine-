@@ -2,6 +2,7 @@
 <x-layouts.app title="Comptabilité">
     {{-- Plan comptable pour les champs de compte : un numéro absent propose la création du sous-compte (resources/js/comptes.js) --}}
     <script>window.PLAN = @js((object) $plan); window.URL_COMPTES = @js(route('compta.comptes.store'));</script>
+    <datalist id="taux-tva">@foreach(\App\Services\Saisie::TAUX_TVA as $t)<option value="{{ $t }}">{{ $t }} %</option>@endforeach</datalist>
     <x-page-header title="Comptabilité" :subtitle="$client->nom.' · exercice '.$annee">
         <x-client-picker :clients="$clients" :current="$client" :route="route('compta.index')" :params="['tab' => $tab, 'annee' => $annee]"/>
         <form><input type="hidden" name="tab" value="{{ $tab }}"><input type="number" name="annee" value="{{ $annee }}" class="input w-24" onchange="this.form.submit()"></form>
@@ -27,7 +28,7 @@
                     <td><div class="font-medium">{{ $f->fournisseur }}</div><div class="text-xs text-slate-500">{{ $f->reference }} {{ $f->matricule_fiscal ? '· MF '.$f->matricule_fiscal : '' }} {{ $f->retenue_taux > 0 ? '· RS '.(float)$f->retenue_taux.' %' : '' }}</div>
                         @foreach((array) $f->anomalies as $a)<div class="text-xs text-amber-700">⚠ {{ $a }}</div>@endforeach
                         @if($f->statut === 'rej')<div class="text-xs text-rose-600">Motif : {{ $f->motif_rejet }}</div>@endif</td>
-                    <td class="text-xs">{{ $f->compte ? $f->compte.' '.\App\Services\Compta::libelle($f->compte) : '—' }}</td>
+                    <td class="text-xs">@php $lf = $f->lignesSaisie(); @endphp @if(count($lf) > 1)@foreach($lf as $x)<div><span class="font-mono">{{ $x['compte'] ?: '—' }}</span> <span class="text-slate-400">{{ n3($x['ht']) }} · {{ (float) $x['tva_taux'] }} %</span></div>@endforeach @else{{ $f->compte ? $f->compte.' '.\App\Services\Compta::libelle($f->compte) : '—' }}@endif</td>
                     <td class="num">{{ tnd($f->ht, false) }}</td><td class="num">{{ tnd($f->tva, false) }}</td><td class="num font-semibold">{{ tnd($f->ttc(), false) }}</td>
                     <td>@if($f->statut === 'val')<span class="badge-green">Comptabilisée</span><div class="mt-0.5 text-[11px] text-slate-400">{{ $f->validePar?->name }}</div>@elseif($f->statut === 'rej')<span class="badge-red">Rejetée</span>@else<span class="badge-amber">À valider</span>@endif</td>
                     <td class="whitespace-nowrap text-right">
@@ -37,7 +38,7 @@
                                 <form method="POST" action="{{ route('compta.factures.valider', $f) }}" class="inline">@csrf<button class="btn-success btn-sm">Valider</button></form>
                                 <form method="POST" action="{{ route('compta.factures.rejeter', $f) }}" class="inline" onsubmit="this.motif.value = prompt('Motif du rejet ?') || ''">@csrf<input type="hidden" name="motif"><button class="btn-secondary btn-sm !text-rose-600">Rejeter</button></form>
                             @endif
-                            <button class="btn-icon" x-data @click="$dispatch('fr-edit', @js($f->only(['id','fournisseur','matricule_fiscal','reference','description','ht','tva_taux','tva','timbre','compte','retenue_taux']) + ['date' => $f->date->format('Y-m-d'), 'tva_deductible' => $f->tva_deductible ? '1' : '0'])); $dispatch('open-modal', 'fr')"><x-icon name="edit" class="h-4 w-4"/></button>
+                            <button class="btn-icon" x-data @click="$dispatch('fr-edit', @js($f->only(['id','fournisseur','matricule_fiscal','reference','description','ht','tva_taux','tva','timbre','compte','retenue_taux']) + ['lignes' => $f->lignesSaisie(), 'date' => $f->date->format('Y-m-d'), 'tva_deductible' => $f->tva_deductible ? '1' : '0'])); $dispatch('open-modal', 'fr')"><x-icon name="edit" class="h-4 w-4"/></button>
                             <x-confirm-delete :action="route('compta.factures.destroy', $f)"/>
                         @endif
                     </td>
@@ -46,28 +47,42 @@
             </tbody></table>
         </div>
         @php $imp = collect($plan)->filter(fn($l, $n) => preg_match('/^[26]/', $n) && !preg_match('/^2[89]/', $n)); $pa = $saisie['achat']; $mAch = $modeles->where('type', 'achat'); @endphp
-        <x-modal name="fr" title="Facture d’achat" size="max-w-3xl">
-            <form method="POST" enctype="multipart/form-data" x-data="{ e: {}, modeles: @js($mAch->mapWithKeys(fn ($m) => [$m->id => $m->valeurs()])), defaut: @js($pa['comptes']), propositions: @js($pa['comptes']), deModele: false, calc() { this.e.tva = (Math.round((+this.e.ht||0) * (+this.e.tva_taux||0) * 10) / 1000).toFixed(3) }, tauxDe(c) { const p = this.propositions.find(x => x.compte === c) || this.defaut.find(x => x.compte === c); return p ? +p.tva_taux : undefined }, appliquer(id) { const m = this.modeles[id]; if (! m) return; const { comptes, ...v } = m; Object.assign(this.e, v); this.deModele = !! (comptes && comptes.length); this.propositions = this.deModele ? comptes : this.defaut; this.calc() }, choisirCompte(c) { if (c !== undefined) this.e.compte = c; const t = this.tauxDe(this.e.compte); if (t !== undefined) { this.e.tva_taux = t; this.calc() } }, pourcent(t) { return String(+t).replace('.', ',') + ' %' } }"
-                  @fr-edit.window="propositions = defaut; deModele = false; e = Object.assign({tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }}, timbre: {{ (float) $pa['timbre'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', compte: @js((string) $pa['compte']), date: '{{ now()->format('Y-m-d') }}', retenue_taux: {{ (float) $pa['retenue_taux'] }}}, $event.detail)"
+        <x-modal name="fr" title="Facture d’achat" size="max-w-4xl">
+            @php $propA = collect($pa['comptes'])->pluck('compte')->all(); @endphp
+            <datalist id="cpts-ach" data-plan>@foreach($pa['comptes'] as $c)<option value="{{ $c['compte'] }}">★ TVA {{ (float) $c['tva_taux'] }} % — {{ \App\Services\Compta::libelle($c['compte']) }}</option>@endforeach @foreach($imp as $n => $l)@continue(in_array((string) $n, $propA, true))<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist>
+            <form method="POST" enctype="multipart/form-data"
+                  x-data="factureVentilee(@js(['modeles' => $mAch->mapWithKeys(fn ($m) => [$m->id => $m->valeurs()]), 'defaut' => $pa['comptes'], 'taux' => \App\Services\Saisie::tauxParDefaut($pa),
+                      'vide' => ['timbre' => (float) $pa['timbre'], 'tva_deductible' => $pa['tva_deductible'] ? '1' : '0', 'compte' => (string) $pa['compte'], 'date' => now()->format('Y-m-d'), 'retenue_taux' => (float) $pa['retenue_taux']]]))"
+                  @fr-edit.window="ouvrir($event.detail)"
                   :action="e.id ? '{{ url('comptabilite/factures') }}/' + e.id : '{{ route('compta.factures.store') }}'" class="grid gap-4 md:grid-cols-3">@csrf
                 <template x-if="e.id"><input type="hidden" name="_method" value="PUT"></template>
-                @if($mAch->count())<div class="md:col-span-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40"><label class="label" for="fr-mod">Saisie rapide : partir d’un modèle</label><select id="fr-mod" class="input" @change="appliquer($event.target.value); $event.target.value = ''"><option value="">— choisir un modèle —</option>@foreach($mAch as $m)<option value="{{ $m->id }}">{{ $m->nom }}{{ $m->compte ? ' · '.$m->compte : '' }}</option>@endforeach</select></div>@endif
-                <div><label class="label">Date *</label><input type="date" name="date" class="input" x-model="e.date" required></div>
-                <div class="md:col-span-2"><label class="label">Fournisseur *</label><input name="fournisseur" class="input" x-model="e.fournisseur" required></div>
-                <div><label class="label">Matricule fiscal</label><input name="matricule_fiscal" class="input" x-model="e.matricule_fiscal"></div>
-                <div><label class="label">N° de facture</label><input name="reference" class="input" x-model="e.reference"></div>
-                <div><label class="label">Description</label><input name="description" class="input" x-model="e.description"></div>
-                <div><label class="label">Montant HT *</label><input type="number" step="0.001" name="ht" class="input" x-model="e.ht" @input="e.tva = (Math.round((+e.ht||0) * (+e.tva_taux||0) * 10) / 1000).toFixed(3)" required></div>
-                <div><label class="label">Taux TVA (%)</label><input type="number" step="0.01" name="tva_taux" class="input" x-model="e.tva_taux" @input="e.tva = (Math.round((+e.ht||0) * (+e.tva_taux||0) * 10) / 1000).toFixed(3)"></div>
-                <div><label class="label">Montant TVA</label><input type="number" step="0.001" name="tva" class="input" x-model="e.tva"></div>
-                <div><label class="label">Droit de timbre</label><input type="number" step="0.001" name="timbre" class="input" x-model="e.timbre"></div>
-                <div class="md:col-span-2"><label class="label" for="fr-cpt">Compte de charge / immobilisation</label><input id="fr-cpt" name="compte" class="input font-mono" list="cpts-ach" x-model="e.compte" @change="choisirCompte()" data-compte autocomplete="off" placeholder="ex. 6061 — un nouveau numéro peut être créé"><p data-compte-libelle class="mt-1 truncate text-xs text-slate-400"></p>
-                    <div class="mt-1 flex flex-wrap items-center gap-1" x-show="propositions.length"><span class="text-[11px] text-slate-400" x-text="deModele ? 'Modèle :' : 'Proposés :'"></span><template x-for="c in propositions" :key="c.compte"><button type="button" class="!py-0.5" :class="e.compte === c.compte ? 'badge-blue' : 'badge-gray'" @click="choisirCompte(c.compte)" :title="(window.PLAN || {})[c.compte] || ''" x-text="c.compte + ' · ' + pourcent(c.tva_taux)"></button></template></div>
-                    @php $propA = collect($pa['comptes'])->pluck('compte')->all(); @endphp
-                    <datalist id="cpts-ach" data-plan>@foreach($pa['comptes'] as $c)<option value="{{ $c['compte'] }}">★ TVA {{ (float) $c['tva_taux'] }} % — {{ \App\Services\Compta::libelle($c['compte']) }}</option>@endforeach @foreach($imp as $n => $l)@continue(in_array((string) $n, $propA, true))<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist></div>
-                <div><label class="label">TVA récupérable</label><select name="tva_deductible" class="input" x-model="e.tva_deductible"><option value="1">Oui (4366)</option><option value="0">Non (incluse en charge)</option></select></div>
-                <div><label class="label">Retenue à la source (%)</label><input type="number" step="0.01" name="retenue_taux" class="input" x-model="e.retenue_taux"></div>
-                <div><label class="label">Pièce (PDF / image)</label><input type="file" name="fichier" accept=".pdf,image/*" class="input"></div>
+                @if($mAch->count())<div class="md:col-span-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/40"><label class="label" for="fr-mod">Saisie rapide : partir d’un modèle</label><select id="fr-mod" class="input" @change="appliquer($event.target.value); $event.target.value = ''"><option value="">— choisir un modèle —</option>@foreach($mAch as $m)<option value="{{ $m->id }}">{{ $m->nom }}{{ count($m->lignes()) > 1 ? ' · '.count($m->lignes()).' comptes' : ($m->compte ? ' · '.$m->compte : '') }}</option>@endforeach</select></div>@endif
+                <div><label class="label" for="fr-date">Date *</label><input id="fr-date" type="date" name="date" class="input" x-model="e.date" required></div>
+                <div class="md:col-span-2"><label class="label" for="fr-four">Fournisseur *</label><input id="fr-four" name="fournisseur" class="input" x-model="e.fournisseur" required></div>
+                <div><label class="label" for="fr-mf">Matricule fiscal</label><input id="fr-mf" name="matricule_fiscal" class="input" x-model="e.matricule_fiscal"></div>
+                <div><label class="label" for="fr-ref">N° de facture</label><input id="fr-ref" name="reference" class="input" x-model="e.reference"></div>
+                <div><label class="label" for="fr-desc">Description</label><input id="fr-desc" name="description" class="input" x-model="e.description"></div>
+                <div class="md:col-span-3">
+                    <div class="mb-1 hidden grid-cols-12 gap-2 text-xs font-medium text-slate-500 md:grid"><div class="col-span-5">Compte de charge / immobilisation</div><div class="col-span-2 text-right">Montant HT</div><div class="col-span-2">TVA %</div><div class="col-span-2 text-right">Montant TVA</div></div>
+                    <template x-for="(l, i) in lignes" :key="i">
+                        <div class="mb-2 grid grid-cols-12 items-start gap-2" @focusin="active = i">
+                            <div class="col-span-12 md:col-span-5"><input class="input font-mono" :class="lignes.length > 1 && active === i ? 'ring-1 ring-brand-400' : ''" list="cpts-ach" :name="`lignes[${i}][compte]`" x-model="l.compte" @change="compteChange(i)" data-compte autocomplete="off" placeholder="Compte — un nouveau numéro peut être créé" aria-label="Compte"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-effect="$el.textContent = (window.PLAN || {})[l.compte] || ''"></p></div>
+                            <div class="col-span-4 md:col-span-2"><input type="number" step="0.001" min="0" class="input text-right" :name="`lignes[${i}][ht]`" x-model="l.ht" @input="calc(l)" placeholder="HT" aria-label="Montant HT"></div>
+                            <div class="col-span-3 md:col-span-2"><input type="number" step="0.01" min="0" max="100" class="input" list="taux-tva" :name="`lignes[${i}][tva_taux]`" x-model="l.tva_taux" @input="calc(l)" aria-label="Taux de TVA"></div>
+                            <div class="col-span-4 md:col-span-2"><input type="number" step="0.001" min="0" class="input text-right" :name="`lignes[${i}][tva]`" x-model="l.tva" placeholder="TVA" aria-label="Montant TVA"></div>
+                            <div class="col-span-1"><button type="button" class="btn-icon" x-show="lignes.length > 1" @click="retirer(i)" title="Retirer la ligne"><x-icon name="trash" class="h-4 w-4"/></button></div>
+                        </div>
+                    </template>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" class="btn-secondary btn-sm" @click="ajouter()">+ Ligne</button>
+                        <div class="flex flex-wrap items-center gap-1" x-show="propositions.length"><span class="text-[11px] text-slate-400" x-text="(deModele ? 'Modèle' : 'Proposés') + (lignes.length > 1 ? ' (ligne ' + (active + 1) + ') :' : ' :')"></span><template x-for="c in propositions" :key="c.compte"><button type="button" class="!py-0.5" :class="lignes[active] && lignes[active].compte === c.compte ? 'badge-blue' : 'badge-gray'" @click="choisirCompte(c.compte)" :title="(window.PLAN || {})[c.compte] || ''" x-text="c.compte + ' · ' + pourcent(c.tva_taux)"></button></template></div>
+                        <div class="ml-auto text-sm">HT <b class="font-mono" x-text="tnd(totalHt)"></b> · TVA <b class="font-mono" x-text="tnd(totalTva)"></b> · TTC <b class="font-mono" x-text="tnd(ttc)"></b></div>
+                    </div>
+                </div>
+                <div><label class="label" for="fr-tim">Droit de timbre</label><input id="fr-tim" type="number" step="0.001" name="timbre" class="input" x-model="e.timbre"></div>
+                <div><label class="label" for="fr-ded">TVA récupérable</label><select id="fr-ded" name="tva_deductible" class="input" x-model="e.tva_deductible"><option value="1">Oui (4366)</option><option value="0">Non (incluse en charge)</option></select></div>
+                <div><label class="label" for="fr-rs">Retenue à la source (%)</label><input id="fr-rs" type="number" step="0.01" name="retenue_taux" class="input" x-model="e.retenue_taux"></div>
+                <div class="md:col-span-2"><label class="label" for="fr-fic">Pièce (PDF / image)</label><input id="fr-fic" type="file" name="fichier" accept=".pdf,image/*" class="input"></div>
                 <div class="flex flex-wrap items-center justify-between gap-3 md:col-span-3"><label class="flex items-center gap-2 text-sm"><input type="checkbox" name="memoriser" value="1" class="rounded border-slate-300 text-brand-600"> Mémoriser comme modèle pour ce fournisseur</label><button class="btn-primary">Enregistrer (en attente de validation)</button></div>
             </form>
         </x-modal>

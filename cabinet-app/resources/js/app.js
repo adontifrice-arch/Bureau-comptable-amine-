@@ -1,5 +1,6 @@
 import Alpine from 'alpinejs';
 import './comptes';
+import factureVentilee from './factures';
 
 window.Alpine = Alpine;
 
@@ -26,5 +27,8 @@ Alpine.data('facture', (init) => ({
     get mtva() { return this.ht * (+this.tva || 0) / 100; },
     get ttc() { return this.ht + this.mtva + (this.devis ? 0 : (+this.timbre || 0)); },
 }));
+
+// Factures d'achat et de vente ventilées sur plusieurs comptes (comptabilité)
+Alpine.data('factureVentilee', factureVentilee);
 
 Alpine.start();

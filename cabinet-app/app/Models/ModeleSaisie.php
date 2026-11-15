@@ -36,11 +36,14 @@ class ModeleSaisie extends Model
         if (trim($tiers) === '') return;
         $m = static::firstOrNew(['client_id' => $client, 'type' => $type, 'tiers' => $tiers]);
         $lignes = $m->exists ? $m->lignes() : [];
-        $compte = (string) ($d['compte'] ?? '');
         $taux = (float) ($d['tva_taux'] ?? 19);
-        if ($compte !== '') {
+        // Comptes de la facture (ventilée ou non), dans l'ordre : ils passent en tête du modèle
+        $factures = $d['lignes'] ?? null ?: [['compte' => $d['compte'] ?? '', 'tva_taux' => $taux]];
+        foreach (array_reverse($factures) as $f) {
+            $compte = (string) ($f['compte'] ?? '');
+            if ($compte === '') continue;
             $lignes = array_values(array_filter($lignes, fn ($l) => $l['compte'] !== $compte));
-            array_unshift($lignes, ['compte' => $compte, 'tva_taux' => $taux]);      // le dernier compte utilisé passe en tête
+            array_unshift($lignes, ['compte' => $compte, 'tva_taux' => (float) ($f['tva_taux'] ?? $taux)]);
         }
         $m->fill(['nom' => $m->nom ?: $tiers, 'matricule_fiscal' => $d['matricule_fiscal'] ?? $m->matricule_fiscal, 'description' => $d['description'] ?? $m->description,
             'comptes' => $lignes, 'compte' => $lignes[0]['compte'] ?? null, 'tva_taux' => $lignes[0]['tva_taux'] ?? $taux,

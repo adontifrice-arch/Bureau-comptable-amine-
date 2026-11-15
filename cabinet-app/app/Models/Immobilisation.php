@@ -24,7 +24,7 @@ class Immobilisation extends Model
     /** Compte de la facture reçue importée (ex. 213 Logiciels), sinon compte de la nature. */
     public function compteImmobilisation(): string
     {
-        $c = (string) $this->factureRecue?->compte;
+        $c = (string) ($this->factureRecue?->lignesImmobilisations()[0]['compte'] ?? $this->factureRecue?->compte);   // facture ventilée : sa ligne en classe 2
         return str_starts_with($c, '2') ? $c : (Amortissement::NATURES[$this->nature][1] ?? '22');
     }
 

@@ -96,8 +96,10 @@ class ComptabilisationAmortissements
     public static function facturesAImporter(Client $client): Collection
     {
         $deja = Immobilisation::where('client_id', $client->id)->whereNotNull('facture_recue_id')->pluck('facture_recue_id');
-        return FactureRecue::where('client_id', $client->id)->where('statut', 'val')->where('compte', 'like', '2%')->where('compte', 'not like', '28%')->where('compte', 'not like', '29%')
-            ->whereNotIn('id', $deja)->orderBy('date')->get();
+        // Compte de la facture, ou de l'une de ses lignes (facture ventilée), en classe 2
+        return FactureRecue::where('client_id', $client->id)->where('statut', 'val')->whereNotIn('id', $deja)
+            ->where(fn ($q) => $q->where('compte', 'like', '2%')->orWhere('lignes', 'like', '%"compte":"2%'))
+            ->orderBy('date')->get()->filter(fn (FactureRecue $f) => $f->lignesImmobilisations())->values();
     }
 
     /** Crée les biens correspondant aux factures reçues choisies ; l'acquisition est déjà comptabilisée par la facture. */
@@ -105,12 +107,15 @@ class ComptabilisationAmortissements
     {
         $n = 0;
         foreach (self::facturesAImporter($client)->whereIn('id', $ids) as $f) {
-            $nature = Amortissement::natureDuCompte((string) $f->compte, $f->description.' '.$f->fournisseur);
-            $deductible = $f->tva_deductible && $f->tva > 0;
+            // Seules les lignes imputées en classe 2 forment le bien (une facture ventilée peut aussi porter des charges)
+            $immo = $f->lignesImmobilisations();
+            $ht = r3(array_sum(array_column($immo, 'ht'))); $tva = r3(array_sum(array_column($immo, 'tva')));
+            $nature = Amortissement::natureDuCompte($immo[0]['compte'], $f->description.' '.$f->fournisseur);
+            $deductible = $f->tva_deductible && $tva > 0;
             Immobilisation::create([
                 'client_id' => $client->id, 'nature' => $nature, 'designation' => $f->description ?: 'Facture '.$f->reference.' – '.$f->fournisseur,
-                'date_mise_service' => $f->date, 'valeur_origine' => $deductible ? $f->ht : r3($f->ht + $f->tva),   // TVA non déductible : incluse dans le coût
-                'tva' => $deductible ? $f->tva : 0, 'fournisseur' => $f->fournisseur, 'reference' => $f->reference, 'methode' => 'lineaire',
+                'date_mise_service' => $f->date, 'valeur_origine' => $deductible ? $ht : r3($ht + $tva),   // TVA non déductible : incluse dans le coût
+                'tva' => $deductible ? $tva : 0, 'fournisseur' => $f->fournisseur, 'reference' => $f->reference, 'methode' => 'lineaire',
                 'taux' => Amortissement::NATURES[$nature][3], 'prorata' => 'jour', 'facture_recue_id' => $f->id,
             ]);
             $n++;

@@ -113,27 +113,33 @@ class ComptaController extends Controller
         return Storage::response($fr->fichier);
     }
 
+    /** Facture d'achat : lignes « compte · HT · taux · TVA » (ou, saisie à une seule ligne, champs ht / compte / tva_taux / tva). */
     private function donnees(Request $r): array
     {
-        {
-            $d = $r->validate(['date' => 'required|date', 'fournisseur' => 'required|max:255', 'matricule_fiscal' => 'nullable|max:50', 'reference' => 'nullable|max:100',
-                'description' => 'nullable|max:255', 'ht' => 'required|numeric|min:0.001', 'tva_taux' => 'nullable|numeric|min:0', 'tva' => 'nullable|numeric|min:0',
-                'timbre' => 'nullable|numeric|min:0', 'compte' => 'nullable|max:20', 'tva_deductible' => 'nullable|boolean', 'retenue_taux' => 'nullable|numeric|min:0|max:100',
-                'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp']);
-            unset($d['fichier']);
-            $d['tva_taux'] = $d['tva_taux'] ?? 19;
-            $d['tva'] = $r->filled('tva') ? $d['tva'] : r3($d['ht'] * $d['tva_taux'] / 100);
-            $d['timbre'] = $d['timbre'] ?? 0;
-            $d['retenue_taux'] = $d['retenue_taux'] ?? 0;
-            $d['tva_deductible'] = $r->boolean('tva_deductible', true);
-            return $d;
-        }
+        $ventilee = $r->has('lignes');
+        $d = $r->validate(['date' => 'required|date', 'fournisseur' => 'required|max:255', 'matricule_fiscal' => 'nullable|max:50', 'reference' => 'nullable|max:100',
+            'description' => 'nullable|max:255', 'timbre' => 'nullable|numeric|min:0', 'tva_deductible' => 'nullable|boolean', 'retenue_taux' => 'nullable|numeric|min:0|max:100',
+            'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp'] + ($ventilee
+            ? ['lignes' => 'required|array|min:1|max:50', 'lignes.*.compte' => 'nullable|regex:/^\d{1,8}$/', 'lignes.*.ht' => 'nullable|numeric|min:0',
+                'lignes.*.tva_taux' => 'nullable|numeric|min:0|max:100', 'lignes.*.tva' => 'nullable|numeric|min:0']
+            : ['ht' => 'required|numeric|min:0.001', 'tva_taux' => 'nullable|numeric|min:0', 'tva' => 'nullable|numeric|min:0', 'compte' => 'nullable|max:20']),
+            ['lignes.*.compte.regex' => 'Un compte ne comporte que des chiffres.']);
+        unset($d['fichier']);
+        $lignes = $ventilee ? $d['lignes'] : [['compte' => $d['compte'] ?? '', 'ht' => $d['ht'], 'tva_taux' => $d['tva_taux'] ?? null, 'tva' => $r->filled('tva') ? $d['tva'] : null]];
+        $v = FactureRecue::ventiler($lignes, (float) ($d['tva_taux'] ?? Saisie::achat((int) session('dossier'))['tva_taux']));
+        if ($v['ht'] <= 0) throw \Illuminate\Validation\ValidationException::withMessages(['lignes' => 'Saisissez au moins une ligne avec un montant HT.']);
+        unset($d['lignes']);
+        $d = $v + $d;
+        $d['timbre'] = $d['timbre'] ?? 0;
+        $d['retenue_taux'] = $d['retenue_taux'] ?? 0;
+        $d['tva_deductible'] = $r->boolean('tva_deductible', true);
+        return $d;
     }
 
     /** Validation par le chef comptable → comptabilisation au journal des achats. */
     public function valider(FactureRecue $fr)
     {
-        if (! $fr->compte) return back()->with('err', 'Choisissez le compte de charge avant de valider (bouton modifier).');
+        if ($fr->compteManquant()) return back()->with('err', 'Choisissez le compte de chaque ligne avant de valider (bouton modifier).');
         DB::transaction(function () use ($fr) {
             Compta::passer($fr->client_id, $fr->date->format('Y-m-d'), 'ACH', 'Facture '.($fr->reference ?: '').' – '.$fr->fournisseur, $fr->lignesEcriture(), 'fr:'.$fr->id, auth()->id());
             $fr->update(['statut' => 'val', 'valide_par' => auth()->id()]);

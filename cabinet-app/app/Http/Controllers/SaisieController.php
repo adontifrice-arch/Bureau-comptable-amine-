@@ -90,13 +90,20 @@ class SaisieController extends Controller
     // ---------- Factures de vente ----------
     private function vente(Request $r): array
     {
+        // Lignes « compte · HT · taux · TVA » (ou, saisie à une seule ligne, champs ht / compte / tva_taux / tva)
+        $ventilee = $r->has('lignes');
         $d = $r->validate(['date' => 'required|date', 'tiers' => 'required|max:255', 'matricule_fiscal' => 'nullable|max:50', 'reference' => 'nullable|max:100',
-            'description' => 'nullable|max:255', 'ht' => 'required|numeric|min:0.001', 'tva_taux' => 'nullable|numeric|min:0', 'tva' => 'nullable|numeric|min:0',
-            'timbre' => 'nullable|numeric|min:0', 'compte' => 'nullable|regex:/^7\d{0,7}$/', 'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp'],
-            ['compte.regex' => 'Le compte de vente doit être un compte de produits (classe 7).']);
+            'description' => 'nullable|max:255', 'timbre' => 'nullable|numeric|min:0', 'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp'] + ($ventilee
+            ? ['lignes' => 'required|array|min:1|max:50', 'lignes.*.compte' => 'nullable|regex:/^7\d{0,7}$/', 'lignes.*.ht' => 'nullable|numeric|min:0',
+                'lignes.*.tva_taux' => 'nullable|numeric|min:0|max:100', 'lignes.*.tva' => 'nullable|numeric|min:0']
+            : ['ht' => 'required|numeric|min:0.001', 'tva_taux' => 'nullable|numeric|min:0', 'tva' => 'nullable|numeric|min:0', 'compte' => 'nullable|regex:/^7\d{0,7}$/']),
+            ['compte.regex' => 'Le compte de vente doit être un compte de produits (classe 7).', 'lignes.*.compte.regex' => 'Un compte de vente doit être un compte de produits (classe 7).']);
         unset($d['fichier']);
-        $d['tva_taux'] = $d['tva_taux'] ?? 19;
-        $d['tva'] = $r->filled('tva') ? $d['tva'] : r3($d['ht'] * $d['tva_taux'] / 100);
+        $lignes = $ventilee ? $d['lignes'] : [['compte' => $d['compte'] ?? '', 'ht' => $d['ht'], 'tva_taux' => $d['tva_taux'] ?? null, 'tva' => $r->filled('tva') ? $d['tva'] : null]];
+        $v = FactureVente::ventiler($lignes, (float) ($d['tva_taux'] ?? Saisie::vente((int) session('dossier'))['tva_taux']));
+        if ($v['ht'] <= 0) throw \Illuminate\Validation\ValidationException::withMessages(['lignes' => 'Saisissez au moins une ligne avec un montant HT.']);
+        unset($d['lignes']);
+        $d = $v + $d;
         $d['timbre'] = $d['timbre'] ?? 0;
         return $d;
     }
@@ -140,7 +147,7 @@ class SaisieController extends Controller
     public function venteValider(FactureVente $fv)
     {
         if ($fv->statut === 'val') return back()->with('err', 'Facture déjà comptabilisée.');
-        if (! $fv->compte) return back()->with('err', 'Choisissez le compte de vente avant de valider (bouton modifier).');
+        if ($fv->compteManquant()) return back()->with('err', 'Choisissez le compte de vente de chaque ligne avant de valider (bouton modifier).');
         DB::transaction(function () use ($fv) {
             Compta::passer($fv->client_id, $fv->date->format('Y-m-d'), 'VTE', 'Facture '.($fv->reference ?: '').' – '.$fv->tiers, $fv->lignesEcriture(), 'fv:'.$fv->id, auth()->id());
             $fv->update(['statut' => 'val', 'valide_par' => auth()->id()]);

@@ -9,7 +9,6 @@
 
 <div class="grid gap-6 xl:grid-cols-2">
     <form method="POST" action="{{ route('compta.parametres') }}" class="card" x-data="{ regles: @js(array_values($pb['regles'])), achats: @js($pa['comptes']), ventes: @js($pv['comptes']) }">@csrf
-        <datalist id="taux-tva">@foreach(\App\Services\Saisie::TAUX_TVA as $t)<option value="{{ $t }}">{{ $t }} %</option>@endforeach</datalist>
         <div class="card-h"><h2 class="card-t">Paramétrage de la saisie — {{ $client->nom }}</h2>@unless($chef)<span class="badge-gray">Lecture seule</span>@endunless</div>
         <fieldset @disabled(! $chef) class="space-y-6 p-5">
             <div>
