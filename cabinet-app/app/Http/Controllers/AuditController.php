@@ -122,13 +122,13 @@ class AuditController extends Controller
     {
         $K = []; $add = function ($l, $st, $d = '') use (&$K) { $K[] = compact('l', 'st', 'd'); };
         $from = "$y-01-01"; $to = "$y-12-31";
-        $lig = EcritureLigne::join('ecritures', 'ecritures.id', '=', 'ecriture_lignes.ecriture_id')->whereNull('ecritures.deleted_at')->where('client_id', $c->id)->whereBetween('date', [$from, $to]);
+        $lig = EcritureLigne::join('ecritures', 'ecritures.id', '=', 'ecriture_lignes.ecriture_id')->whereNull('ecritures.deleted_at')->where('client_id', $c->id)->whereDate('date', '>=', $from)->whereDate('date', '<=', $to);
         $D = (clone $lig)->sum('debit'); $C = (clone $lig)->sum('credit');
         if (! (clone $lig)->count()) $add('Équilibre du journal : débits = crédits', 'info', "Aucune écriture comptabilisée sur $y.");
         else $add('Équilibre du journal : débits = crédits', abs($D - $C) < .001 ? 'ok' : 'ko', 'Total débits '.tnd($D).' · total crédits '.tnd($C).'.');
         $F = Compta::etats($c->id, $y);
         if ($F['n']) $add('Équilibre du bilan : total actif = total passif', abs($F['tA'] - $F['tP']) < .001 ? 'ok' : 'ko', 'Actif '.tnd($F['tA']).' · passif '.tnd($F['tP']).'.');
-        $KA = FactureRecue::where('client_id', $c->id)->whereBetween('date', [$from, $to])->get();
+        $KA = FactureRecue::where('client_id', $c->id)->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get();
         $old = $KA->where('statut', 'prop')->filter(fn ($f) => $f->date->lt(now()->subDays(15)));
         $add('Factures reçues en attente de validation', $old->count() ? 'warn' : 'ok', $KA->where('statut', 'prop')->count().' en attente, dont '.$old->count().' depuis plus de 15 jours.');
         if ($rej = $KA->where('statut', 'rej')->count()) $add('Factures reçues rejetées', 'info', "$rej facture(s) rejetée(s).");

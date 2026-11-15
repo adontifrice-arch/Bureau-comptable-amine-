@@ -135,7 +135,7 @@ class FactureController extends Controller
     {
         $from = $r->input('du', now()->startOfYear()->format('Y-m-d'));
         $to = $r->input('au', now()->endOfYear()->format('Y-m-d'));
-        $rows = Facture::with(['client', 'lignes'])->where('type', 'facture')->whereBetween('date', [$from, $to])
+        $rows = Facture::with(['client', 'lignes'])->where('type', 'facture')->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
             ->when($r->input('client'), fn ($q, $c) => $q->where('client_id', $c))->orderBy('date')->orderBy('numero')->get()
             ->map(fn ($f) => ['f' => $f] + $f->totaux());
         return [$rows, $from, $to];

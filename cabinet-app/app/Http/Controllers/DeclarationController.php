@@ -157,7 +157,7 @@ class DeclarationController extends Controller
         $ca = r3($S('70', 'credit') - $S('70', 'debit'));
         $tvac = r3($S('4367', 'credit') - $S('4367', 'debit'));     // 4367 TVA collectée
         $dtot = r3($S('4366', 'debit') - $S('4366', 'credit'));       // 4366 TVA déductible
-        $ks = FactureRecue::where('client_id', $c->id)->where('statut', 'val')->whereBetween('date', [$from, $to])->get();
+        $ks = FactureRecue::where('client_id', $c->id)->where('statut', 'val')->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get();
         $immo = 0; $rh = 0; $rm = 0;
         foreach ($ks as $x) {
             if ($x->tva_deductible) $immo += array_sum(array_column($x->lignesImmobilisations(), 'tva'));    // lignes de la facture imputées en classe 2

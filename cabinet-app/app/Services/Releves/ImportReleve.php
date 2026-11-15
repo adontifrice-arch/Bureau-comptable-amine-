@@ -53,7 +53,7 @@ class ImportReleve
             // Opérations déjà importées (relevés précédents), comptées : deux opérations identiques d'un même relevé restent deux lignes
             $dejaLa = [];
             $dates = array_column($lignes, 'date');
-            ReleveLigne::where('client_id', $client->id)->whereBetween('date', [min($dates), max($dates)])->get(['date', 'libelle', 'debit', 'credit'])
+            ReleveLigne::where('client_id', $client->id)->whereDate('date', '>=', min($dates))->whereDate('date', '<=', max($dates))->get(['date', 'libelle', 'debit', 'credit'])
                 ->each(function ($l) use (&$dejaLa, $cle) { $k = $cle($l->date->format('Y-m-d'), $l->libelle, $l->debit, $l->credit); $dejaLa[$k] = ($dejaLa[$k] ?? 0) + 1; });
 
             $releve = Releve::create(['client_id' => $client->id, 'nom_fichier' => Str::limit($fichier->getClientOriginalName(), 250, ''),
