@@ -38,7 +38,7 @@ class Compta
     public static function somme(int $client, string $from, string $to, string $pre, string $side): float
     {
         return r3(EcritureLigne::query()->join('ecritures', 'ecritures.id', '=', 'ecriture_lignes.ecriture_id')
-            ->where('ecritures.client_id', $client)->whereBetween('ecritures.date', [$from, $to])
+            ->whereNull('ecritures.deleted_at')->where('ecritures.client_id', $client)->whereBetween('ecritures.date', [$from, $to])
             ->where('ecriture_lignes.compte', 'like', $pre.'%')->sum('ecriture_lignes.'.$side));
     }
 
@@ -47,7 +47,7 @@ class Compta
     {
         $from = "$annee-01-01"; $to = "$annee-12-31";
         $rows = EcritureLigne::query()->join('ecritures', 'ecritures.id', '=', 'ecriture_lignes.ecriture_id')
-            ->where('ecritures.client_id', $client)->where('ecritures.date', '<=', $to)
+            ->whereNull('ecritures.deleted_at')->where('ecritures.client_id', $client)->where('ecritures.date', '<=', $to)
             ->groupBy('ecriture_lignes.compte')
             ->select('ecriture_lignes.compte',
                 DB::raw("SUM(CASE WHEN ecritures.date < '$from' THEN debit ELSE 0 END) as rd"),

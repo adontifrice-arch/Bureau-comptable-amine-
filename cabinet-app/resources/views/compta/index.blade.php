@@ -11,7 +11,7 @@
         <button class="btn-primary" x-data @click="$dispatch('open-modal', 'releve')"><x-icon name="upload" class="h-4 w-4"/> Importer un relevé bancaire</button>
     </x-page-header>
     @unless($chef)<div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"><x-icon name="lock" class="h-4 w-4"/> Vous saisissez en tant que collaborateur : seule la validation du chef comptable comptabilise les pièces.</div>@endunless
-    <x-tabs :active="$tab" :items="['ach' => ['Factures d’achat', $u('ach')], 'vte' => ['Factures de vente', $u('vte')], 'bq' => ['Banque'.($aTraiter ? ' ('.$aTraiter.')' : ''), $u('bq')], 'pai' => ['Paie à comptabiliser', $u('pai')], 'jnl' => ['Journal & écritures', $u('jnl')], 'bal' => ['Balance générale', $u('bal')], 'gl' => ['Grand livre', $u('gl')], 'plan' => ['Plan comptable', $u('plan')], 'param' => ['Paramétrage', $u('param')]]"/>
+    <x-tabs :active="$tab" :items="['ach' => ['Factures d’achat', $u('ach')], 'vte' => ['Factures de vente', $u('vte')], 'bq' => ['Banque'.($aTraiter ? ' ('.$aTraiter.')' : ''), $u('bq')], 'pai' => ['Paie à comptabiliser', $u('pai')], 'jnl' => ['Journal & écritures', $u('jnl')], 'bal' => ['Balance générale', $u('bal')], 'gl' => ['Grand livre', $u('gl')], 'plan' => ['Plan comptable', $u('plan')], 'corb' => ['Pièces supprimées'.($nbSupprimees ? ' ('.$nbSupprimees.')' : ''), $u('corb')], 'param' => ['Paramétrage', $u('param')]]"/>
 
     @if(in_array($tab, ['ach', 'vte', 'bq', 'jnl'], true))@include('compta._recherche')@endif
 
@@ -117,11 +117,12 @@
         </div>
         <div class="space-y-3">
             @forelse($ecritures as $e)
-                <div class="card overflow-hidden">
+                <div class="card overflow-hidden" ondblclick="if (! event.target.closest('a, button, form')) window.location = {{ \Illuminate\Support\Js::from(route('compta.ecritures.show', [$e, 'retour' => request()->fullUrl()])) }}" title="Double-clic : ouvrir l’écriture">
                     <div class="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 text-sm dark:border-slate-800 dark:bg-slate-800/30">
                         <span class="badge-blue">{{ $e->journal }}</span><span class="font-mono text-xs">{{ dfr($e->date) }}</span><span class="flex-1 font-medium">{{ $e->libelle }}</span>
                         <span class="text-xs text-slate-400">{{ $e->validePar ? 'validée par '.$e->validePar->name : '' }}</span>
-                        @if($chef)<form method="POST" action="{{ route('compta.ecritures.annuler', $e) }}" onsubmit="return confirm('Annuler cette écriture ?')">@csrf<button class="btn-ghost btn-sm !text-rose-600">Annuler</button></form>@endif
+                        <a href="{{ route('compta.ecritures.show', [$e, 'retour' => request()->fullUrl()]) }}" class="btn-ghost btn-sm"><x-icon name="eye" class="h-3.5 w-3.5"/> Ouvrir</a>
+                        @if(\App\Services\Ecritures::autorise(auth()->user()))<form method="POST" action="{{ route('compta.ecritures.annuler', $e) }}" onsubmit="const m = prompt('Supprimer cette écriture ? Elle sera conservée dans « Pièces supprimées ».\n\nMotif (facultatif) :'); if (m === null) return false; this.motif.value = m">@csrf<input type="hidden" name="motif"><button class="btn-ghost btn-sm !text-rose-600">Supprimer</button></form>@endif
                     </div>
                     <table class="w-full text-sm">@foreach($e->lignes as $l)<tr class="border-b border-slate-50 last:border-0 dark:border-slate-800"><td class="w-24 px-4 py-1.5 font-mono text-xs">{{ $l->compte }}</td><td class="px-2 py-1.5 text-slate-500 {{ $l->credit > 0 ? 'pl-10' : '' }}">{{ \App\Services\Compta::libelle($l->compte) }}</td><td class="num w-36 px-4 py-1.5">{{ n3($l->debit) }}</td><td class="num w-36 px-4 py-1.5">{{ n3($l->credit) }}</td></tr>@endforeach</table>
                 </div>
@@ -161,12 +162,14 @@
         <form class="card mb-4 flex flex-wrap items-end gap-3 p-4"><input type="hidden" name="tab" value="gl"><input type="hidden" name="annee" value="{{ $annee }}">
             <div class="w-72"><label class="label">Compte (ou racine, ex. 6)</label><input name="compte" value="{{ $compte }}" class="input" list="cpts2"><datalist id="cpts2" data-plan>@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist></div>
             <button class="btn-primary">Afficher</button>
+            @if($compte)<p class="text-xs text-slate-500">{{ $exact ? 'Compte '.$compte.' seul' : 'Comptes commençant par '.$compte }} · double-cliquez sur une ligne pour ouvrir l’écriture (consulter, modifier, supprimer).@if($exact) <a href="{{ $u('gl', ['compte' => $compte]) }}" class="underline">Voir aussi ses sous-comptes</a>@endif</p>@endif
         </form>
         @if($compte)
             @php $s = 0; @endphp
             <div class="card overflow-x-auto"><table class="tbl"><thead><tr><th>Date</th><th>Jnl</th><th>Compte</th><th>Libellé</th><th class="text-right">Débit</th><th class="text-right">Crédit</th><th class="text-right">Solde</th></tr></thead><tbody>
                 @forelse($mouvements as $m) @php $s += $m->debit - $m->credit; @endphp
-                    <tr><td>{{ dfr($m->date) }}</td><td>{{ $m->journal }}</td><td class="font-mono text-xs">{{ $m->compte }}</td><td>{{ $m->libelle }}</td><td class="num">{{ n3($m->debit) }}</td><td class="num">{{ n3($m->credit) }}</td><td class="num">{{ tnd($s, false) }}</td></tr>
+                    @php $fiche = route('compta.ecritures.show', [$m->ecriture_id, 'retour' => request()->fullUrl()]); @endphp
+                    <tr class="cursor-pointer hover:bg-brand-50/60 dark:hover:bg-slate-800/40" ondblclick="window.location = {{ \Illuminate\Support\Js::from($fiche) }}" title="Double-clic : ouvrir l’écriture"><td>{{ dfr($m->date) }}</td><td>{{ $m->journal }}</td><td class="font-mono text-xs">{{ $m->compte }}</td><td><a href="{{ $fiche }}" class="hover:underline">{{ $m->libelle }}</a></td><td class="num">{{ n3($m->debit) }}</td><td class="num">{{ n3($m->credit) }}</td><td class="num">{{ tnd($s, false) }}</td></tr>
                 @empty <tr><td colspan="7"><x-empty title="Aucun mouvement"/></td></tr> @endforelse
             </tbody>
             @if($mouvements->count())<tfoot><tr><td colspan="4">Totaux</td><td class="num">{{ tnd($mouvements->sum('debit'), false) }}</td><td class="num">{{ tnd($mouvements->sum('credit'), false) }}</td><td class="num">{{ tnd($s, false) }}</td></tr></tfoot>@endif
@@ -190,6 +193,9 @@
 
     @elseif($tab === 'bq')
         @include('compta._banque')
+
+    @elseif($tab === 'corb')
+        @include('compta._supprimees')
 
     @elseif($tab === 'param')
         @include('compta._parametrage')

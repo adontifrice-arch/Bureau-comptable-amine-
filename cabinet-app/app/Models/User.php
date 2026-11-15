@@ -15,7 +15,7 @@ class User extends Authenticatable
 
     protected function casts(): array
     {
-        return ['email_verified_at' => 'datetime', 'password' => 'hashed', 'cabinet_id' => 'integer'];
+        return ['email_verified_at' => 'datetime', 'password' => 'hashed', 'cabinet_id' => 'integer', 'droit_ecritures' => 'boolean'];
     }
 
     public function cabinet() { return $this->belongsTo(Cabinet::class); }

@@ -67,12 +67,20 @@ class ComptaController extends Controller
             $data['B'] = Compta::balance($client->id, $annee);
             $data['T'] = Compta::totaux($data['B']);
         } elseif ($tab === 'gl') {
+            // Compte exact (double-clic sur une ligne de la balance) ou racine (« 6 », « 401 »…)
             $cpt = $r->input('compte');
             $data['compte'] = $cpt;
+            $data['exact'] = $r->boolean('exact');
             $data['mouvements'] = $cpt ? DB::table('ecriture_lignes')->join('ecritures', 'ecritures.id', '=', 'ecriture_lignes.ecriture_id')
-                ->where('ecritures.client_id', $client->id)->whereYear('ecritures.date', $annee)->where('ecriture_lignes.compte', 'like', $cpt.'%')
-                ->orderBy('ecritures.date')->orderBy('ecritures.id')->select('ecritures.date', 'ecritures.journal', 'ecritures.libelle', 'ecriture_lignes.compte', 'debit', 'credit')->get() : collect();
+                ->whereNull('ecritures.deleted_at')->where('ecritures.client_id', $client->id)->whereYear('ecritures.date', $annee)
+                ->when($data['exact'], fn ($q) => $q->where('ecriture_lignes.compte', $cpt), fn ($q) => $q->where('ecriture_lignes.compte', 'like', $cpt.'%'))
+                ->orderBy('ecritures.date')->orderBy('ecritures.id')
+                ->select('ecritures.id as ecriture_id', 'ecritures.date', 'ecritures.journal', 'ecritures.libelle', 'ecriture_lignes.compte', 'debit', 'credit')->get() : collect();
+        } elseif ($tab === 'corb') {
+            // Pièces supprimées : écritures restaurables
+            $data['supprimees'] = Ecriture::onlyTrashed()->with(['lignes', 'supprimePar'])->where('client_id', $client->id)->orderByDesc('deleted_at')->paginate(30)->withQueryString();
         }
+        $data['nbSupprimees'] = Ecriture::onlyTrashed()->where('client_id', $client->id)->count();
         return view('compta.index', $data);
     }
 
@@ -154,18 +162,62 @@ class ComptaController extends Controller
         return back()->with('ok', 'Facture rejetée.');
     }
 
-    /** Annule une écriture (et remet la facture, la paie ou la ligne de relevé d'origine en attente). */
-    public function annuler(Ecriture $ecriture)
+    // ---------- Écriture : consultation, modification, suppression (« Pièces supprimées »), restauration ----------
+
+    private const REFUS = 'Modifier ou supprimer une écriture est réservé au chef comptable et aux collaborateurs qu’il y autorise (Paramètres → Utilisateurs).';
+
+    /** Retour vers la page d'origine (grand livre, journal, pièces supprimées), limité à la comptabilité. */
+    private function retour(Request $r, Ecriture $e): string
     {
-        DB::transaction(function () use ($ecriture) {
-            if ($ecriture->source && str_starts_with($ecriture->source, 'fr:')) FactureRecue::whereKey(substr($ecriture->source, 3))->update(['statut' => 'prop', 'valide_par' => null]);
-            if ($ecriture->source && str_starts_with($ecriture->source, 'paie:')) Paie::whereKey(substr($ecriture->source, 5))->update(['statut' => 'transmise']);
-            if ($ecriture->source && str_starts_with($ecriture->source, 'fv:')) FactureVente::whereKey(substr($ecriture->source, 3))->update(['statut' => 'prop', 'valide_par' => null]);
-            if ($ecriture->source && str_starts_with($ecriture->source, 'rb:')) ReleveLigne::whereKey(substr($ecriture->source, 3))->update(['statut' => 'att', 'ecriture_id' => null]);
-            $ecriture->delete();
-        });
-        $this->log('Annulation de l’écriture '.$ecriture->libelle, $ecriture->client_id);
-        return back()->with('ok', 'Écriture annulée.');
+        $u = (string) $r->input('retour');
+        return $u !== '' && str_starts_with($u, route('compta.index')) ? $u : route('compta.index', ['tab' => 'jnl', 'annee' => $e->date->year]);
+    }
+
+    public function ecriture(Request $r, Ecriture $ecriture)
+    {
+        $ecriture->load(['lignes', 'validePar', 'supprimePar']);
+        if ((int) session('dossier') !== $ecriture->client_id) session(['dossier' => $ecriture->client_id]);
+        return view('compta.ecriture', ['e' => $ecriture, 'plan' => Compta::plan(), 'retour' => $this->retour($r, $ecriture),
+            'autorise' => \App\Services\Ecritures::autorise($r->user())]);
+    }
+
+    public function ecritureUpdate(Request $r, Ecriture $ecriture)
+    {
+        if (! \App\Services\Ecritures::autorise($r->user())) return back()->with('err', self::REFUS);
+        if ($ecriture->trashed()) return back()->with('err', 'Restaurez l’écriture avant de la modifier.');
+        $d = $r->validate(['date' => 'required|date', 'journal' => 'required|in:'.implode(',', array_keys(Ecriture::JOURNAUX)), 'libelle' => 'required|max:255',
+            'lignes' => 'required|array', 'lignes.*.compte' => 'nullable|regex:/^\d{1,8}$/', 'lignes.*.debit' => 'nullable|numeric|min:0', 'lignes.*.credit' => 'nullable|numeric|min:0'],
+            ['lignes.*.compte.regex' => 'Un compte ne comporte que des chiffres.']);
+        try {
+            \App\Services\Ecritures::modifier($ecriture, $d);
+        } catch (\RuntimeException $e) {
+            return back()->withInput()->with('err', $e->getMessage());
+        }
+        $this->log('Modification de l’écriture '.$ecriture->libelle, $ecriture->client_id);
+        return back()->with('ok', 'Écriture modifiée.');
+    }
+
+    /** Suppression (aussi le bouton « Annuler » du journal) : l'écriture part dans « Pièces supprimées » et sa pièce d'origine repasse en attente. */
+    public function annuler(Request $r, Ecriture $ecriture)
+    {
+        if (! \App\Services\Ecritures::autorise($r->user())) return back()->with('err', self::REFUS);
+        $r->validate(['motif' => 'nullable|max:255']);
+        \App\Services\Ecritures::supprimer($ecriture, $r->user(), $r->input('motif'));
+        $this->log('Suppression de l’écriture '.$ecriture->libelle.($r->filled('motif') ? ' — motif : '.$r->input('motif') : ''), $ecriture->client_id);
+        $msg = 'Écriture supprimée : elle est conservée dans « Pièces supprimées », d’où elle peut être restaurée.';
+        return $r->boolean('depuis_fiche') ? redirect($this->retour($r, $ecriture))->with('ok', $msg) : back()->with('ok', $msg);
+    }
+
+    public function restaurer(Request $r, Ecriture $ecriture)
+    {
+        if (! \App\Services\Ecritures::autorise($r->user())) return back()->with('err', self::REFUS);
+        try {
+            \App\Services\Ecritures::restaurer($ecriture);
+        } catch (\RuntimeException $e) {
+            return back()->with('err', $e->getMessage());
+        }
+        $this->log('Restauration de l’écriture '.$ecriture->libelle, $ecriture->client_id);
+        return back()->with('ok', 'Écriture restaurée : elle figure de nouveau au journal, dans la balance et le grand livre.');
     }
 
     public function validerPaie(Paie $paie)

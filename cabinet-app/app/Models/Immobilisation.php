@@ -18,7 +18,8 @@ class Immobilisation extends Model
     public function client() { return $this->belongsTo(Client::class); }
     public function factureRecue() { return $this->belongsTo(FactureRecue::class, 'facture_recue_id'); }
     public function ecritureAcquisition() { return $this->belongsTo(Ecriture::class, 'acquisition_ecriture_id'); }
-    public function dotationsComptabilisees() { return $this->hasMany(AmortissementComptabilise::class); }
+    /** Dotations comptabilisées (celles dont l'écriture est dans « Pièces supprimées » ne comptent plus). */
+    public function dotationsComptabilisees() { return $this->hasMany(AmortissementComptabilise::class)->whereHas('ecriture'); }
 
     public function libelleNature(): string { return Amortissement::NATURES[$this->nature][0] ?? $this->nature; }
     /** Compte de la facture reçue importée (ex. 213 Logiciels), sinon compte de la nature. */

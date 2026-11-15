@@ -61,6 +61,8 @@ class ParametreController extends Controller
         if ($a === 'activer') $user->update(['status' => 'active']);
         if ($a === 'desactiver') $user->update(['status' => 'disabled']);
         if ($a === 'role') $user->update(['role' => $user->role === 'chef' ? 'collaborateur' : 'chef']);
+        // Droit de modifier et de supprimer les écritures comptables (un chef comptable l'a toujours)
+        if ($a === 'droit_ecritures') $user->forceFill(['droit_ecritures' => ! $user->droit_ecritures])->save();
         $this->log('Utilisateur '.$user->email.' : '.$a);
         return back()->with('ok', 'Utilisateur mis à jour.');
     }

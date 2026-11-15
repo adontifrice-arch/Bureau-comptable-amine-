@@ -3,6 +3,6 @@
     @push('head')<style>@page { size: A4 landscape; margin: 10mm }</style>@endpush
     <x-doc-sheet :titre="'BALANCE '.$annee" landscape>
         <div class="mb-4 text-sm"><b>{{ $client->nom }}</b>{{ $client->matricule_fiscal ? ' · MF '.$client->matricule_fiscal : '' }} — du 01/01/{{ $annee }} au 31/12/{{ $annee }}</div>
-        @include('compta._balance')
+        @include('compta._balance', ['lien' => false])
     </x-doc-sheet>
 </x-layouts.app>

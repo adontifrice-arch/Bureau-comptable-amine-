@@ -44,11 +44,13 @@
                 <span class="grid h-9 w-9 place-items-center rounded-full bg-brand-600 text-xs font-semibold text-white">{{ $x->initiales() }}</span>
                 <div class="min-w-0 flex-1"><div class="font-medium">{{ $x->name }} @if($x->is(auth()->user()))<span class="text-xs text-slate-400">(vous)</span>@endif</div><div class="text-xs text-slate-500">{{ $x->email }} · inscrit {{ $x->created_at->diffForHumans() }}</div></div>
                 <span class="{{ $x->estChef() ? 'badge-blue' : 'badge-gray' }}">{{ $x->roleLibelle() }}</span>
+                @if(! $x->estChef() && $x->droit_ecritures)<span class="badge-amber" title="Autorisé par le chef comptable">Modifie / supprime les écritures</span>@endif
                 <span class="badge-{{ ['active' => 'green', 'pending' => 'amber', 'disabled' => 'red'][$x->status] }}">{{ ['active' => 'Actif', 'pending' => 'En attente', 'disabled' => 'Désactivé'][$x->status] }}</span>
                 @unless($x->is(auth()->user()))
                     <form method="POST" action="{{ route('parametres.user', $x) }}" class="flex gap-1">@csrf @method('PATCH')
                         @if($x->status !== 'active')<button name="action" value="activer" class="btn-success btn-sm">{{ $x->status === 'pending' ? 'Valider' : 'Réactiver' }}</button>@else<button name="action" value="desactiver" class="btn-secondary btn-sm">Désactiver</button>@endif
                         <button name="action" value="role" class="btn-secondary btn-sm">{{ $x->estChef() ? 'Passer collaborateur' : 'Nommer chef comptable' }}</button>
+                        @unless($x->estChef())<button name="action" value="droit_ecritures" class="btn-secondary btn-sm" title="Modifier et supprimer les écritures comptables">{{ $x->droit_ecritures ? 'Retirer le droit sur les écritures' : 'Autoriser à modifier / supprimer les écritures' }}</button>@endunless
                     </form>
                     <x-confirm-delete :action="route('parametres.user.destroy', $x)"/>
                 @endunless

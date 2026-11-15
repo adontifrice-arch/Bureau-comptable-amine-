@@ -93,7 +93,12 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::put('comptabilite/factures/{fr}', [C\ComptaController::class, 'factureUpdate'])->name('compta.factures.update');
     Route::delete('comptabilite/factures/{fr}', [C\ComptaController::class, 'factureDestroy'])->name('compta.factures.destroy');
     Route::get('comptabilite/factures/{fr}/fichier', [C\ComptaController::class, 'factureFichier'])->name('compta.factures.fichier');
-    Route::post('comptabilite/ecritures/{ecriture}/extourner', [C\ComptaController::class, 'annuler'])->middleware('chef')->name('compta.ecritures.annuler');
+    // Écriture : fiche (consultation, y compris supprimée), modification, suppression vers « Pièces supprimées », restauration
+    // (droits vérifiés dans le contrôleur : chef comptable ou collaborateur autorisé)
+    Route::get('comptabilite/ecritures/{ecriture}', [C\ComptaController::class, 'ecriture'])->withTrashed()->name('compta.ecritures.show');
+    Route::put('comptabilite/ecritures/{ecriture}', [C\ComptaController::class, 'ecritureUpdate'])->name('compta.ecritures.update');
+    Route::post('comptabilite/ecritures/{ecriture}/extourner', [C\ComptaController::class, 'annuler'])->name('compta.ecritures.annuler');
+    Route::post('comptabilite/ecritures/{ecriture}/restaurer', [C\ComptaController::class, 'restaurer'])->withTrashed()->name('compta.ecritures.restaurer');
     Route::post('comptabilite/factures/{fr}/valider', [C\ComptaController::class, 'valider'])->middleware('chef')->name('compta.factures.valider');
     Route::post('comptabilite/factures/{fr}/rejeter', [C\ComptaController::class, 'rejeter'])->middleware('chef')->name('compta.factures.rejeter');
     Route::post('comptabilite/paies/{paie}/valider', [C\ComptaController::class, 'validerPaie'])->middleware('chef')->name('compta.paies.valider');

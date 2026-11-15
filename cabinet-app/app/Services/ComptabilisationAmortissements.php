@@ -70,7 +70,7 @@ class ComptabilisationAmortissements
     {
         return DB::transaction(function () use ($client, $exercice) {
             $ecritures = self::ecritures($client, $exercice);
-            foreach ($ecritures as $e) $e->delete();          // le suivi par bien est supprimé en cascade
+            foreach ($ecritures as $e) $e->forceDelete();     // annulation définitive : le suivi par bien est supprimé en cascade
             return $ecritures->count();
         });
     }

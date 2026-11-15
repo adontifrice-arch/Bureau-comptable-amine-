@@ -122,7 +122,7 @@ class AuditController extends Controller
     {
         $K = []; $add = function ($l, $st, $d = '') use (&$K) { $K[] = compact('l', 'st', 'd'); };
         $from = "$y-01-01"; $to = "$y-12-31";
-        $lig = EcritureLigne::join('ecritures', 'ecritures.id', '=', 'ecriture_lignes.ecriture_id')->where('client_id', $c->id)->whereBetween('date', [$from, $to]);
+        $lig = EcritureLigne::join('ecritures', 'ecritures.id', '=', 'ecriture_lignes.ecriture_id')->whereNull('ecritures.deleted_at')->where('client_id', $c->id)->whereBetween('date', [$from, $to]);
         $D = (clone $lig)->sum('debit'); $C = (clone $lig)->sum('credit');
         if (! (clone $lig)->count()) $add('Équilibre du journal : débits = crédits', 'info', "Aucune écriture comptabilisée sur $y.");
         else $add('Équilibre du journal : débits = crédits', abs($D - $C) < .001 ? 'ok' : 'ko', 'Total débits '.tnd($D).' · total crédits '.tnd($C).'.');
