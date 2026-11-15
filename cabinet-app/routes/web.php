@@ -150,6 +150,8 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::get('liasse', [C\LiasseController::class, 'index'])->name('liasse.index');
     Route::post('liasse/passage', [C\LiasseController::class, 'passage'])->name('liasse.passage');
     Route::get('liasse/imprimer', [C\LiasseController::class, 'print'])->name('liasse.print');
+    Route::get('liasse/etats-financiers', [C\LiasseController::class, 'etatsFinanciers'])->name('liasse.etats-financiers');
+    Route::post('liasse/etats-financiers/infos', [C\LiasseController::class, 'infos'])->name('liasse.etats-financiers.infos');
 
     // ---------- Déclarations ----------
     Route::get('declarations', [C\DeclarationController::class, 'index'])->name('declarations.index');

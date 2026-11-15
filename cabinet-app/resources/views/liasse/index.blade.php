@@ -3,11 +3,14 @@
     <x-page-header title="Liasse fiscale & états financiers" :subtitle="$client->nom.' · exercice clos le 31/12/'.$annee">
         <x-client-picker :clients="$clients" :current="$client" :route="route('liasse.index')" :params="['tab' => $tab, 'annee' => $annee]"/>
         <form><input type="hidden" name="tab" value="{{ $tab }}"><input type="number" name="annee" value="{{ $annee }}" class="input w-24" onchange="this.form.submit()"></form>
-        <a href="{{ route('liasse.print', ['annee' => $annee]) }}" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> États financiers (PDF)</a>
+        <a href="{{ route('liasse.print', ['annee' => $annee]) }}" class="btn-secondary"><x-icon name="printer" class="h-4 w-4"/> Bilan et résultat (impression rapide)</a>
+        <a href="{{ $u('ef') }}" class="btn-primary"><x-icon name="file-text" class="h-4 w-4"/> États financiers complets</a>
     </x-page-header>
     @if(!$F['n'])<div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Aucune écriture comptabilisée pour cet exercice : les états sont alimentés par les écritures validées dans l’onglet Comptabilité.</div>@endif
-    <x-tabs :active="$tab" :items="['bil' => ['Bilan', $u('bil')], 'res' => ['État de résultat', $u('res')], 'fis' => ['Passage au résultat fiscal', $u('fis')]]"/>
-    @if($tab === 'fis')
+    <x-tabs :active="$tab" :items="['bil' => ['Bilan', $u('bil')], 'res' => ['État de résultat', $u('res')], 'fis' => ['Passage au résultat fiscal', $u('fis')], 'ef' => ['États financiers', $u('ef')]]"/>
+    @if($tab === 'ef')
+        @include('liasse._etats-financiers')
+    @elseif($tab === 'fis')
         <div class="grid gap-6 lg:grid-cols-3">
             <form method="POST" action="{{ route('liasse.passage') }}" class="card lg:col-span-2">@csrf <input type="hidden" name="annee" value="{{ $annee }}">
                 <div class="card-h"><h2 class="card-t">Tableau de passage simplifié</h2></div>

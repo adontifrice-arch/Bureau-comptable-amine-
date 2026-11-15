@@ -33,7 +33,12 @@ class LiasseController extends Controller
     public function index(Request $r)
     {
         if (! $this->dossier($r)) return view('compta.vide');
-        return view('liasse.index', $this->data($r) + ['tab' => $r->input('tab', 'bil'), 'clients' => Client::orderBy('nom')->get(['id', 'nom'])]);
+        $data = $this->data($r) + ['tab' => $r->input('tab', 'bil'), 'clients' => Client::orderBy('nom')->get(['id', 'nom'])];
+        if ($data['tab'] === 'ef') {
+            $data['ef'] = \App\Services\EtatsFinanciers::calculer($data['client'], $data['annee']);
+            $data['infos'] = self::infosEtats($data['client']);
+        }
+        return view('liasse.index', $data);
     }
 
     public function passage(Request $r)
@@ -46,4 +51,49 @@ class LiasseController extends Controller
     }
 
     public function print(Request $r) { return view('liasse.print', $this->data($r)); }
+
+    // ---------- États financiers complets (modèle du cabinet) ----------
+
+    /** Informations de présentation absentes de la fiche client (activité, dates, effectif), mémorisées par dossier. */
+    public static function infosEtats(Client $c): array
+    {
+        $effectif = \Illuminate\Support\Facades\DB::table('salaries')->where('client_id', $c->id)->count();
+        return array_merge(['activite' => '', 'creation' => '', 'entree' => '', 'effectif' => $effectif ?: ''], (array) Setting::get('ef.'.$c->id, []));
+    }
+
+    public function infos(Request $r)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        $d = $r->validate(['activite' => 'nullable|max:255', 'creation' => 'nullable|date', 'entree' => 'nullable|date', 'effectif' => 'nullable|integer|min:0|max:100000']);
+        Setting::put('ef.'.$client->id, array_map(fn ($v) => $v ?? '', $d));
+        return back()->with('ok', 'Informations de présentation enregistrées.');
+    }
+
+    /** États financiers : aperçu imprimable, ou PDF paginé (« Page x of y », en-tête et pied répétés). */
+    public function etatsFinanciers(Request $r)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        $annee = (int) $r->input('annee', now()->year);
+        $data = ['client' => $client, 'ef' => \App\Services\EtatsFinanciers::calculer($client, $annee), 'infos' => self::infosEtats($client)];
+        if ($r->input('format') !== 'pdf') return view('liasse.etats-financiers', $data + ['impression' => true]);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('liasse.etats-financiers', $data + ['impression' => false])
+            ->setPaper('a4', 'portrait')->setOption(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Sans']);
+        $dom = $pdf->getDomPDF();
+        $dom->render();
+        $c = $dom->getCanvas();
+        $police = $dom->getFontMetrics()->getFont('DejaVu Sans');
+        [$l, $h] = [$c->get_width(), $c->get_height()];
+        $gris = [0.35, 0.35, 0.35];
+        $c->page_text(42, 30, 'ÉTATS FINANCIERS ARRÊTÉS AU 31/12/'.$annee, $police, 7.5, $gris);
+        $c->page_text($l - 110, 30, 'Page {PAGE_NUM} of {PAGE_COUNT}', $police, 7.5, $gris);
+        $c->line(42, 42, $l - 42, 42, $gris, 0.5);
+        $c->line(42, $h - 40, $l - 42, $h - 40, $gris, 0.5);
+        $c->page_text(42, $h - 32, $client->nom, $police, 7.5, $gris);
+        if ($client->matricule_fiscal) $c->page_text($l - 160, $h - 32, $client->matricule_fiscal, $police, 7.5, $gris);
+        return response($dom->output(), 200, ['Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.\Illuminate\Support\Str::slug('etats-financiers-'.$annee.'-'.$client->nom).'.pdf"']);
+    }
 }
