@@ -19,16 +19,17 @@ class SaisieController extends Controller
     {
         $client = $this->dossier($r);
         abort_unless($client, 404);
-        $cpt = 'nullable|regex:/^\d{1,8}$/';
+        $cpt = 'nullable|regex:/^\d{1,10}$/';
         $d = $r->validate([
-            'achat.compte_tiers' => 'required|regex:/^\d{1,8}$/', 'achat.tva_taux' => 'required|numeric|min:0|max:100',
+            'achat.compte_tiers' => 'required|regex:/^\d{1,10}$/', 'achat.tva_taux' => 'required|numeric|min:0|max:100',
             'achat.timbre' => 'nullable|numeric|min:0', 'achat.retenue_taux' => 'nullable|numeric|min:0|max:100', 'achat.tva_deductible' => 'nullable|boolean',
             'achat.comptes' => 'nullable|array|max:60', 'achat.comptes.*.compte' => $cpt, 'achat.comptes.*.tva_taux' => 'nullable|numeric|min:0|max:100',
-            'vente.compte_tiers' => 'required|regex:/^\d{1,8}$/', 'vente.tva_taux' => 'required|numeric|min:0|max:100',
-            'vente.timbre' => 'nullable|numeric|min:0', 'vente.compte_timbre' => 'required|regex:/^\d{1,8}$/',
-            'vente.comptes' => 'nullable|array|max:60', 'vente.comptes.*.compte' => 'nullable|regex:/^7\d{0,7}$/', 'vente.comptes.*.tva_taux' => 'nullable|numeric|min:0|max:100',
-            'banque.compte' => 'required|regex:/^\d{1,8}$/', 'banque.attente' => 'required|regex:/^\d{1,8}$/',
+            'vente.compte_tiers' => 'required|regex:/^\d{1,10}$/', 'vente.tva_taux' => 'required|numeric|min:0|max:100',
+            'vente.timbre' => 'nullable|numeric|min:0', 'vente.compte_timbre' => 'required|regex:/^\d{1,10}$/',
+            'vente.comptes' => 'nullable|array|max:60', 'vente.comptes.*.compte' => 'nullable|regex:/^7\d{0,9}$/', 'vente.comptes.*.tva_taux' => 'nullable|numeric|min:0|max:100',
+            'banque.compte' => 'required|regex:/^\d{1,10}$/', 'banque.attente' => 'required|regex:/^\d{1,10}$/',
             'banque.regles' => 'nullable|array|max:100', 'banque.regles.*.mot_cle' => 'nullable|max:100', 'banque.regles.*.compte' => $cpt,
+            'comptes.longueur' => 'nullable|in:'.implode(',', array_keys(Saisie::LONGUEURS)), 'convertir' => 'nullable|boolean',
         ], ['regex' => 'Le compte doit être un numéro du plan comptable (chiffres uniquement).',
             'vente.comptes.*.compte.regex' => 'Un compte de vente proposé doit être un compte de produits (classe 7).']);
         $d['achat']['tva_deductible'] = $r->boolean('achat.tva_deductible');
@@ -43,17 +44,26 @@ class SaisieController extends Controller
         $d['achat']['retenue_taux'] = (float) ($d['achat']['retenue_taux'] ?? 0);
         $d['banque']['regles'] = collect($d['banque']['regles'] ?? [])->filter(fn ($x) => trim($x['mot_cle'] ?? '') !== '' && trim($x['compte'] ?? '') !== '')
             ->map(fn ($x) => ['mot_cle' => trim($x['mot_cle']), 'compte' => trim($x['compte'])])->values()->all();
+        $d['comptes'] = ['longueur' => (int) ($d['comptes']['longueur'] ?? 0)];
+        unset($d['convertir']);
         Saisie::enregistrer($client->id, $d);
         $this->log('Paramétrage de la saisie comptable', $client->id);
-        return back()->with('ok', 'Paramétrage enregistré pour '.$client->nom.'.');
+        $msg = 'Paramétrage enregistré pour '.$client->nom.'.';
+        // Écritures déjà passées : converties à la nouvelle longueur si demandé (401 → 401000), pour une balance homogène
+        if ($r->boolean('convertir') && $d['comptes']['longueur'] > 0) {
+            $n = Saisie::convertirEcritures($client->id, $d['comptes']['longueur']);
+            $this->log('Conversion des comptes des écritures à '.$d['comptes']['longueur'].' chiffres ('.$n.' lignes)', $client->id);
+            $msg .= ' '.$n.' ligne(s) d’écriture converties à '.$d['comptes']['longueur'].' chiffres.';
+        }
+        return back()->with('ok', $msg);
     }
 
     // ---------- Modèles ----------
     private function modele(Request $r): array
     {
         $d = $r->validate(['type' => 'required|in:achat,vente', 'nom' => 'required|max:100', 'tiers' => 'nullable|max:255', 'matricule_fiscal' => 'nullable|max:50',
-            'description' => 'nullable|max:255', 'compte' => 'nullable|regex:/^\d{1,8}$/', 'tva_taux' => 'nullable|numeric|min:0|max:100',
-            'comptes' => 'nullable|array|max:30', 'comptes.*.compte' => 'nullable|regex:/^\d{1,8}$/', 'comptes.*.tva_taux' => 'nullable|numeric|min:0|max:100',
+            'description' => 'nullable|max:255', 'compte' => 'nullable|regex:/^\d{1,10}$/', 'tva_taux' => 'nullable|numeric|min:0|max:100',
+            'comptes' => 'nullable|array|max:30', 'comptes.*.compte' => 'nullable|regex:/^\d{1,10}$/', 'comptes.*.tva_taux' => 'nullable|numeric|min:0|max:100',
             'timbre' => 'nullable|numeric|min:0', 'retenue_taux' => 'nullable|numeric|min:0|max:100', 'tva_deductible' => 'nullable|boolean'],
             ['regex' => 'Le compte doit être un numéro du plan comptable (chiffres uniquement).']);
         // Lignes « compte · taux » : sans compte écartées, un compte une seule fois ; le premier est appliqué au modèle
@@ -94,9 +104,9 @@ class SaisieController extends Controller
         $ventilee = $r->has('lignes');
         $d = $r->validate(['date' => 'required|date', 'tiers' => 'required|max:255', 'matricule_fiscal' => 'nullable|max:50', 'reference' => 'nullable|max:100',
             'description' => 'nullable|max:255', 'timbre' => 'nullable|numeric|min:0', 'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp'] + ($ventilee
-            ? ['lignes' => 'required|array|min:1|max:50', 'lignes.*.compte' => 'nullable|regex:/^7\d{0,7}$/', 'lignes.*.ht' => 'nullable|numeric|min:0',
+            ? ['lignes' => 'required|array|min:1|max:50', 'lignes.*.compte' => 'nullable|regex:/^7\d{0,9}$/', 'lignes.*.ht' => 'nullable|numeric|min:0',
                 'lignes.*.tva_taux' => 'nullable|numeric|min:0|max:100', 'lignes.*.tva' => 'nullable|numeric|min:0']
-            : ['ht' => 'required|numeric|min:0.001', 'tva_taux' => 'nullable|numeric|min:0', 'tva' => 'nullable|numeric|min:0', 'compte' => 'nullable|regex:/^7\d{0,7}$/']),
+            : ['ht' => 'required|numeric|min:0.001', 'tva_taux' => 'nullable|numeric|min:0', 'tva' => 'nullable|numeric|min:0', 'compte' => 'nullable|regex:/^7\d{0,9}$/']),
             ['compte.regex' => 'Le compte de vente doit être un compte de produits (classe 7).', 'lignes.*.compte.regex' => 'Un compte de vente doit être un compte de produits (classe 7).']);
         unset($d['fichier']);
         $lignes = $ventilee ? $d['lignes'] : [['compte' => $d['compte'] ?? '', 'ht' => $d['ht'], 'tva_taux' => $d['tva_taux'] ?? null, 'tva' => $r->filled('tva') ? $d['tva'] : null]];

@@ -52,7 +52,7 @@ class ReleveController extends Controller
     /** Actions sur les lignes : enregistrer les contreparties, comptabiliser (chef), ignorer, rétablir, confirmer ou inverser le sens. */
     public function lignes(Request $r)
     {
-        $d = $r->validate(['action' => 'required|in:enregistrer,comptabiliser,comptabiliser_tout,ignorer,retablir,inverser,confirmer', 'comptes' => 'nullable|array', 'comptes.*' => 'nullable|regex:/^\d{1,8}$/',
+        $d = $r->validate(['action' => 'required|in:enregistrer,comptabiliser,comptabiliser_tout,ignorer,retablir,inverser,confirmer', 'comptes' => 'nullable|array', 'comptes.*' => 'nullable|regex:/^\d{1,10}$/',
             'sel' => 'nullable|array', 'sel.*' => 'integer', 'ligne' => 'nullable|integer', 'releve' => 'nullable|integer'],
             ['comptes.*.regex' => 'Une contrepartie doit être un numéro de compte (chiffres uniquement).']);
 

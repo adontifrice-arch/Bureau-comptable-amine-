@@ -65,7 +65,7 @@
                 <div class="mb-1 grid grid-cols-12 gap-2 text-xs font-medium text-slate-500"><div class="col-span-6">Compte</div><div class="col-span-2 text-right">Débit</div><div class="col-span-2 text-right">Crédit</div></div>
                 <template x-for="(x, i) in l" :key="i">
                     <div class="mb-2 grid grid-cols-12 items-start gap-2">
-                        <div class="col-span-6"><input class="input font-mono" list="cpts-ecr" :name="`lignes[${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-effect="$el.textContent = (window.PLAN || {})[x.compte] || ''"></p></div>
+                        <div class="col-span-6"><input class="input font-mono" list="cpts-ecr" :name="`lignes[${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-effect="$el.textContent = window.libelleCompte(x.compte)"></p></div>
                         <div class="col-span-2"><input type="number" step="0.001" min="0" class="input text-right" :name="`lignes[${i}][debit]`" x-model="x.debit" aria-label="Débit"></div>
                         <div class="col-span-2"><input type="number" step="0.001" min="0" class="input text-right" :name="`lignes[${i}][credit]`" x-model="x.credit" aria-label="Crédit"></div>
                         <div class="col-span-2"><button type="button" class="btn-icon" x-show="l.length > 2" @click="l.splice(i, 1)" title="Retirer la ligne"><x-icon name="trash" class="h-4 w-4"/></button></div>

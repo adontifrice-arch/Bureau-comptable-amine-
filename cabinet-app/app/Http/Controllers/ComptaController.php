@@ -128,7 +128,7 @@ class ComptaController extends Controller
         $d = $r->validate(['date' => 'required|date', 'fournisseur' => 'required|max:255', 'matricule_fiscal' => 'nullable|max:50', 'reference' => 'nullable|max:100',
             'description' => 'nullable|max:255', 'timbre' => 'nullable|numeric|min:0', 'tva_deductible' => 'nullable|boolean', 'retenue_taux' => 'nullable|numeric|min:0|max:100',
             'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp'] + ($ventilee
-            ? ['lignes' => 'required|array|min:1|max:50', 'lignes.*.compte' => 'nullable|regex:/^\d{1,8}$/', 'lignes.*.ht' => 'nullable|numeric|min:0',
+            ? ['lignes' => 'required|array|min:1|max:50', 'lignes.*.compte' => 'nullable|regex:/^\d{1,10}$/', 'lignes.*.ht' => 'nullable|numeric|min:0',
                 'lignes.*.tva_taux' => 'nullable|numeric|min:0|max:100', 'lignes.*.tva' => 'nullable|numeric|min:0']
             : ['ht' => 'required|numeric|min:0.001', 'tva_taux' => 'nullable|numeric|min:0', 'tva' => 'nullable|numeric|min:0', 'compte' => 'nullable|max:20']),
             ['lignes.*.compte.regex' => 'Un compte ne comporte que des chiffres.']);
@@ -186,7 +186,7 @@ class ComptaController extends Controller
         if (! \App\Services\Ecritures::autorise($r->user())) return back()->with('err', self::REFUS);
         if ($ecriture->trashed()) return back()->with('err', 'Restaurez l’écriture avant de la modifier.');
         $d = $r->validate(['date' => 'required|date', 'journal' => 'required|in:'.implode(',', array_keys(Ecriture::JOURNAUX)), 'libelle' => 'required|max:255',
-            'lignes' => 'required|array', 'lignes.*.compte' => 'nullable|regex:/^\d{1,8}$/', 'lignes.*.debit' => 'nullable|numeric|min:0', 'lignes.*.credit' => 'nullable|numeric|min:0'],
+            'lignes' => 'required|array', 'lignes.*.compte' => 'nullable|regex:/^\d{1,10}$/', 'lignes.*.debit' => 'nullable|numeric|min:0', 'lignes.*.credit' => 'nullable|numeric|min:0'],
             ['lignes.*.compte.regex' => 'Un compte ne comporte que des chiffres.']);
         try {
             \App\Services\Ecritures::modifier($ecriture, $d);
@@ -246,8 +246,8 @@ class ComptaController extends Controller
     /** Ajout d'un compte (onglet Plan comptable, ou création d'un sous-compte depuis un champ de saisie : réponse JSON). */
     public function compteStore(Request $r)
     {
-        $d = $r->validate(['numero' => 'required|regex:/^\d{1,8}$/|'.unique_cab('comptes', 'numero'), 'libelle' => 'required|max:255'],
-            ['numero.regex' => 'Le numéro de compte ne comporte que des chiffres (8 au plus).', 'numero.unique' => 'Ce compte existe déjà dans le plan comptable.']);
+        $d = $r->validate(['numero' => 'required|regex:/^\d{1,10}$/|'.unique_cab('comptes', 'numero'), 'libelle' => 'required|max:255'],
+            ['numero.regex' => 'Le numéro de compte ne comporte que des chiffres (10 au plus).', 'numero.unique' => 'Ce compte existe déjà dans le plan comptable.']);
         $d['libelle'] = trim($d['libelle']);
         Compte::create($d + ['personnalise' => true]);
         $this->log('Compte '.$d['numero'].' '.$d['libelle'].' ajouté au plan comptable');

@@ -12,13 +12,26 @@ const parent = (n) => {
     return null;
 };
 
+/**
+ * Compte du plan correspondant au numéro : le numéro lui-même, ou ce numéro complété par des zéros
+ * (dossier à comptes de 6 chiffres ou plus : 401000 = 401, 436600 = 4366). null si aucun.
+ */
+const existant = (n) => {
+    if (plan()[n]) return n;
+    const court = String(n).replace(/0+$/, '');
+    return court.length >= 2 && plan()[court] ? court : null;
+};
+
+/** Libellé d'un numéro de compte (utilisé aussi par les formulaires : window.libelleCompte). */
+window.libelleCompte = (n) => { const c = existant(String(n || '').trim()); return c ? plan()[c] : ''; };
+
 /** Libellé affiché sous le champ (élément [data-compte-libelle] du même bloc). */
 const afficherLibelle = (input) => {
     const cible = input.parentElement?.querySelector('[data-compte-libelle]');
     if (!cible) return;
     const v = input.value.trim();
     const p = plan();
-    cible.textContent = !v ? '' : p[v] ? p[v] : (/^\d+$/.test(v) && parent(v) ? 'Nouveau compte — sous-compte de ' + parent(v) + ' ' + p[parent(v)] : '');
+    cible.textContent = !v ? '' : existant(v) ? p[existant(v)] : (/^\d+$/.test(v) && parent(v) ? 'Nouveau compte — sous-compte de ' + parent(v) + ' ' + p[parent(v)] : '');
 };
 
 let panneau = null;
@@ -37,7 +50,7 @@ const echapper = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<
 const proposer = (input) => {
     fermer();
     const n = input.value.trim();
-    if (!/^\d{1,8}$/.test(n) || plan()[n]) return;
+    if (!/^\d{1,10}$/.test(n) || existant(n)) return;          // compte existant, éventuellement complété par des zéros
     const par = parent(n);
     panneau = document.createElement('div');
     panneau._input = input;

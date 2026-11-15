@@ -59,8 +59,9 @@ class Compta
         $prior = 0;
         foreach ($rows as $r) if (preg_match('/^[67]/', $r->compte)) $prior += $r->rd - $r->rc;
         if (abs($prior) > 0.0005) {
-            $r121 = $rows->firstWhere('compte', '121');
-            if (! $r121) { $r121 = (object) ['compte' => '121', 'rd' => 0, 'rc' => 0, 'md' => 0, 'mc' => 0]; $rows->push($r121); }
+            $c121 = Saisie::normaliser('121', Saisie::longueur($client));       // même longueur que les autres comptes du dossier
+            $r121 = $rows->firstWhere('compte', $c121);
+            if (! $r121) { $r121 = (object) ['compte' => $c121, 'rd' => 0, 'rc' => 0, 'md' => 0, 'mc' => 0]; $rows->push($r121); }
             $r121->rd += $prior;
             $rows = $rows->sortBy('compte')->values();
         }
@@ -126,11 +127,13 @@ class Compta
     /** Enregistre une écriture équilibrée. */
     public static function passer(int $client, string $date, string $journal, string $libelle, array $lignes, ?string $source = null, ?int $user = null): Ecriture
     {
-        return DB::transaction(function () use ($client, $date, $journal, $libelle, $lignes, $source, $user) {
+        // Numéros de compte à la longueur choisie dans le paramétrage du dossier (401 → 401000…)
+        $longueur = Saisie::longueur($client);
+        return DB::transaction(function () use ($client, $date, $journal, $libelle, $lignes, $source, $user, $longueur) {
             $e = Ecriture::create(compact('date', 'journal', 'libelle', 'source') + ['client_id' => $client, 'valide_par' => $user]);
             foreach ($lignes as $l) {
                 if ((float) ($l['debit'] ?? 0) == 0 && (float) ($l['credit'] ?? 0) == 0) continue;
-                $e->lignes()->create(['compte' => $l['compte'], 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0)]);
+                $e->lignes()->create(['compte' => Saisie::normaliser((string) $l['compte'], $longueur), 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0)]);
             }
             return $e;
         });

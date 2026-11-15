@@ -73,7 +73,7 @@ class Ecritures
     public static function modifier(Ecriture $e, array $d): void
     {
         $lignes = collect($d['lignes'])->filter(fn ($l) => trim((string) ($l['compte'] ?? '')) !== '' && ((float) ($l['debit'] ?? 0) || (float) ($l['credit'] ?? 0)))
-            ->map(fn ($l) => ['compte' => trim($l['compte']), 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0)])->values();
+            ->map(fn ($l) => ['compte' => Saisie::normaliser($l['compte'], Saisie::longueur($e->client_id)), 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0)])->values();
         if ($lignes->count() < 2) throw new RuntimeException('Saisissez au moins deux lignes.');
         if (abs($lignes->sum('debit') - $lignes->sum('credit')) > 0.0005) {
             throw new RuntimeException('Écriture déséquilibrée : débit '.tnd($lignes->sum('debit')).' ≠ crédit '.tnd($lignes->sum('credit')).'.');

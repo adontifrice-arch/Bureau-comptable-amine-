@@ -11,6 +11,19 @@
     <form method="POST" action="{{ route('compta.parametres') }}" class="card" x-data="{ regles: @js(array_values($pb['regles'])), achats: @js($pa['comptes']), ventes: @js($pv['comptes']) }">@csrf
         <div class="card-h"><h2 class="card-t">Paramétrage de la saisie — {{ $client->nom }}</h2>@unless($chef)<span class="badge-gray">Lecture seule</span>@endunless</div>
         <fieldset @disabled(! $chef) class="space-y-6 p-5">
+            @php $lg = (int) ($saisie['comptes']['longueur'] ?? 0); @endphp
+            <div x-data="{ n: {{ $lg }}, ex(c) { return this.n > c.length ? c.padEnd(this.n, '0') : c } }" class="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/40">
+                <h3 class="mb-2 text-sm font-semibold">Numéros de compte des écritures</h3>
+                <div class="grid items-end gap-3 md:grid-cols-3">
+                    <div><label class="label" for="cpt-lg">Comptabiliser les pièces avec des comptes à</label>
+                        <select id="cpt-lg" name="comptes[longueur]" class="input" x-model.number="n">@foreach(\App\Services\Saisie::LONGUEURS as $k => $l)<option value="{{ $k }}" @selected($lg === $k)>{{ $l }}</option>@endforeach</select></div>
+                    <div class="text-xs text-slate-500 md:col-span-2">
+                        <p>Exemples : <span class="font-mono" x-text="'401 → ' + ex('401') + ' · 4366 → ' + ex('4366') + ' · 6061 → ' + ex('6061')"></span></p>
+                        <p class="mt-1">Toutes les écritures du dossier (factures, paie, banque, amortissements, écritures manuelles) sont passées sur des comptes de cette longueur, complétés par des zéros ; un compte plus long est gardé tel quel.</p>
+                    </div>
+                    <label class="flex items-center gap-2 text-sm md:col-span-3" x-show="n > 0"><input type="checkbox" name="convertir" value="1" class="rounded border-slate-300 text-brand-600"> Convertir aussi les écritures déjà passées de ce dossier (sinon, anciens et nouveaux numéros coexistent dans la balance)</label>
+                </div>
+            </div>
             <div>
                 <h3 class="mb-2 text-sm font-semibold">Factures d’achat</h3>
                 <div class="grid gap-3 md:grid-cols-3">
@@ -25,7 +38,7 @@
                     <div class="label">Comptes de charge proposés et leur taux de TVA <span class="font-normal text-slate-400">— le premier est proposé par défaut</span></div>
                     <template x-for="(x, i) in achats" :key="i">
                         <div class="mb-2 grid grid-cols-12 items-start gap-2">
-                            <div class="col-span-7"><input class="input font-mono" placeholder="Compte (ex. 6061)" list="cpts-charges" :name="`achat[comptes][${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte de charge"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-init="$el.textContent = (window.PLAN || {})[x.compte] || ''"></p></div>
+                            <div class="col-span-7"><input class="input font-mono" placeholder="Compte (ex. 6061)" list="cpts-charges" :name="`achat[comptes][${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte de charge"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-init="$el.textContent = window.libelleCompte(x.compte)"></p></div>
                             <div class="col-span-4"><input type="number" step="0.01" min="0" max="100" class="input" list="taux-tva" placeholder="TVA %" :name="`achat[comptes][${i}][tva_taux]`" x-model="x.tva_taux" aria-label="Taux de TVA"></div>
                             <button type="button" class="btn-icon col-span-1" @click="achats.splice(i, 1)" title="Retirer"><x-icon name="trash" class="h-4 w-4"/></button>
                         </div>
@@ -46,7 +59,7 @@
                     <div class="label">Comptes de vente proposés et leur taux de TVA <span class="font-normal text-slate-400">— le premier est proposé par défaut</span></div>
                     <template x-for="(x, i) in ventes" :key="i">
                         <div class="mb-2 grid grid-cols-12 items-start gap-2">
-                            <div class="col-span-7"><input class="input font-mono" placeholder="Compte (ex. 705)" list="cpts-produits" :name="`vente[comptes][${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte de vente"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-init="$el.textContent = (window.PLAN || {})[x.compte] || ''"></p></div>
+                            <div class="col-span-7"><input class="input font-mono" placeholder="Compte (ex. 705)" list="cpts-produits" :name="`vente[comptes][${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte de vente"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-init="$el.textContent = window.libelleCompte(x.compte)"></p></div>
                             <div class="col-span-4"><input type="number" step="0.01" min="0" max="100" class="input" list="taux-tva" placeholder="TVA %" :name="`vente[comptes][${i}][tva_taux]`" x-model="x.tva_taux" aria-label="Taux de TVA"></div>
                             <button type="button" class="btn-icon col-span-1" @click="ventes.splice(i, 1)" title="Retirer"><x-icon name="trash" class="h-4 w-4"/></button>
                         </div>
@@ -109,7 +122,7 @@
                     <div class="label"><span x-text="m.type === 'vente' ? 'Comptes de vente' : 'Comptes de charge / immobilisation'"></span> et leur taux de TVA <span class="font-normal text-slate-400">— le premier est appliqué</span></div>
                     <template x-for="(x, i) in m.comptes" :key="i">
                         <div class="mb-2 grid grid-cols-12 items-start gap-2">
-                            <div class="col-span-7"><input class="input font-mono" placeholder="Compte" list="cpts-param" :name="`comptes[${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-init="$el.textContent = (window.PLAN || {})[x.compte] || ''"></p></div>
+                            <div class="col-span-7"><input class="input font-mono" placeholder="Compte" list="cpts-param" :name="`comptes[${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte"><p data-compte-libelle class="mt-0.5 truncate text-xs text-slate-400" x-init="$el.textContent = window.libelleCompte(x.compte)"></p></div>
                             <div class="col-span-4"><input type="number" step="0.01" min="0" max="100" class="input" list="taux-tva" placeholder="TVA %" :name="`comptes[${i}][tva_taux]`" x-model="x.tva_taux" aria-label="Taux de TVA" required></div>
                             <button type="button" class="btn-icon col-span-1" @click="m.comptes.length > 1 ? m.comptes.splice(i, 1) : (m.comptes[0] = { compte: '', tva_taux: 19 })" title="Retirer"><x-icon name="trash" class="h-4 w-4"/></button>
                         </div>

@@ -18,7 +18,12 @@ class Saisie
      * « comptes » : comptes proposés à la saisie des factures, chacun avec son taux de TVA ; le premier est proposé par défaut.
      * « compte » et « tva_taux » : compte et taux par défaut (le premier compte proposé, sinon le taux général).
      */
+    /** Longueurs proposées pour les numéros de compte des écritures (0 : tels que saisis). */
+    public const LONGUEURS = [0 => 'Tels que saisis (401, 6061…)', 6 => '6 chiffres (401000)', 7 => '7 chiffres (4010000)', 8 => '8 chiffres (40100000)',
+        9 => '9 chiffres', 10 => '10 chiffres'];
+
     public const DEFAUTS = [
+        'comptes' => ['longueur' => 0],
         'achat' => ['compte_tiers' => '401', 'compte' => '', 'tva_taux' => 19, 'timbre' => 1, 'retenue_taux' => 0, 'tva_deductible' => true, 'comptes' => []],
         'vente' => ['compte_tiers' => '411', 'compte' => '705', 'tva_taux' => 19, 'timbre' => 1, 'compte_timbre' => '437',
             'comptes' => [['compte' => '705', 'tva_taux' => 19]]],
@@ -73,6 +78,38 @@ class Saisie
     public static function enregistrer(int $client, array $p): void
     {
         Setting::put(self::cle($client), $p);
+    }
+
+    /** Longueur des numéros de compte des écritures du dossier (0 : tels que saisis). */
+    public static function longueur(int $client): int
+    {
+        return (int) (self::parametres($client)['comptes']['longueur'] ?? 0);
+    }
+
+    /** Numéro complété par des zéros à droite jusqu'à la longueur choisie (401 → 401000) ; un numéro plus long est gardé tel quel. */
+    public static function normaliser(string $compte, int $longueur): string
+    {
+        $compte = trim($compte);
+        return $longueur > 0 && ctype_digit($compte) && strlen($compte) < $longueur ? str_pad($compte, $longueur, '0') : $compte;
+    }
+
+    /**
+     * Convertit les écritures déjà passées du dossier à la longueur choisie (lignes des écritures, y compris supprimées).
+     * Seuls les numéros plus courts sont complétés ; retourne le nombre de lignes converties.
+     */
+    public static function convertirEcritures(int $client, int $longueur): int
+    {
+        if ($longueur <= 0) return 0;
+        $ids = \App\Models\Ecriture::withTrashed()->where('client_id', $client)->pluck('id');
+        $n = 0;
+        foreach ($ids->chunk(500) as $lot) {
+            $comptes = \Illuminate\Support\Facades\DB::table('ecriture_lignes')->whereIn('ecriture_id', $lot)->distinct()->pluck('compte');
+            foreach ($comptes as $c) {
+                $nouveau = self::normaliser((string) $c, $longueur);
+                if ($nouveau !== $c) $n += \Illuminate\Support\Facades\DB::table('ecriture_lignes')->whereIn('ecriture_id', $lot)->where('compte', $c)->update(['compte' => $nouveau]);
+            }
+        }
+        return $n;
     }
 
     public static function achat(int $client): array { return self::parametres($client)['achat']; }
