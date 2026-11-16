@@ -29,6 +29,9 @@ class Etat
 {
     public array $lignes = [];
 
+    /** Logo à afficher à la place de celui du cabinet (chemin sur le disque public), par ex. le logo de l'employeur sur les états de paie. */
+    public ?string $logo = null;
+
     public function __construct(
         public string $titre,
         public string $client,
@@ -59,19 +62,24 @@ class Etat
         };
     }
 
+    private function cab(): array
+    {
+        return $this->logo ? ['logo' => $this->logo] + Setting::cabinet() : Setting::cabinet();
+    }
+
     public function reponse(string $format): Response
     {
         return match ($format) {
             'pdf' => $this->pdf(),
             'xlsx' => $this->xlsx(),
             'docx' => $this->docx(),
-            default => response()->view('etats.imprimer', ['etat' => $this, 'cab' => Setting::cabinet(), 'impression' => true]),
+            default => response()->view('etats.imprimer', ['etat' => $this, 'cab' => $this->cab(), 'impression' => true]),
         };
     }
 
     private function pdf(): Response
     {
-        $pdf = Pdf::loadView('etats.imprimer', ['etat' => $this, 'cab' => Setting::cabinet(), 'impression' => false])
+        $pdf = Pdf::loadView('etats.imprimer', ['etat' => $this, 'cab' => $this->cab(), 'impression' => false])
             ->setPaper('a4', $this->paysage ? 'landscape' : 'portrait')->setOption(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Sans']);
         $d = $pdf->getDomPDF();
         $d->render();

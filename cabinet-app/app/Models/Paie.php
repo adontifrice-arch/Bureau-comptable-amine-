@@ -11,6 +11,6 @@ class Paie extends Model
 
     protected $table = 'paies';
     protected $guarded = [];
-    protected $casts = ['primes'=>'array','resultats'=>'array','totaux'=>'array'];
+    protected $casts = ['pointage'=>'array','primes'=>'array','resultats'=>'array','totaux'=>'array'];
     public function client() { return $this->belongsTo(Client::class); }
 }

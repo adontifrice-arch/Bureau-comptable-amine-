@@ -138,12 +138,32 @@ Route::middleware(['auth', 'actif'])->group(function () {
 
     // ---------- Paie ----------
     Route::get('paie', [C\PaieController::class, 'index'])->name('paie.index');
-    Route::post('paie/salaries', [C\PaieController::class, 'salarieStore'])->name('paie.salaries.store');
-    Route::put('paie/salaries/{salarie}', [C\PaieController::class, 'salarieUpdate'])->name('paie.salaries.update');
-    Route::delete('paie/salaries/{salarie}', [C\PaieController::class, 'salarieDestroy'])->name('paie.salaries.destroy');
+    // Paie — menu Employé : fiche employé, pièces jointes, états du personnel, documents RH
+    Route::get('paie/employes/nouveau', [C\PaieEmployeController::class, 'create'])->name('paie.employes.create');
+    Route::get('paie/employes/etats/{etat}/{format}', [C\PaieEmployeController::class, 'etat'])->name('paie.employes.etat');
+    Route::get('paie/employes/{salarie}', [C\PaieEmployeController::class, 'edit'])->name('paie.employes.edit');
+    Route::get('paie/employes/{salarie}/imprimer', [C\PaieEmployeController::class, 'imprimer'])->name('paie.employes.imprimer');
+    Route::get('paie/employes/{salarie}/document/{type}', [C\PaieEmployeController::class, 'rh'])->name('paie.employes.rh');
+    Route::post('paie/salaries', [C\PaieEmployeController::class, 'store'])->name('paie.salaries.store');
+    Route::put('paie/salaries/{salarie}', [C\PaieEmployeController::class, 'update'])->name('paie.salaries.update');
+    Route::delete('paie/salaries/{salarie}', [C\PaieEmployeController::class, 'destroy'])->name('paie.salaries.destroy');
+    Route::get('paie/pieces-employes/{document}', [C\PaieEmployeController::class, 'document'])->name('paie.employes.piece');
+    Route::delete('paie/pieces-employes/{document}', [C\PaieEmployeController::class, 'documentDestroy'])->name('paie.employes.piece.destroy');
     Route::post('paie/calcul', [C\PaieController::class, 'calcul'])->name('paie.calcul');
     Route::post('paie/cloturer', [C\PaieController::class, 'cloturer'])->name('paie.cloturer');
     Route::get('paie/bulletins', [C\PaieController::class, 'bulletins'])->name('paie.bulletins');
+    Route::get('paie/editions/{etat}/{format}', [C\PaieController::class, 'edition'])->name('paie.edition');
+    // Paie — menu Fichier
+    Route::put('paie/employeur', [C\PaieDossierController::class, 'employeur'])->name('paie.employeur');
+    Route::get('paie/sauvegarde', [C\PaieDossierController::class, 'sauvegarde'])->name('paie.sauvegarde');
+    Route::post('paie/restaurer', [C\PaieDossierController::class, 'restaurer'])->middleware('chef')->name('paie.restaurer');
+    Route::get('paie/import/modele', [C\PaieDossierController::class, 'modeleImport'])->name('paie.import.modele');
+    Route::post('paie/import/employes', [C\PaieDossierController::class, 'importEmployes'])->name('paie.import.employes');
+    Route::get('paie/import/modele-paie', [C\PaieDossierController::class, 'modelePaie'])->name('paie.import.modele-paie');
+    Route::post('paie/import/pointage', [C\PaieDossierController::class, 'importPointage'])->name('paie.import.pointage');
+    Route::post('paie/mettre-a-jour', [C\PaieDossierController::class, 'mettreAJour'])->name('paie.mettre-a-jour');
+    Route::post('paie/rouvrir', [C\PaieDossierController::class, 'rouvrir'])->middleware('chef')->name('paie.rouvrir');
+    Route::get('paie/simulation', [C\PaieDossierController::class, 'simulation'])->name('paie.simulation');
     Route::post('paie/parametres', [C\PaieController::class, 'parametres'])->middleware('chef')->name('paie.parametres');
 
     // ---------- Liasse ----------

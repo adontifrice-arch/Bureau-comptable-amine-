@@ -13,7 +13,7 @@ class Client extends Model
     protected $table = 'clients';
     protected $guarded = [];
 
-    protected $casts = ['gerant_cin_date'=>'date','gerant_passeport_date'=>'date','gerant_passeport_validite'=>'date','gerant_naissance_date'=>'date','gerant_nomination_date'=>'date','gerant_associe'=>'boolean'];
+    protected $casts = ['paie_config'=>'array','gerant_cin_date'=>'date','gerant_passeport_date'=>'date','gerant_passeport_validite'=>'date','gerant_naissance_date'=>'date','gerant_nomination_date'=>'date','gerant_associe'=>'boolean'];
 
     public function associes() { return $this->hasMany(Associe::class); }
     public function echeances() { return $this->hasMany(Echeance::class); }
