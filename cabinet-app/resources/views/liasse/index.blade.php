@@ -7,8 +7,10 @@
         <a href="{{ $u('ef') }}" class="btn-primary"><x-icon name="file-text" class="h-4 w-4"/> États financiers complets</a>
     </x-page-header>
     @if(!$F['n'])<div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Aucune écriture comptabilisée pour cet exercice : les états sont alimentés par les écritures validées dans l’onglet Comptabilité.</div>@endif
-    <x-tabs :active="$tab" :items="['bil' => ['Bilan', $u('bil')], 'res' => ['État de résultat', $u('res')], 'fis' => ['Passage au résultat fiscal', $u('fis')], 'ef' => ['États financiers', $u('ef')]]"/>
-    @if($tab === 'ef')
+    <x-tabs :active="$tab" :items="['bil' => ['Bilan', $u('bil')], 'res' => ['État de résultat', $u('res')], 'fis' => ['Passage au résultat fiscal', $u('fis')], 'ef' => ['États financiers', $u('ef')], 'lf' => ['Liasse fiscale (XML)', $u('lf')]]"/>
+    @if($tab === 'lf')
+        @include('liasse._liasse_fiscale')
+    @elseif($tab === 'ef')
         @include('liasse._etats-financiers')
     @elseif($tab === 'fis')
         <div class="grid gap-6 lg:grid-cols-3">

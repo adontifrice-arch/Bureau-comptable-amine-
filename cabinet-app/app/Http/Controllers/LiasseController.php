@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\Liasse;
+use App\Services\LiasseFiscale;
 use App\Models\PassageFiscal;
 use App\Services\Compta;
 use App\Services\PaieCalc;
@@ -38,6 +40,11 @@ class LiasseController extends Controller
             $data['ef'] = \App\Services\EtatsFinanciers::calculer($data['client'], $data['annee']);
             $data['infos'] = self::infosEtats($data['client']);
         }
+        if ($data['tab'] === 'lf') {
+            $data['doc'] = in_array($r->input('doc'), LiasseFiscale::DOCUMENTS, true) ? $r->input('doc') : 'F6001';
+            $data['lf'] = LiasseFiscale::calculer($data['client'], $data['annee']);
+            $data['entete'] = LiasseFiscale::entete($data['client'], $data['annee']);
+        }
         return view('liasse.index', $data);
     }
 
@@ -51,6 +58,114 @@ class LiasseController extends Controller
     }
 
     public function print(Request $r) { return view('liasse.print', $this->data($r)); }
+
+    // ---------- Liasse fiscale XML (cahier des charges CIMF, cas général) ----------
+
+    private function liasse(Request $r): Liasse
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        return Liasse::firstOrCreate(['client_id' => $client->id, 'annee' => (int) $r->input('annee', now()->year)]);
+    }
+
+    public function lfEntete(Request $r)
+    {
+        $d = $r->validate(['annee' => 'required|integer|min:2000|max:2099', 'activite' => 'nullable|max:250', 'adresse' => 'nullable|max:250',
+            'debut' => ['nullable', 'regex:#^\d{2}/\d{2}/\d{4}$#'], 'cloture' => ['nullable', 'regex:#^\d{2}/\d{2}/\d{4}$#'],
+            'acte' => 'required|in:0,1,2', 'nature' => 'required|in:D,P', 'unite' => 'required|in:millimes,dinars',
+            'categorie' => 'required|in:M,C,P,N', 'forme' => 'required|in:PP,SP,SC']);
+        unset($d['annee']);
+        $this->liasse($r)->update(['entete' => $d]);
+        return back()->with('ok', 'Entête de la liasse enregistrée.');
+    }
+
+    /** Montants saisis d'un document : remplacent ceux de la balance ; vide = montant de la balance. « reinit » efface les saisies du document. */
+    public function lfSaisie(Request $r)
+    {
+        $r->validate(['annee' => 'required|integer', 'doc' => 'required|in:'.implode(',', LiasseFiscale::DOCUMENTS), 'v' => 'nullable|array', 'v.*' => 'array', 'v.*.*' => 'nullable|numeric']);
+        $doc = $r->input('doc');
+        $liasse = $this->liasse($r);
+        $saisies = (array) $liasse->saisies;
+        if ($r->boolean('reinit')) {
+            unset($saisies[$doc]);
+        } else {
+            $feuilles = LiasseFiscale::feuilles($doc);
+            $saisies[$doc] = [];
+            foreach (LiasseFiscale::SAISIE[$doc] as $col) {
+                foreach ((array) $r->input("v.$col", []) as $l => $v) {
+                    if ($v === null || $v === '' || ! in_array((int) $l, $feuilles, true)) continue;
+                    $saisies[$doc][$col][(int) $l] = round((float) $v, 3);
+                }
+            }
+        }
+        $liasse->update(['saisies' => $saisies]);
+        return back()->with('ok', $r->boolean('reinit') ? 'Montants du document '.$doc.' repris de la balance.' : 'Document '.$doc.' enregistré.');
+    }
+
+    public function lfXml(Request $r, string $doc)
+    {
+        abort_unless(in_array($doc, LiasseFiscale::DOCUMENTS, true), 404);
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        $annee = (int) $r->input('annee', now()->year);
+        $xml = LiasseFiscale::xml($doc, $client, $annee, LiasseFiscale::calculer($client, $annee));
+        return response($xml, 200, ['Content-Type' => 'application/xml; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.LiasseFiscale::nomFichier($doc, $client, $annee).'"']);
+    }
+
+    /** Valide les fichiers XML de l'exercice (règles du cahier des charges, et schémas XSD officiels s'ils sont déposés). */
+    public function lfValider(Request $r)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        $annee = (int) $r->input('annee', now()->year);
+        $resultats = LiasseFiscale::valider($client, $annee);
+        $nb = array_sum(array_map(fn ($d) => count($d['erreurs']), $resultats));
+        return redirect()->route('liasse.index', ['tab' => 'lf', 'doc' => $r->input('doc', 'F6001'), 'annee' => $annee])
+            ->with('validation', $resultats)
+            ->with($nb ? 'validation_ko' : 'ok', $nb ? "Validation : $nb anomalie(s) à corriger avant le dépôt." : 'Validation réussie : les fichiers de la liasse sont conformes.');
+    }
+
+    /** Dépôt des schémas XSD officiels (fichiers .xsd ou archive .zip) ; seuls les fichiers .xsd sont conservés. */
+    public function lfXsd(Request $r)
+    {
+        $r->validate(['fichiers' => 'required|array|max:30', 'fichiers.*' => 'file|max:5120']);
+        $dossier = LiasseFiscale::dossierXsd();
+        if (! is_dir($dossier)) mkdir($dossier, 0775, true);
+        $n = 0;
+        $garder = function (string $nom, string $contenu) use ($dossier, &$n) {
+            $nom = basename(str_replace('\\', '/', $nom));
+            if (! preg_match('/^[\w.\-]+\.xsd$/i', $nom) || ! str_contains($contenu, 'schema')) return;
+            file_put_contents($dossier.'/'.$nom, $contenu); $n++;
+        };
+        foreach ($r->file('fichiers') as $f) {
+            if (strtolower($f->getClientOriginalExtension()) === 'zip') {
+                $z = new \ZipArchive();
+                if ($z->open($f->getRealPath()) !== true) continue;
+                for ($i = 0; $i < $z->numFiles; $i++) {
+                    $nom = $z->getNameIndex($i);
+                    if (str_ends_with(strtolower($nom), '.xsd')) $garder($nom, (string) $z->getFromIndex($i));
+                }
+                $z->close();
+            } else {
+                $garder($f->getClientOriginalName(), (string) file_get_contents($f->getRealPath()));
+            }
+        }
+        $manquants = array_values(array_filter(LiasseFiscale::DOCUMENTS, fn ($c) => ! LiasseFiscale::xsd($c)));
+        if (! $n) return back()->withErrors(['fichiers' => 'Aucun fichier .xsd trouvé dans l’envoi.']);
+        return back()->with('ok', $n
+            ? "$n schéma(s) XSD enregistré(s).".($manquants ? ' Toujours manquants : '.implode(', ', $manquants).'.' : '')
+            : 'Aucun fichier .xsd trouvé dans l’envoi.');
+    }
+
+    public function lfZip(Request $r)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        $annee = (int) $r->input('annee', now()->year);
+        $nom = 'liasse-'.substr(LiasseFiscale::nomFichier('X', $client, $annee), 2, -4).'.zip';
+        return response()->download(LiasseFiscale::zip($client, $annee), $nom, ['Content-Type' => 'application/zip'])->deleteFileAfterSend();
+    }
 
     // ---------- États financiers complets (modèle du cabinet) ----------
 

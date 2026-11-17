@@ -1,0 +1,201 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Cabinet;
+use App\Models\Client;
+use App\Models\Liasse;
+use App\Models\User;
+use App\Services\Compta;
+use App\Services\LiasseFiscale;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+/** Liasse fiscale XML (cahier des charges CIMF, cas général) : F6001 à F6005 depuis la balance, saisies, contrôles, fichiers. */
+class LiasseFiscaleTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private Client $client;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $cabinet = Cabinet::creer('Cabinet test');
+        $this->actingAs(User::factory()->create(['cabinet_id' => $cabinet->id, 'role' => 'chef', 'status' => 'active']));
+        $this->client = Client::factory()->create(['nom' => 'ASJB TENNIS CLUB', 'forme' => 'SARL', 'adresse' => 'Rue de Tunis', 'matricule_fiscal' => '1874290/R/A/M/000']);
+        session(['dossier' => $this->client->id]);
+
+        $e = fn ($date, $lignes) => Compta::passer($this->client->id, $date, 'OD', 'Test', $lignes);
+        // 2023 : résultat 1 400
+        $e('2023-01-02', [['compte' => '532', 'debit' => 5000], ['compte' => '101', 'credit' => 5000]]);
+        $e('2023-02-01', [['compte' => '2282', 'debit' => 3000], ['compte' => '404', 'credit' => 3000]]);
+        $e('2023-12-31', [['compte' => '6811', 'debit' => 600], ['compte' => '28282', 'credit' => 600]]);
+        $e('2023-06-30', [['compte' => '411', 'debit' => 2000], ['compte' => '705', 'credit' => 2000]]);
+        // 2024 : résultat 2 050
+        $e('2024-01-10', [['compte' => '532', 'debit' => 2000], ['compte' => '411', 'credit' => 2000]]);
+        $e('2024-01-15', [['compte' => '404', 'debit' => 3000], ['compte' => '532', 'credit' => 3000]]);
+        $e('2024-03-01', [['compte' => '601', 'debit' => 1000], ['compte' => '401', 'credit' => 1000]]);
+        $e('2024-12-31', [['compte' => '31', 'debit' => 300], ['compte' => '6031', 'credit' => 300]]);
+        $e('2024-06-30', [['compte' => '411', 'debit' => 4200], ['compte' => '705', 'credit' => 4200]]);
+        $e('2024-12-31', [['compte' => '6811', 'debit' => 600], ['compte' => '28282', 'credit' => 600]]);
+        $e('2024-11-30', [['compte' => '640', 'debit' => 500], ['compte' => '425', 'credit' => 500]]);
+        $e('2024-12-31', [['compte' => '6511', 'debit' => 50], ['compte' => '532', 'credit' => 50]]);
+        $e('2024-12-31', [['compte' => '691', 'debit' => 200], ['compte' => '4343', 'credit' => 200]]);
+        $e('2024-09-01', [['compte' => '67', 'debit' => 100], ['compte' => '532', 'credit' => 100]]);
+        $e('2024-04-01', [['compte' => '54', 'debit' => 1000], ['compte' => '1621', 'credit' => 1000]]);
+    }
+
+    public function test_etat_de_resultat_f6003(): void
+    {
+        $R = LiasseFiscale::calculer($this->client, 2024)['docs']['F6003'];
+        $n = $R['n'];
+        $this->assertSame([4200.0, 4200.0, 1000.0, -300.0, 700.0, 500.0, 600.0], [$n[11], $n[1], $n[30], $n[34], $n[29], $n[36], $n[47]]);
+        $this->assertSame([1800.0, 2400.0, 50.0, 2350.0, 200.0, 2150.0, -100.0, 2050.0, 2050.0], [$n[20], $n[61], $n[62], $n[76], $n[77], $n[80], $n[81], $n[84], $n[89]]);
+        $this->assertSame(1400.0, $R['n1'][89]);
+    }
+
+    public function test_bilan_f6001_f6002_et_saisie_qui_remplace_la_balance(): void
+    {
+        $L = LiasseFiscale::calculer($this->client, 2024);
+        [$A, $P] = [$L['docs']['F6001'], $L['docs']['F6002']];
+        $this->assertSame([3000.0, 1200.0, 1800.0], [$A['brut'][17], $A['amort'][17], $A['net'][17]]);
+        $this->assertSame([300.0, 4200.0, 3850.0, 1000.0, 11150.0], [$A['net'][38], $A['net'][45], $A['net'][65], $A['net'][66], $A['net'][68]]);
+        $this->assertSame([5000.0, 1000.0, 1000.0, 500.0, 200.0, 2050.0], [$P['n'][2], $P['n'][12], $P['n'][33], $P['n'][40], $P['n'][41], $P['n'][7]]);
+        // Résultat 2023 repris en résultats reportés : N et N-1 équilibrés
+        $this->assertSame([9400.0, 9400.0], [$A['net1'][68], $P['n1'][53]]);
+        $this->assertSame([1400.0, 11150.0], [$P['n'][5], $P['n'][53]]);
+        $this->assertTrue($L['controles'][1][1]);
+
+        // Saisie : remplace la balance (lignes de total ignorées), totaux recalculés, contrôle en défaut
+        $this->post(route('liasse.lf.saisie'), ['annee' => 2024, 'doc' => 'F6002', 'v' => ['n' => [5 => '1000', 53 => '1', 2 => '']]])->assertRedirect();
+        $this->assertEquals([5 => 1000], Liasse::where('client_id', $this->client->id)->first()->saisies['F6002']['n']);
+        $L = LiasseFiscale::calculer($this->client, 2024);
+        $this->assertSame([5000.0, 10750.0], [$L['docs']['F6002']['n'][2], $L['docs']['F6002']['n'][53]]);
+        $this->assertFalse($L['controles'][1][1]);
+
+        $this->post(route('liasse.lf.saisie'), ['annee' => 2024, 'doc' => 'F6002', 'reinit' => 1]);
+        $this->assertSame(11150.0, LiasseFiscale::calculer($this->client, 2024)['docs']['F6002']['n'][53]);
+    }
+
+    public function test_resultat_fiscal_f6005(): void
+    {
+        // Bénéfice : réintégrations, provisions déductibles plafonnées à 50 %, déficits reportés
+        $v = LiasseFiscale::resultatFiscal(10000, [9 => 500, 23 => 300, 35 => 2000, 53 => 800, 57 => 6000, 65 => 1000]);
+        $this->assertSame([800.0, 2000.0, 2800.0, 800.0, 12000.0, 12000.0], [$v[3], $v[33], $v[45], $v[54], $v[55], $v[56]]);
+        $this->assertSame([6000.0, 6000.0, 5000.0, 5000.0, 5000.0, 0.0], [$v[61], $v[63], $v[68], $v[80], $v[101], $v[107]]);
+
+        // Déficit (cas 1) : lignes 56 à 101 à zéro, déficit reportable
+        $v = LiasseFiscale::resultatFiscal(-3000, [44 => 500, 66 => 999, 104 => 200]);
+        $this->assertSame([-2500.0, 0.0, 0.0, -2500.0, 2700.0], [$v[55], $v[56], $v[66], $v[102], $v[107]]);
+
+        // Réintégrations par défaut : tableau de passage simplifié ; résultat avant impôt (2 050 + IS 200)
+        $this->post(route('liasse.passage'), ['annee' => 2024, 'rei' => 150, 'ded' => 50]);
+        $F = LiasseFiscale::calculer($this->client, 2024)['docs']['F6005']['n'];
+        $this->assertSame([2250.0, 150.0, 50.0, 2350.0, 2350.0], [$F[2], $F[44], $F[54], $F[55], $F[101]]);
+    }
+
+    public function test_fichiers_xml_et_archive(): void
+    {
+        $this->assertSame('1874290RAM000', LiasseFiscale::matricule('1874290/R/A/M/000'));
+        $this->assertNull(LiasseFiscale::matricule('1874290/R/X/M/000'));
+
+        $this->post(route('liasse.lf.entete'), ['annee' => 2024, 'activite' => 'Club de tennis', 'acte' => '0', 'nature' => 'P', 'unite' => 'millimes', 'categorie' => 'M', 'forme' => 'SC'])->assertRedirect();
+        $r = $this->get(route('liasse.lf.xml', ['doc' => 'F6001', 'annee' => 2024]))->assertOk();
+        $this->assertStringContainsString('F6001-1874290R-2024.xml', $r->headers->get('Content-Disposition'));
+        $x = $r->getContent();
+        $this->assertStringStartsWith('<?xml version="1.0" encoding="UTF-8"?>', $x);
+        foreach (['<lf:F6001 xmlns:lf="http://www.impots.finances.gov.tn/liasse"', 'xsi:schemaLocation="http://www.impots.finances.gov.tn/liasse F6001.xsd"',
+            '<lf:MatriculeFiscalDeclarant>1874290RAM000</lf:MatriculeFiscalDeclarant>', '<lf:Activite>Club de tennis</lf:Activite>', '<lf:Adresse>Rue de Tunis</lf:Adresse>',
+            '<lf:DateClotureExercice>31/12/2024</lf:DateClotureExercice>', '<lf:NatureDepot>P</lf:NatureDepot>',
+            '<lf:F60010017>3000000</lf:F60010017>', '<lf:F60011017>1200000</lf:F60011017>', '<lf:F60012068>11150000</lf:F60012068>', '<lf:F60013068>9400000</lf:F60013068>'] as $attendu) {
+            $this->assertStringContainsString($attendu, $x);
+        }
+        $this->assertNotFalse(simplexml_load_string($x));
+
+        $x = $this->get(route('liasse.lf.xml', ['doc' => 'F6003', 'annee' => 2024]))->getContent();
+        $this->assertStringContainsString('<lf:F60030089>2050000</lf:F60030089>', $x);
+        $this->assertStringContainsString('<lf:F60030178>1400000</lf:F60030178>', $x);
+
+        $x = $this->get(route('liasse.lf.xml', ['doc' => 'F6005', 'annee' => 2024]))->getContent();
+        $this->assertStringContainsString('<lf:F60050000 categorie="M" codeformejuridique="SC"/>', $x);
+        $this->assertStringContainsString('<lf:F60050001 resultat="B" F60050002="2250000"/>', $x);
+        $this->assertStringContainsString('<lf:F60050101>2250000</lf:F60050101>', $x);
+
+        $r = $this->get(route('liasse.lf.zip', ['annee' => 2024]))->assertOk();
+        $zip = new \ZipArchive();
+        $zip->open($r->baseResponse->getFile()->getPathname());
+        $noms = array_map(fn ($i) => $zip->getNameIndex($i), range(0, $zip->numFiles - 1));
+        $this->assertSame(['F6001-1874290R-2024.xml', 'F6002-1874290R-2024.xml', 'F6003-1874290R-2024.xml', 'F6004-1874290R-2024.xml', 'F6005-1874290R-2024.xml'], $noms);
+        $zip->close();
+    }
+
+    public function test_bouton_valider_controle_selon_le_cahier_des_charges(): void
+    {
+        $this->get(route('liasse.index', ['tab' => 'lf', 'annee' => 2024]))->assertSee('Valider')->assertSee('aucun déposé');
+
+        // Activité non renseignée : anomalie d'entête sur chaque fichier
+        $this->post(route('liasse.lf.valider'), ['annee' => 2024])->assertRedirect()->assertSessionHas('validation_ko');
+        $v = session('validation');
+        $this->assertSame(LiasseFiscale::DOCUMENTS, array_keys($v));
+        $this->assertStringContainsString('Activité', implode(' ', $v['F6001']['erreurs']));
+        $this->assertFalse($v['F6001']['xsd']);
+
+        // Entête complète : liasse conforme
+        $this->post(route('liasse.lf.entete'), ['annee' => 2024, 'activite' => 'Club de tennis', 'acte' => '0', 'nature' => 'D', 'unite' => 'millimes', 'categorie' => 'M', 'forme' => 'SC']);
+        $this->post(route('liasse.lf.valider'), ['annee' => 2024])->assertSessionHas('ok')->assertSessionMissing('validation_ko');
+        $this->assertSame([[], [], [], [], []], array_column(session('validation'), 'erreurs'));
+        $this->followRedirects($this->post(route('liasse.lf.valider'), ['annee' => 2024]))->assertSee('Fichiers conformes')->assertSee('F6003-1874290R-2024.xml');
+
+        // Fichier altéré : total faux, montant négatif en zone positive, décimale, élément absent, mauvais nom
+        $x = LiasseFiscale::xml('F6001', $this->client, 2024, LiasseFiscale::calculer($this->client, 2024));
+        $x = str_replace(['<lf:F60012068>11150000<', '<lf:F60010013>0<', '<lf:F60010014>0<', "<lf:F60010015>0</lf:F60010015>"], ['<lf:F60012068>11150001<', '<lf:F60010013>-5<', '<lf:F60010014>1.5<', ''], $x);
+        $e = implode("\n", LiasseFiscale::verifier('F6001', 'F6001-2024.xml', $x)['liste']);
+        foreach (['Nom de fichier non conforme', 'F6001 ligne 68', 'F60010013 (Terrains) : montant négatif', 'F60010014 : « 1.5 »', 'Élément F60010015 absent'] as $attendu) {
+            $this->assertStringContainsString($attendu, $e);
+        }
+        $this->assertSame(['Fichier XML mal formé.'], LiasseFiscale::verifier('F6001', 'F6001-1874290R-2024.xml', '<lf:F6001>')['liste']);
+    }
+
+    public function test_validation_par_le_schema_xsd_depose(): void
+    {
+        $dir = sys_get_temp_dir().'/lf-xsd-'.uniqid();
+        config(['liasse.xsd_dir' => $dir]);
+        $this->post(route('liasse.lf.entete'), ['annee' => 2024, 'activite' => 'Club de tennis', 'acte' => '0', 'nature' => 'D', 'unite' => 'millimes', 'categorie' => 'M', 'forme' => 'SC']);
+        $ns = 'http://www.impots.finances.gov.tn/liasse';
+        $schema = fn (string $racine, string $contenu) => '<?xml version="1.0"?><xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="'.$ns.'" elementFormDefault="qualified">'
+            .'<xs:element name="'.$racine.'"><xs:complexType><xs:sequence>'.$contenu.'</xs:sequence></xs:complexType></xs:element></xs:schema>';
+
+        // Dépôt par archive ZIP : seuls les .xsd sont gardés
+        $zip = tempnam(sys_get_temp_dir(), 'z');
+        $z = new \ZipArchive(); $z->open($zip, \ZipArchive::OVERWRITE);
+        $z->addFromString('schemas/F6001_2015.xsd', $schema('F6001', '<xs:any processContents="skip" maxOccurs="unbounded"/>'));
+        $z->addFromString('lisez-moi.txt', 'texte');
+        $z->close();
+        $this->post(route('liasse.lf.xsd'), ['fichiers' => [new \Illuminate\Http\UploadedFile($zip, 'xsd.zip', 'application/zip', null, true)]])->assertSessionHas('ok');
+        $this->assertFileExists($dir.'/F6001_2015.xsd');
+        $this->assertFileDoesNotExist($dir.'/lisez-moi.txt');
+
+        // Schéma F6002 strict (n'admet que l'entête) : le fichier généré est rejeté par le XSD
+        file_put_contents($dir.'/F6002.xsd', $schema('F6002', '<xs:any processContents="skip" maxOccurs="1"/>'));
+        $this->post(route('liasse.lf.valider'), ['annee' => 2024]);
+        $v = session('validation');
+        $this->assertTrue($v['F6001']['xsd']);
+        $this->assertSame([], $v['F6001']['erreurs']);
+        $this->assertTrue($v['F6002']['xsd']);
+        $this->assertStringStartsWith('XSD ligne', $v['F6002']['erreurs'][0]);
+        $this->assertFalse($v['F6003']['xsd']);
+
+        $this->post(route('liasse.lf.xsd'), ['fichiers' => [\Illuminate\Http\UploadedFile::fake()->createWithContent('notes.txt', 'x')]])->assertSessionHasErrors('fichiers');
+        array_map('unlink', glob($dir.'/*')); rmdir($dir);
+    }
+
+    public function test_ecran_liasse_fiscale(): void
+    {
+        $this->get(route('liasse.index', ['tab' => 'lf', 'annee' => 2024]))->assertOk()
+            ->assertSee('Entête du dépôt')->assertSee('F6001')->assertSee('Investissement recherche et développement')->assertSee('Contrôles');
+        foreach (['F6002', 'F6003', 'F6004', 'F6005'] as $doc) {
+            $this->get(route('liasse.index', ['tab' => 'lf', 'doc' => $doc, 'annee' => 2024]))->assertOk()->assertSee(LiasseFiscale::document($doc)['titre']);
+        }
+    }
+}

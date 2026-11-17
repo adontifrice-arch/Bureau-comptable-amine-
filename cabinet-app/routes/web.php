@@ -172,6 +172,12 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::get('liasse/imprimer', [C\LiasseController::class, 'print'])->name('liasse.print');
     Route::get('liasse/etats-financiers', [C\LiasseController::class, 'etatsFinanciers'])->name('liasse.etats-financiers');
     Route::post('liasse/etats-financiers/infos', [C\LiasseController::class, 'infos'])->name('liasse.etats-financiers.infos');
+    Route::post('liasse/fiscale/entete', [C\LiasseController::class, 'lfEntete'])->name('liasse.lf.entete');
+    Route::post('liasse/fiscale/saisie', [C\LiasseController::class, 'lfSaisie'])->name('liasse.lf.saisie');
+    Route::get('liasse/fiscale/xml/{doc}', [C\LiasseController::class, 'lfXml'])->name('liasse.lf.xml');
+    Route::post('liasse/fiscale/valider', [C\LiasseController::class, 'lfValider'])->name('liasse.lf.valider');
+    Route::post('liasse/fiscale/xsd', [C\LiasseController::class, 'lfXsd'])->name('liasse.lf.xsd');
+    Route::get('liasse/fiscale/zip',[C\LiasseController::class, 'lfZip'])->name('liasse.lf.zip');
 
     // ---------- Déclarations ----------
     Route::get('declarations', [C\DeclarationController::class, 'index'])->name('declarations.index');
