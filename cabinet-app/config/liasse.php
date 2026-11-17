@@ -91,7 +91,7 @@ return [
 
         'F6002' => [
             'titre' => 'Bilan — capitaux propres et passifs',
-            'colonnes' => ['n' => ['0', 'Net N'], 'n1' => ['1', 'Net N-1']],
+            'colonnes' => ['n' => ['0', 'Net N'], 'n1' => ['0', 'Net N-1', 53]],
             'lignes' => [
                 1 => ['CAPITAUX PROPRES', '6+7', true],
                 2 => ['Capital social'],

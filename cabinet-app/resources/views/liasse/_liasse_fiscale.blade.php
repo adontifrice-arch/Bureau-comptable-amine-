@@ -60,7 +60,8 @@
         @php $xsd = collect(LiasseFiscale::DOCUMENTS)->filter(fn ($c) => LiasseFiscale::xsd($c)); @endphp
         <form method="POST" action="{{ route('liasse.lf.xsd') }}" enctype="multipart/form-data" class="space-y-1 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">@csrf
             <div class="text-slate-500">Schémas XSD officiels :
-                @if($xsd->count())<b class="text-emerald-700">{{ $xsd->implode(', ') }}</b>@else<b>aucun déposé</b> (contrôle selon le cahier des charges uniquement)@endif</div>
+                @if($xsd->count())<b class="text-emerald-700">{{ $xsd->implode(', ') }}</b>@else<b>aucun déposé</b> (contrôle selon le cahier des charges uniquement)@endif
+                <span class="block text-slate-400">Attendus : {{ collect(LiasseFiscale::DOCUMENTS)->map(fn ($c) => LiasseFiscale::schema($c).'.xsd')->implode(', ') }} (avec Entete.xsd et Typescommuns.xsd s’ils y sont importés).</span></div>
             <div class="flex items-center gap-2"><input type="file" name="fichiers[]" multiple accept=".xsd,.zip" class="text-xs" required>
                 <button class="btn-secondary !py-1 text-xs">Déposer</button></div>
             @error('fichiers')<div class="text-rose-600">{{ $message }}</div>@enderror

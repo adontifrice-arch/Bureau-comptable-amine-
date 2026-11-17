@@ -112,6 +112,19 @@ class LiasseFiscaleTest extends TestCase
             $this->assertStringContainsString($attendu, $x);
         }
         $this->assertNotFalse(simplexml_load_string($x));
+        // Même structure que les fichiers produits par l'outil de la DGI : feuille de style, VersionDocument, Entete, Details
+        $this->assertMatchesRegularExpression('#^<\?xml[^>]*\?>\s*<\?xml-stylesheet type="text/xsl" href="F6001.xsl"\?>\s*<lf:F6001 [^>]*>\s*<lf:VersionDocument>1</lf:VersionDocument>\s*<lf:Entete>#', $x);
+        $this->assertMatchesRegularExpression('#</lf:Entete>\s*<lf:Details>\s*<lf:F60010001>.*<lf:F60013068>9400000</lf:F60013068>\s*</lf:Details>\s*</lf:F6001>\s*$#s', $x);
+
+        // F6002 : colonne N-1 codée comme F6003 (même chiffre, lignes décalées de 53)
+        $x = $this->get(route('liasse.lf.xml', ['doc' => 'F6002', 'annee' => 2024]))->getContent();
+        $this->assertStringContainsString('<lf:F60020053>11150000</lf:F60020053>', $x);
+        $this->assertStringContainsString('<lf:F60020106>9400000</lf:F60020106>', $x);
+        $this->assertStringNotContainsString('<lf:F60021', $x);
+
+        // F6004 : modèle autorisé
+        $x = $this->get(route('liasse.lf.xml', ['doc' => 'F6004', 'annee' => 2024]))->getContent();
+        $this->assertStringContainsString('xsi:schemaLocation="http://www.impots.finances.gov.tn/liasse F6004-MODELE-AUT.xsd"', $x);
 
         $x = $this->get(route('liasse.lf.xml', ['doc' => 'F6003', 'annee' => 2024]))->getContent();
         $this->assertStringContainsString('<lf:F60030089>2050000</lf:F60030089>', $x);
@@ -121,6 +134,8 @@ class LiasseFiscaleTest extends TestCase
         $this->assertStringContainsString('<lf:F60050000 categorie="M" codeformejuridique="SC"/>', $x);
         $this->assertStringContainsString('<lf:F60050001 resultat="B" F60050002="2250000"/>', $x);
         $this->assertStringContainsString('<lf:F60050101>2250000</lf:F60050101>', $x);
+        $this->assertStringContainsString('<lf:F60050055 resultat="B" F60050955="2250000"/>', $x);
+        $this->assertMatchesRegularExpression('#<lf:F60051055 resultat="[BP]" F60051955="\d+"/>#', $x);
 
         $r = $this->get(route('liasse.lf.zip', ['annee' => 2024]))->assertOk();
         $zip = new \ZipArchive();
@@ -155,6 +170,15 @@ class LiasseFiscaleTest extends TestCase
             $this->assertStringContainsString($attendu, $e);
         }
         $this->assertSame(['Fichier XML mal formé.'], LiasseFiscale::verifier('F6001', 'F6001-1874290R-2024.xml', '<lf:F6001>')['liste']);
+
+        // Structure : montants hors de Details, VersionDocument absent ; F6005 ligne 55 sans attribut de signe
+        $x = LiasseFiscale::xml('F6001', $this->client, 2024, LiasseFiscale::calculer($this->client, 2024));
+        $x = preg_replace('#\s*<lf:VersionDocument>1</lf:VersionDocument>#', '', str_replace(['<lf:Details>', '</lf:Details>'], '', $x));
+        $e = implode("\n", LiasseFiscale::verifier('F6001', 'F6001-1874290R-2024.xml', $x)['liste']);
+        $this->assertStringContainsString('Structure attendue : VersionDocument, Entete puis Details', $e);
+        $x = str_replace('<lf:F60050055 resultat="B" F60050955="2250000"/>', '<lf:F60050055>2250000</lf:F60050055>',
+            LiasseFiscale::xml('F6005', $this->client, 2024, LiasseFiscale::calculer($this->client, 2024)));
+        $this->assertStringContainsString('F60050055 : attribut resultat (B/P) invalide', implode("\n", LiasseFiscale::verifier('F6005', 'F6005-1874290R-2024.xml', $x)['liste']));
     }
 
     public function test_validation_par_le_schema_xsd_depose(): void
@@ -185,6 +209,14 @@ class LiasseFiscaleTest extends TestCase
         $this->assertTrue($v['F6002']['xsd']);
         $this->assertStringStartsWith('XSD ligne', $v['F6002']['erreurs'][0]);
         $this->assertFalse($v['F6003']['xsd']);
+
+        // F6004 : seul le schéma du modèle autorisé s'applique (le modèle de référence F6004.xsd est ignoré)
+        file_put_contents($dir.'/F6004.xsd', $schema('F6004', '<xs:any processContents="skip" maxOccurs="1"/>'));
+        $this->assertNull(LiasseFiscale::xsd('F6004'));
+        file_put_contents($dir.'/F6004-MODELE-AUT.xsd', $schema('F6004', '<xs:any processContents="skip" maxOccurs="unbounded"/>'));
+        $this->assertSame($dir.'/F6004-MODELE-AUT.xsd', LiasseFiscale::xsd('F6004'));
+        $this->post(route('liasse.lf.valider'), ['annee' => 2024]);
+        $this->assertSame([], session('validation')['F6004']['erreurs']);
 
         $this->post(route('liasse.lf.xsd'), ['fichiers' => [\Illuminate\Http\UploadedFile::fake()->createWithContent('notes.txt', 'x')]])->assertSessionHasErrors('fichiers');
         array_map('unlink', glob($dir.'/*')); rmdir($dir);

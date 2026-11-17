@@ -261,12 +261,16 @@ class LiasseFiscale
         $ns = config('liasse.namespace');
         $doc = self::document($code);
         $w = new XMLWriter();
-        $w->openMemory(); $w->setIndent(true); $w->setIndentString('  ');
+        // Structure des fichiers produits par l'outil de la DGI : feuille de style, VersionDocument, Entete, puis les montants dans Details.
+        $w->openMemory(); $w->setIndent(true); $w->setIndentString('    ');
         $w->startDocument('1.0', 'UTF-8');
+        $w->writePi('xml-stylesheet', 'type="text/xsl" href="'.$code.'.xsl"');
         $w->startElement('lf:'.$code);
         $w->writeAttribute('xmlns:lf', $ns);
+        $w->writeAttribute('xmlns:vc', 'http://www.w3.org/2007/XMLSchema-versioning');
         $w->writeAttribute('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance');
-        $w->writeAttribute('xsi:schemaLocation', $ns.' '.$code.'.xsd');
+        $w->writeAttribute('xsi:schemaLocation', $ns.' '.self::schema($code).'.xsd');
+        $w->writeElement('lf:VersionDocument', '1');
 
         $w->startElement('lf:Entete');
         $txt = fn ($s) => mb_substr(trim(preg_replace('/\s+/', ' ', (string) $s)), 0, 250);
@@ -281,6 +285,7 @@ class LiasseFiscale
         $w->writeElement('lf:NatureDepot', $e['nature']);
         $w->endElement();
 
+        $w->startElement('lf:Details');
         $vals = $liasse['docs'][$code];
         if ($code === 'F6005') {
             foreach (['0' => 'n', '1' => 'n1'] as $chiffre => $col) {
@@ -293,7 +298,16 @@ class LiasseFiscale
                 $w->writeAttribute('resultat', $v[2] < 0 ? 'P' : 'B');
                 $w->writeAttribute("F6005{$chiffre}002", self::entier(abs($v[2]), $e['unite']));
                 $w->endElement();
-                for ($l = 3; $l <= 108; $l++) $w->writeElement(sprintf('lf:F6005%s%03d', $chiffre, $l), self::entier($v[$l] ?? 0, $e['unite']));
+                for ($l = 3; $l <= 108; $l++) {
+                    if ($l === 55) {                // résultat fiscal avant provisions : signe en attribut, montant en valeur absolue
+                        $w->startElement("lf:F6005{$chiffre}055");
+                        $w->writeAttribute('resultat', ($v[55] ?? 0) < 0 ? 'P' : 'B');
+                        $w->writeAttribute("F6005{$chiffre}955", self::entier(abs($v[55] ?? 0), $e['unite']));
+                        $w->endElement();
+                        continue;
+                    }
+                    $w->writeElement(sprintf('lf:F6005%s%03d', $chiffre, $l), self::entier($v[$l] ?? 0, $e['unite']));
+                }
             }
         } else {
             foreach ($doc['colonnes'] as $col => $def) {
@@ -303,6 +317,7 @@ class LiasseFiscale
                 }
             }
         }
+        $w->endElement();
         $w->endElement();
         $w->endDocument();
         return $w->outputMemory();
@@ -329,10 +344,20 @@ class LiasseFiscale
         return config('liasse.xsd_dir') ?: storage_path('app/liasse-xsd');
     }
 
+    /** Nom du schéma officiel d'un document : l'état de flux F6004 suit le modèle autorisé (F6004-MODELE-AUT.xsd). */
+    public static function schema(string $code): string
+    {
+        return $code === 'F6004' ? 'F6004-MODELE-AUT' : $code;
+    }
+
     /** Schéma officiel d'un document s'il a été déposé (F6001.xsd ou F6001_2015.xsd…), sinon null. */
     public static function xsd(string $code): ?string
     {
-        foreach (glob(self::dossierXsd().'/'.$code.'*.xsd') ?: [] as $f) return $f;
+        $base = self::schema($code);
+        foreach (glob(self::dossierXsd().'/'.$base.'*.xsd') ?: [] as $f) {
+            if ($base === $code && preg_match('/^'.$code.'-MODELE/i', basename($f))) continue;   // F6004-MODELE-REF… n'est pas le schéma de F6004 généré
+            return $f;
+        }
         return null;
     }
 
@@ -409,31 +434,47 @@ class LiasseFiscale
         if ($d1 && $d2 && preg_match($date, $d1) && preg_match($date, $d2)
             && \Carbon\Carbon::createFromFormat('d/m/Y', $d1)->gt(\Carbon\Carbon::createFromFormat('d/m/Y', $d2))) $E[] = 'Entête : la date de début est postérieure à la date de clôture.';
 
+        // Structure : VersionDocument, Entete puis Details (dans cet ordre, comme les fichiers de l'outil DGI)
+        $enfants = [];
+        foreach ($racine->childNodes as $n) if ($n instanceof \DOMElement) $enfants[] = $n->localName;
+        if ($enfants !== ['VersionDocument', 'Entete', 'Details']) $E[] = 'Structure attendue : VersionDocument, Entete puis Details (trouvé : '.(implode(', ', $enfants) ?: 'aucun élément').').';
+        if (($v = $val('VersionDocument')) !== null && ! preg_match('/^\d+$/', $v)) $E[] = "VersionDocument invalide (« $v »).";
+        if (! preg_match('#\s'.preg_quote(self::schema($code), '#').'\.xsd$#', $racine->getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'schemaLocation')))
+            $E[] = 'xsi:schemaLocation doit désigner '.self::schema($code).'.xsd.';
+
         // Montants : présence, unicité, entiers sur 13 chiffres au plus, signe selon le type
         $doc = self::document($code);
         $lus = [];
-        foreach ($racine->childNodes as $n) {
-            if (! $n instanceof \DOMElement || $n->localName === 'Entete') continue;
+        $details = $x->query('/lf:'.$code.'/lf:Details')->item(0);
+        foreach ($details ? $details->childNodes : [] as $n) {
+            if (! $n instanceof \DOMElement) continue;
             if (isset($lus[$n->localName])) $E[] = 'Élément en double : '.$n->localName;
             $lus[$n->localName] = trim($n->textContent);
         }
         $attendus = [];
         if ($code === 'F6005') {
             foreach (['0', '1'] as $c) {
-                $a = $x->query("/lf:F6005/lf:F6005{$c}000")->item(0);
+                $a = $x->query("/lf:F6005/lf:Details/lf:F6005{$c}000")->item(0);
                 if (! $a) $E[] = "Élément F6005{$c}000 absent.";
                 else {
                     if (! in_array($a->getAttribute('categorie'), ['M', 'C', 'P', 'N'], true)) $E[] = "F6005{$c}000 : catégorie invalide.";
                     if (! in_array($a->getAttribute('codeformejuridique'), ['PP', 'SP', 'SC'], true)) $E[] = "F6005{$c}000 : code forme juridique invalide.";
                 }
-                $b = $x->query("/lf:F6005/lf:F6005{$c}001")->item(0);
+                $b = $x->query("/lf:F6005/lf:Details/lf:F6005{$c}001")->item(0);
                 if (! $b) $E[] = "Élément F6005{$c}001 absent.";
                 else {
                     if (! in_array($b->getAttribute('resultat'), ['B', 'P'], true)) $E[] = "F6005{$c}001 : attribut resultat (B/P) invalide.";
                     if (! preg_match('/^\d{1,13}$/', $b->getAttribute("F6005{$c}002"))) $E[] = "F6005{$c}001 : montant F6005{$c}002 invalide.";
                 }
-                unset($lus["F6005{$c}000"], $lus["F6005{$c}001"]);
-                foreach (range(3, 108) as $l) $attendus[sprintf('F6005%s%03d', $c, $l)] = [$c === '0' ? 'n' : 'n1', $l];
+                // Ligne 55 (résultat fiscal avant provisions) : attribut resultat B/P et montant absolu en attribut F6005x955
+                $r = $x->query("/lf:F6005/lf:Details/lf:F6005{$c}055")->item(0);
+                if (! $r) $E[] = "Élément F6005{$c}055 absent.";
+                else {
+                    if (! in_array($r->getAttribute('resultat'), ['B', 'P'], true)) $E[] = "F6005{$c}055 : attribut resultat (B/P) invalide.";
+                    if (! preg_match('/^\d{1,13}$/', $r->getAttribute("F6005{$c}955"))) $E[] = "F6005{$c}055 : montant F6005{$c}955 invalide.";
+                }
+                unset($lus["F6005{$c}000"], $lus["F6005{$c}001"], $lus["F6005{$c}055"]);
+                foreach (range(3, 108) as $l) if ($l !== 55) $attendus[sprintf('F6005%s%03d', $c, $l)] = [$c === '0' ? 'n' : 'n1', $l];
             }
         } else {
             foreach ($doc['colonnes'] as $col => $def) {
