@@ -96,10 +96,10 @@
                     </div>
                     <div>
                         <div class="flex items-center justify-between gap-3"><span class="text-sm font-semibold">Régularisation sur les primes / autres / rappel</span><button type="button" @click="regPr = !regPr" class="btn-secondary btn-sm">…</button></div>
-                        <input type="hidden" name="regul_primes" value="mois">
                         <div x-show="regPr" x-cloak class="mt-2 space-y-2 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800">
-                            <label class="flex items-start gap-2"><input type="radio" checked disabled class="mt-1"> <span><b>Imposition avec le salaire du mois</b> : les primes, autres gains et rappels s’ajoutent au brut du mois.</span></label>
-                            <p class="text-xs text-slate-400">D’autres méthodes seront proposées avec les menus Prime et Rappel.</p>
+                            <label class="flex items-start gap-2"><input type="radio" name="regul_primes" value="difference" class="mt-1" @checked($v('regul_primes', 'difference') !== 'regul')> <span><b>Sans régularisation</b> : l’IRPP d’une prime, d’une paie Autre ou d’un rappel est calculé par différence (impôt annuel avec et sans l’élément).</span></label>
+                            <label class="flex items-start gap-2"><input type="radio" name="regul_primes" value="regul" class="mt-1" @checked($v('regul_primes', 'difference') === 'regul')> <span><b>Régularisation</b> : l’élément entre dans le cumul imposable de l’année ; l’IRPP dû sur le cumul annualisé est diminué des retenues déjà opérées.</span></label>
+                            <p class="text-xs text-slate-400">Réglage par défaut des nouveaux employés : chaque salarié peut être coché ou décoché sur sa fiche ou dans Saisie Paie (colonnes Reg et RegP).</p>
                         </div>
                     </div>
                 </div>
@@ -129,6 +129,8 @@
                 <x-field :label="new \Illuminate\Support\HtmlString('SMIG mensuel '.$req)" name="smig_mensuel" type="number" step="0.001" min="0" :value="$k['smig_mensuel'] ?? null"/>
                 <x-field :label="new \Illuminate\Support\HtmlString('SMIG horaire '.$req)" name="smig_horaire" type="number" step="0.001" min="0" :value="$k['smig_horaire'] ?? null"/>
                 <x-field label="Plafond SMIG régime complémentaire (× 6)" name="plafond_rc" type="number" step="0.001" min="0" :value="$k['plafond_rc'] ?? null"/>
+                <x-field label="Régime complémentaire : taux salarié (%)" name="rc_taux_s" type="number" step="0.001" min="0" :value="$k['rc_taux_s'] ?? null"/>
+                <x-field label="Régime complémentaire : taux employeur (%)" name="rc_taux_p" type="number" step="0.001" min="0" :value="$k['rc_taux_p'] ?? null"/>
             </fieldset>
         </div>
 

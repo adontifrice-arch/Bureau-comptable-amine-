@@ -152,7 +152,23 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('paie/calcul', [C\PaieController::class, 'calcul'])->name('paie.calcul');
     Route::post('paie/cloturer', [C\PaieController::class, 'cloturer'])->name('paie.cloturer');
     Route::get('paie/bulletins', [C\PaieController::class, 'bulletins'])->name('paie.bulletins');
-    Route::get('paie/editions/{etat}/{format}', [C\PaieController::class, 'edition'])->name('paie.edition');
+    Route::get('paie/bulletins/generer', [C\PaieController::class, 'bulletinsZip'])->name('paie.bulletins.zip');
+    Route::post('paie/supprimer', [C\PaieController::class, 'supprimer'])->name('paie.supprimer');
+    Route::get('paie/virement/fichier/{format}', [C\PaieController::class, 'fichierVirement'])->name('paie.virement.fichier');
+    Route::get('paie/virement/employes', [C\PaieController::class, 'virementEmployes'])->name('paie.virement.employes');
+    Route::get('paie/stc/{paie}/quittance', [C\PaieController::class, 'quittance'])->name('paie.stc.quittance');
+    Route::post('paie/conges/anterieurs', [C\PaieCongeController::class, 'anterieurs'])->name('paie.conges.anterieurs');
+    Route::post('paie/conges', [C\PaieCongeController::class, 'store'])->name('paie.conges.store');
+    Route::delete('paie/conges/{conge}', [C\PaieCongeController::class, 'destroy'])->name('paie.conges.destroy');
+    Route::post('paie/acomptes', [C\PaieAcompteController::class, 'store'])->name('paie.acomptes.store');
+    Route::delete('paie/acomptes/{acompte}', [C\PaieAcompteController::class, 'destroy'])->name('paie.acomptes.destroy');
+    Route::get('paie/acomptes/{acompte}/recu', [C\PaieAcompteController::class, 'recu'])->name('paie.acomptes.recu');
+    Route::post('paie/prets', [C\PaiePretController::class, 'store'])->name('paie.prets.store');
+    Route::delete('paie/prets/{pret}', [C\PaiePretController::class, 'destroy'])->name('paie.prets.destroy');
+    Route::get('paie/prets/{pret}/echeancier', [C\PaiePretController::class, 'echeancier'])->name('paie.prets.echeancier');
+    Route::post('paie/envoi-mail', [C\PaieController::class, 'envoiMail'])->name('paie.envoi-mail');
+    Route::get('paie/enveloppes',[C\PaieController::class, 'enveloppes'])->name('paie.enveloppes');
+    Route::get('paie/editions/{etat}/{format}',[C\PaieController::class, 'edition'])->name('paie.edition');
     // Paie — menu Fichier
     Route::put('paie/employeur', [C\PaieDossierController::class, 'employeur'])->name('paie.employeur');
     Route::get('paie/sauvegarde', [C\PaieDossierController::class, 'sauvegarde'])->name('paie.sauvegarde');
@@ -165,6 +181,15 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('paie/rouvrir', [C\PaieDossierController::class, 'rouvrir'])->middleware('chef')->name('paie.rouvrir');
     Route::get('paie/simulation', [C\PaieDossierController::class, 'simulation'])->name('paie.simulation');
     Route::post('paie/parametres', [C\PaieController::class, 'parametres'])->middleware('chef')->name('paie.parametres');
+    Route::get('paie/profils', [C\PaieProfilController::class, 'index'])->name('paie.profils');
+    Route::post('paie/profils', [C\PaieProfilController::class, 'store'])->name('paie.profils.store');
+    Route::put('paie/profils/{profil}', [C\PaieProfilController::class, 'update'])->name('paie.profils.update');
+    Route::delete('paie/profils/{profil}', [C\PaieProfilController::class, 'destroy'])->name('paie.profils.destroy');
+    Route::get('paie/rubriques',[C\PaieRubriqueController::class, 'index'])->name('paie.rubriques');
+    Route::post('paie/rubriques', [C\PaieRubriqueController::class, 'store'])->name('paie.rubriques.store');
+    Route::post('paie/rubriques/standard', [C\PaieRubriqueController::class, 'standard'])->name('paie.rubriques.standard');
+    Route::put('paie/rubriques/{rubrique}', [C\PaieRubriqueController::class, 'update'])->name('paie.rubriques.update');
+    Route::delete('paie/rubriques/{rubrique}', [C\PaieRubriqueController::class, 'destroy'])->name('paie.rubriques.destroy');
 
     // ---------- Liasse ----------
     Route::get('liasse', [C\LiasseController::class, 'index'])->name('liasse.index');

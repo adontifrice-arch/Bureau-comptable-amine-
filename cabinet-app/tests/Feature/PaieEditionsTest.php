@@ -57,6 +57,6 @@ class PaieEditionsTest extends TestCase
     {
         $e = EtatsPaie::virement($this->client, '2026-10');
         $this->assertCount(2, $e->lignes);   // Karim + total
-        $this->assertSame('Karim', $e->lignes[0]['cellules'][1]);
+        $this->assertSame('Karim', $e->lignes[0]['cellules'][2]);
     }
 }

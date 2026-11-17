@@ -61,7 +61,7 @@ class PaieEmployeurTest extends TestCase
         $this->assertFalse($c->paie_config['notif_demarrage']);
         $this->assertSame(528.32, $c->paie_config['smig_mensuel']);
         // Le format de la fiche de paie choisi est celui des bulletins par défaut.
-        $this->get(route('paie.bulletins', ['mois' => '2026-10']))->assertOk()->assertSee('Bulletins de paie A5');
+        $this->get(route('paie.bulletins', ['mois' => '2026-10']))->assertOk()->assertSee('Bulletins de paie — A5 —');
     }
 
     public function test_mentions_obligatoires(): void

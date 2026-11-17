@@ -13,7 +13,7 @@ class Salarie extends Model
     protected $guarded = [];
     protected $casts = ['chef_famille' => 'boolean', 'date_embauche' => 'date', 'date_naissance' => 'date', 'contrat_debut' => 'date', 'contrat_fin' => 'date',
         'profil_debut' => 'date', 'profil_fin' => 'date', 'categorie_debut' => 'date', 'categorie_fin' => 'date', 'echelon_debut' => 'date', 'echelon_fin' => 'date',
-        'cin_date' => 'date', 'date_sortie' => 'date', 'date_declaration_cnss' => 'date', 'carte_sejour' => 'boolean', 'cnss_assujetti' => 'boolean', 'cnss_rc' => 'boolean',
+        'cin_date' => 'date', 'date_sortie' => 'date', 'date_declaration_cnss' => 'date', 'carte_sejour' => 'boolean', 'cnss_assujetti' => 'boolean', 'cnss_rc' => 'boolean', 'regul_irpp' => 'boolean', 'regul_primes' => 'boolean',
         'retenue_etranger' => 'boolean', 'stc_solde_total' => 'boolean', 'enfants_detail' => 'array'];
 
     public const CONTRATS = ['CDI' => 'CDI', 'CDD' => 'CDD', 'SIVP' => 'SIVP', 'KARAMA' => 'Karama', 'stage' => 'Stage', 'autre' => 'Autre'];
@@ -28,7 +28,7 @@ class Salarie extends Model
 
     /** Champs de la fiche employé complète (hors identité de base) : repris par la sauvegarde. */
     public const FICHE = ['titre', 'prenom', 'matricule_pointeuse', 'adresse', 'ville', 'code_postal', 'tel_fixe', 'tel_mobile', 'cin_date', 'carte_sejour', 'nationalite',
-        'lieu_naissance', 'situation_familiale', 'enfants_detail', 'parents_charge', 'regime', 'conges_acquis', 'cnss_assujetti', 'cnss_rc', 'retenue_etranger', 'nb_bulletin',
+        'lieu_naissance', 'situation_familiale', 'enfants_detail', 'parents_charge', 'regime', 'conges_acquis', 'conges_report', 'conges_report_annee', 'cnss_assujetti', 'cnss_rc', 'retenue_etranger', 'regul_irpp', 'regul_primes', 'nb_bulletin',
         'assurance_vie', 'cea', 'interets_bancaires', 'stc_solde_total', 'departement', 'etat_presence', 'date_sortie', 'motif_sortie', 'date_declaration_cnss', 'agence'];
 
     /** Changements de situation suivis dans l'onglet Détail contrats et l'historique des modifications. */

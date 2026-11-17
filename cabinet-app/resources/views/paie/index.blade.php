@@ -6,46 +6,37 @@
     @include('paie._barre')
 
     @if($tab === 'calc')
-        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 class="text-lg font-semibold capitalize text-slate-800 dark:text-slate-100">Paie de {{ mois_fr($mois) }}</h2>
-            <div class="flex gap-2">
-                @if($paie)<span class="{{ ['brouillon' => 'badge-gray', 'transmise' => 'badge-amber', 'val' => 'badge-green'][$paie->statut] }} self-center">{{ ['brouillon' => 'Brouillon', 'transmise' => 'Transmise à la comptabilité', 'val' => 'Comptabilisée'][$paie->statut] }}</span>@endif
-                @unless($lock)<form method="POST" action="{{ route('paie.cloturer') }}" onsubmit="return confirm('Clôturer la paie et la transmettre à la comptabilité ?')">@csrf<input type="hidden" name="mois" value="{{ $mois }}"><button class="btn-primary"><x-icon name="check" class="h-4 w-4"/> Clôturer et transmettre</button></form>@endunless
-            </div>
-        </div>
-        <div class="mb-6 grid gap-4 sm:grid-cols-4">
-            <x-stat label="Masse salariale brute" :value="tnd($T['brut'], true, 0)" icon="wallet"/>
-            <x-stat label="Net à payer" :value="tnd($T['net'], true, 0)" icon="check" tone="green"/>
-            <x-stat label="Retenues IRPP + CSS" :value="tnd($T['ras'], true, 0)" icon="scale" tone="amber"/>
-            <x-stat label="Coût employeur" :value="tnd($T['cout'], true, 0)" icon="trend"/>
-        </div>
-        @if(count($R))
-        <form method="POST" action="{{ route('paie.calcul') }}" id="form-primes" class="card overflow-x-auto scroll-mt-4">@csrf <input type="hidden" name="mois" value="{{ $mois }}">
-            <table class="tbl">
-                <thead><tr><th>Salarié</th><th class="text-right">Base</th><th class="text-right" title="Jours ouvrables du mois : {{ $P['jours_mois'] }}">Jours</th><th class="text-right" title="Majoration {{ $P['maj_hs'] }} %">H. sup.</th><th class="text-right">Primes imposables</th><th class="text-right">Brut</th><th class="text-right">CNSS ({{ $P['cnssS'] }} %)</th><th class="text-right">IRPP</th><th class="text-right">CSS</th><th class="text-right">Net à payer</th><th class="text-right">Charges patronales</th></tr></thead>
-                <tbody>
-                @foreach($R as $x)
-                    <tr><td><div class="font-medium">{{ $x['nom'] }}</div><div class="text-xs text-slate-500">{{ $x['poste'] }}</div></td>
-                        <td class="num">{{ tnd($x['base'], false) }}@if(($x['salaire'] ?? $x['base']) != $x['base'])<div class="text-xs text-slate-500">payé {{ tnd($x['salaire'], false) }}</div>@endif</td>
-                        <td class="text-right">@if($lock)<span class="font-mono">{{ $x['jours'] ?? '—' }}</span>@else<input type="number" step="0.5" min="0" max="{{ $P['jours_mois'] }}" name="pointage[{{ $x['salarie_id'] }}][jours]" value="{{ ($paie?->pointage[$x['salarie_id']]['jours'] ?? null) }}" placeholder="{{ $P['jours_mois'] }}" class="input-sm ml-auto w-16 text-right">@endif</td>
-                        <td class="text-right">@if($lock)<span class="font-mono">{{ ($x['hs'] ?? 0) ?: '—' }}</span>@else<input type="number" step="0.25" min="0" name="pointage[{{ $x['salarie_id'] }}][hs]" value="{{ ($x['hs'] ?? 0) ?: '' }}" class="input-sm ml-auto w-16 text-right">@endif
-                            @if(($x['hs_montant'] ?? 0) > 0)<div class="text-xs text-slate-500">{{ tnd($x['hs_montant'], false) }}</div>@endif</td>
-                        <td class="text-right" @if($loop->first) id="primes" @endif>@if($lock)<span class="font-mono">{{ n3($x['prime']) ?: '—' }}</span>@else<input type="number" step="0.001" name="primes[{{ $x['salarie_id'] }}]" value="{{ $x['prime'] ?: '' }}" class="input-sm ml-auto w-28 text-right">@endif</td>
-                        <td class="num font-medium">{{ tnd($x['brut'], false) }}</td><td class="num">{{ tnd($x['cnssS'], false) }}</td><td class="num">{{ tnd($x['ir'], false) }}</td><td class="num">{{ tnd($x['css'], false) }}</td>
-                        <td class="num font-semibold text-emerald-700 dark:text-emerald-400">{{ tnd($x['net'], false) }}</td><td class="num text-slate-500">{{ tnd($x['cnssP'] + $x['tfp'] + $x['fop'], false) }}</td></tr>
-                @endforeach
-                </tbody>
-                <tfoot class="border-t-2 border-slate-200"><tr><td>Total</td><td></td><td></td><td></td><td></td><td class="num">{{ tnd($T['brut'], false) }}</td><td class="num">{{ tnd($T['cnssS'], false) }}</td><td class="num">{{ tnd($T['ir'], false) }}</td><td class="num">{{ tnd($T['css'], false) }}</td><td class="num">{{ tnd($T['net'], false) }}</td><td class="num">{{ tnd($T['cnssP'] + $T['tfp'] + $T['fop'], false) }}</td></tr></tfoot>
-            </table>
-            @unless($lock)<div class="flex justify-end border-t border-slate-100 p-4 dark:border-slate-800"><button class="btn-secondary">Recalculer avec le pointage et les primes</button></div>@endunless
-        </form>
-        <div class="mt-6 grid gap-6 md:grid-cols-2">
-            <div class="card card-b text-sm"><h3 class="card-t mb-3">Charges patronales du mois</h3>
-                <div class="space-y-1.5"><div class="flex justify-between"><span>CNSS patronale ({{ $P['cnssP'] }} %)</span><span class="font-mono">{{ tnd($T['cnssP']) }}</span></div><div class="flex justify-between"><span>TFP ({{ $P['tfp'] }} %)</span><span class="font-mono">{{ tnd($T['tfp']) }}</span></div><div class="flex justify-between"><span>FOPROLOS ({{ $P['fop'] }} %)</span><span class="font-mono">{{ tnd($T['fop']) }}</span></div></div></div>
-            <div class="card card-b text-sm"><h3 class="card-t mb-3">Écriture de paie générée à la validation</h3>
-                <table class="w-full">@foreach(\App\Services\PaieCalc::lignes($T) as $l)<tr><td class="py-0.5 font-mono text-xs">{{ $l['compte'] }}</td><td class="text-slate-500">{{ \App\Services\Compta::libelle($l['compte']) }}</td><td class="num">{{ n3($l['debit']) }}</td><td class="num">{{ n3($l['credit']) }}</td></tr>@endforeach</table></div>
-        </div>
-        @else <div class="card"><x-empty icon="users" title="Aucun salarié">Ajoutez les salariés du dossier dans l’onglet Salariés.</x-empty></div> @endif
+        @include('paie._saisie')
+
+    @elseif($tab === 'variable')
+        @include('paie._saisie_variable')
+
+    @elseif($tab === 'biblio')
+        @include('paie._bibliographie')
+
+    @elseif($tab === 'prets')
+        @include('paie._prets')
+
+    @elseif($tab === 'acomptes')
+        @include('paie._acomptes')
+
+    @elseif($tab === 'conges')
+        @include('paie._conges')
+
+    @elseif($tab === 'conges-ant')
+        @include('paie._conges_anterieurs')
+
+    @elseif($tab === 'stc')
+        @include('paie._saisie_stc')
+
+    @elseif($tab === 'rappel')
+        @include('paie._saisie_rappel')
+
+    @elseif($tab === 'prime')
+        @include('paie._saisie_prime')
+
+    @elseif($tab === 'autre')
+        @include('paie._saisie_autre')
 
     @elseif($tab === 'sal')
         @php

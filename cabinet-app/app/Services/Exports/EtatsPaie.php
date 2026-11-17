@@ -23,28 +23,306 @@ class EtatsPaie
     public const EXPORTS = [
         'employes' => 'Liste du personnel',
         'annuel' => 'Récapitulatif annuel des paies',
+        'drc' => 'Déclaration du régime complémentaire',
+        'recap' => 'Récapitulation de paie',
+        'vierge' => 'État vierge de saisie',
     ];
 
-    public static function etat(string $etat, Client $client, string $mois): Etat
+    /**
+     * Déclaration trimestrielle du régime complémentaire CNSS : salariés affiliés (case « CNSS régime complémentaire » de la fiche),
+     * assiette = part du salaire cotisable de chaque mois au-delà du plafond (6 × SMIG, Renseignements employeur), et cotisations
+     * aux taux salarié / employeur du dossier quand ils sont renseignés.
+     */
+    public static function drc(Client $client, string $mois): Etat
     {
-        $e = self::construire($etat, $client, $mois);
+        $k = $client->paie_config ?? [];
+        $plafond = (float) ($k['plafond_rc'] ?? 0);
+        $ts = (float) ($k['rc_taux_s'] ?? 0);
+        $tp = (float) ($k['rc_taux_p'] ?? 0);
+        $mm = self::trimestre($mois);
+        $e = new Etat('Déclaration du régime complémentaire (CNSS)', $client->nom,
+            self::libelleTrimestre($mois).' · plafond mensuel '.($plafond ? n3($plafond) : 'non renseigné').($client->matricule_cnss ? ' · employeur n° '.$client->matricule_cnss : ''), [
+            ['N°', 'text'], ['Matricule CNSS', 'text'], ['Nom et prénom', 'text'], ['CIN', 'text'],
+            ...array_map(fn ($m) => ['Excédent '.Carbon::parse($m.'-01')->locale('fr')->translatedFormat('F'), 'num'], $mm),
+            ['Assiette du trimestre', 'num'], ['Cotisation salariale'.($ts ? ' ('.$ts.' %)' : ''), 'num'], ['Cotisation patronale'.($tp ? ' ('.$tp.' %)' : ''), 'num'],
+        ]);
+        $affilies = self::salaries($client)->filter(fn ($s) => (bool) $s->cnss_rc)->keys()->all();
+        $par = array_filter(self::parSalarie($client, $mm, 'base_cnss', 'decl_cnss'), fn ($id) => in_array($id, $affilies), ARRAY_FILTER_USE_KEY);
+        $tot = array_fill(0, 6, 0.0); $n = 0;
+        foreach ($par as $p) {
+            $v = array_map(fn ($m) => r3(max(0, ($p['mois'][$m] ?? 0) - $plafond)), $mm);
+            $assiette = r3(array_sum($v));
+            $v = [...$v, $assiette, r3($assiette * $ts / 100), r3($assiette * $tp / 100)];
+            $e->ligne([++$n, $p['cnss'], $p['nom'], $p['cin'], ...$v]);
+            foreach ($v as $i => $x) $tot[$i] += $x;
+        }
+        $e->ligne(['', '', 'TOTAL ('.$n.' affilié(s))', '', ...array_map('r3', $tot)], 'total');
+        return $e;
+    }
+
+    /** Congé → Etat des Congés. */
+    public const CONGES = ['conges-solde' => 'Solde des congés', 'conges-registre' => 'Registre des congés de l’année', 'conges-salarie' => 'Congés par salarié'];
+
+    /** Solde des congés de chaque salarié à la fin du mois $mois : report des années précédentes, acquis et pris de l'année, reste. */
+    public static function congesSolde(Client $client, string $mois): Etat
+    {
+        $e = new Etat('Solde des congés', $client->nom, 'À fin '.mois_fr($mois), [
+            ['Matricule', 'text'], ['Nom et prénom', 'text'], ['Embauche', 'date'], ['Acquis / mois', 'text'], ['Report années préc.', 'num'], ['Acquis '.substr($mois, 0, 4), 'num'],
+            ['Pris '.substr($mois, 0, 4), 'num'], ['Reste (jours)', 'num'], ['Valeur (TND)', 'num'],
+        ]);
+        $P = PaieCalc::parametres($client);
+        $tot = array_fill(0, 5, 0.0);
+        foreach (self::salaries($client) as $s) {
+            if ($s->date_sortie && $s->date_sortie->format('Y-m') < substr($mois, 0, 4).'-01') continue;
+            $c = PaieCalc::soldeConges($s, $mois);
+            $base = $s->regime === 'horaire' ? (float) $s->salaire_base * (float) $P['heures_mois'] : (float) $s->salaire_base;
+            $valeur = r3(max(0, $c['reste']) * ($P['jours_mois'] > 0 ? $base / $P['jours_mois'] : 0));
+            $v = [$c['report'], $c['acquis'], $c['pris'], $c['reste'], $valeur];
+            $e->ligne([$s->matricule, $s->nomComplet(), $s->date_embauche, rtrim(rtrim(number_format((float) $s->conges_acquis, 2, ',', ''), '0'), ','), ...$v]);
+            foreach ($v as $k => $x) $tot[$k] += $x;
+        }
+        $e->ligne(['', 'TOTAL', null, '', ...array_map('r3', $tot)], 'total');
+        return $e;
+    }
+
+    /** Registre des congés de l'année de $mois (Congé → Saisie des congés), dans l'ordre des dates. */
+    public static function congesRegistre(Client $client, string $mois, bool $parSalarie = false): Etat
+    {
+        $annee = substr($mois, 0, 4);
+        $e = new Etat($parSalarie ? 'Congés par salarié' : 'Registre des congés', $client->nom, 'Année '.$annee, [
+            ['Matricule', 'text'], ['Nom et prénom', 'text'], ['Type', 'text'], ['Du', 'date'], ['Au', 'date'], ['Jours', 'num'], ['Observation', 'text'],
+        ], false);
+        $conges = \App\Models\Conge::with('salarie')->where('client_id', $client->id)->where('au', '>=', $annee.'-01-01')->where('du', '<=', $annee.'-12-31 23:59:59')->orderBy('du')->get();
+        $groupes = $parSalarie ? $conges->groupBy(fn ($c) => $c->salarie?->nomComplet() ?? '—')->sortKeys() : collect(['' => $conges]);
+        $tot = 0.0;
+        foreach ($groupes as $nom => $grp) {
+            if ($parSalarie) $e->ligne(['', mb_strtoupper($nom), '', null, null, null, ''], 'groupe');
+            foreach ($grp as $c) $e->ligne([$c->salarie?->matricule, $c->salarie?->nomComplet(), \App\Models\Conge::TYPES[$c->type] ?? $c->type, $c->du, $c->au, $c->jours, $c->observation]);
+            if ($parSalarie) {
+                $paye = $grp->where('type', 'paye')->sum('jours');
+                $e->ligne(['', 'Sous-total '.$nom.' (congés payés : '.rtrim(rtrim(number_format($paye, 2, ',', ''), '0'), ',').' j)', '', null, null, r3($grp->sum('jours')), ''], 'soustotal');
+            }
+            $tot += $grp->sum('jours');
+        }
+        $e->ligne(['', 'TOTAL ('.$conges->count().' congé(s))', '', null, null, r3($tot), ''], 'total');
+        return $e;
+    }
+
+    /** Acompte → Etat des acomptes. */
+    public const ACOMPTES = ['acomptes-mois' => 'Acomptes du mois', 'acomptes-annuel' => 'Récapitulatif annuel des acomptes'];
+
+    /** Acomptes retenus sur la paie du mois $mois, avec la signature du salarié. */
+    public static function acomptesMois(Client $client, string $mois): Etat
+    {
+        $e = new Etat('État des acomptes', $client->nom, 'Retenus sur la paie de '.mois_fr($mois), [
+            ['N°', 'text'], ['Matricule', 'text'], ['Nom et prénom', 'text'], ['Date', 'date'], ['Mode', 'text'], ['Montant', 'num'], ['Observation', 'text'], ['Signature', 'text'],
+        ]);
+        $L = \App\Models\Acompte::with('salarie')->where('client_id', $client->id)->where('mois', $mois)->orderBy('date')->get();
+        $n = 0;
+        foreach ($L as $a) $e->ligne([++$n, $a->salarie?->matricule, $a->salarie?->nomComplet(), $a->date, self::MODES[$a->mode] ?? $a->mode, $a->montant, $a->observation, '']);
+        $e->ligne(['', '', 'TOTAL ('.$L->count().')', null, '', r3($L->sum('montant')), '', ''], 'total');
+        return $e;
+    }
+
+    /** Acomptes de l'année de $mois par salarié et par mois de retenue. */
+    public static function acomptesAnnuel(Client $client, string $mois): Etat
+    {
+        $annee = substr($mois, 0, 4);
+        $mm = array_map(fn ($i) => sprintf('%s-%02d', $annee, $i), range(1, 12));
+        $e = new Etat('Récapitulatif annuel des acomptes', $client->nom, 'Année '.$annee, [
+            ['Nom et prénom', 'text'], ...array_map(fn ($m) => [ucfirst(Carbon::parse($m.'-01')->locale('fr')->translatedFormat('M')), 'num'], $mm), ['Total', 'num'],
+        ]);
+        $L = \App\Models\Acompte::with('salarie')->where('client_id', $client->id)->where('mois', 'like', $annee.'-%')->get();
+        $tot = array_fill(0, 13, 0.0);
+        foreach ($L->groupBy('salarie_id')->sortBy(fn ($g) => mb_strtolower($g->first()->salarie?->nom ?? '')) as $g) {
+            $v = array_map(fn ($m) => r3($g->where('mois', $m)->sum('montant')), $mm);
+            $v[] = r3(array_sum($v));
+            $e->ligne([$g->first()->salarie?->nomComplet(), ...$v]);
+            foreach ($v as $k => $x) $tot[$k] += $x;
+        }
+        $e->ligne(['TOTAL', ...array_map('r3', $tot)], 'total');
+        return $e;
+    }
+
+    /** Prêt → Prêt Société / Prêt CNSS → états (option « type » : societe ou cnss). */
+    public const PRETS = ['prets-etat' => 'Etat des prêts', 'prets-retenues' => 'Retenues du mois'];
+
+    /** Prêts en cours ou accordés dans l'année : montant, échéance, remboursé et reste dû à la fin du mois $mois. */
+    public static function pretsEtat(Client $client, string $mois, string $type): Etat
+    {
+        $type = isset(\App\Models\Pret::TYPES[$type]) ? $type : 'societe';
+        $e = new Etat('Etat des prêts — '.\App\Models\Pret::TYPES[$type], $client->nom, 'Situation à fin '.mois_fr($mois), [
+            ['Matricule', 'text'], ['Nom et prénom', 'text'], ['Référence', 'text'], ['Date', 'date'], ['Montant', 'num'], ['Échéance', 'num'], ['Nb éch.', 'text'],
+            ['Du', 'text'], ['Au', 'text'], ['Remboursé', 'num'], ['Reste dû', 'num'],
+        ]);
+        $tot = [0.0, 0.0, 0.0];
+        $prets = \App\Models\Pret::with('salarie')->where('client_id', $client->id)->where('type', $type)->where('premier_mois', '<=', $mois)->orderBy('date')->get()
+            ->filter(fn ($p) => $p->situation($mois)['reste'] > 0.0005 || substr((string) $p->dernierMois(), 0, 4) === substr($mois, 0, 4));
+        foreach ($prets as $p) {
+            $s = $p->situation($mois);
+            $e->ligne([$p->salarie?->matricule, $p->salarie?->nomComplet(), $p->reference, $p->date, $p->montant, $p->echeance, (string) $p->nb_echeances,
+                ucfirst(mois_fr($p->premier_mois)), $p->dernierMois() ? ucfirst(mois_fr($p->dernierMois())) : '', $s['rembourse'], $s['reste']]);
+            $tot[0] += $p->montant; $tot[1] += $s['rembourse']; $tot[2] += $s['reste'];
+        }
+        $e->ligne(['', 'TOTAL ('.$prets->count().')', '', null, r3($tot[0]), null, '', '', '', r3($tot[1]), r3($tot[2])], 'total');
+        return $e;
+    }
+
+    /** Échéances retenues sur la paie du mois, à reverser (prêt CNSS) ou à imputer (prêt société). */
+    public static function pretsRetenues(Client $client, string $mois, string $type): Etat
+    {
+        $type = isset(\App\Models\Pret::TYPES[$type]) ? $type : 'societe';
+        $e = new Etat('Retenues '.mb_strtolower(\App\Models\Pret::TYPES[$type]), $client->nom, mois_fr($mois), [
+            ['N°', 'text'], ['Matricule', 'text'], ['Nom et prénom', 'text'], ['Référence', 'text'], ['Échéance', 'num'], ['Reste dû après', 'num'],
+        ], false);
+        $n = 0; $tot = 0.0;
+        foreach (\App\Models\Pret::with('salarie')->where('client_id', $client->id)->where('type', $type)->where('premier_mois', '<=', $mois)->orderBy('salarie_id')->get() as $p) {
+            if (! ($m = $p->echeanceDuMois($mois))) continue;
+            $e->ligne([++$n, $p->salarie?->matricule, $p->salarie?->nomComplet(), $p->reference, $m, $p->situation($mois)['reste']]);
+            $tot += $m;
+        }
+        $e->ligne(['', '', 'TOTAL', '', r3($tot), null], 'total');
+        return $e;
+    }
+
+    /** Modes de paiement (bordereau payeur, enveloppes). */
+    public const MODES = ['virement' => 'Virement', 'cheque' => 'Chèque', 'especes' => 'Espèces'];
+
+    /**
+     * Banques du récapitulatif de virement : code banque (2 premiers chiffres du RIB tunisien) et mots reconnus dans le nom de la banque
+     * de la fiche employé quand le RIB manque. formats : fichiers proposés en plus de l'état imprimé.
+     */
+    public const BANQUES = [
+        'uib' => ['nom' => 'UIB', 'code' => '12', 'mots' => ['uib', 'union internationale'], 'formats' => []],
+        'biat' => ['nom' => 'BIAT', 'code' => '08', 'mots' => ['biat'], 'formats' => ['txt', 'xls']],
+        'stb' => ['nom' => 'STB', 'code' => '10', 'mots' => ['stb', 'societe tunisienne de banque', 'société tunisienne de banque'], 'formats' => []],
+        'bt' => ['nom' => 'BT', 'code' => '05', 'mots' => ['banque de tunisie'], 'formats' => []],
+        'attijari' => ['nom' => 'Attijari', 'code' => '04', 'mots' => ['attijari'], 'formats' => ['txt', 'xls']],
+        'ubci' => ['nom' => 'UBCI', 'code' => '11', 'mots' => ['ubci'], 'formats' => []],
+    ];
+
+    /** La banque du salarié (RIB, sinon nom de la banque) est $banque. */
+    public static function estDeLaBanque(?\App\Models\Salarie $s, string $banque): bool
+    {
+        $b = self::BANQUES[$banque] ?? null;
+        if (! $s || ! $b) return false;
+        $rib = preg_replace('/\D/', '', (string) $s->rib);
+        if (strlen($rib) >= 2) return substr($rib, 0, 2) === $b['code'];
+        $nom = mb_strtolower(trim((string) $s->banque));
+        if ($nom === mb_strtolower($b['nom'])) return true;
+        foreach ($b['mots'] as $m) if (str_contains($nom, $m)) return true;
+        return false;
+    }
+
+    /**
+     * Paie éditée (option « paie » des éditions) : normale (paie du mois, par défaut), une paie spéciale (conge, m13… m18) déclarée avec
+     * le mois, ou « tous » (paie du mois et paies spéciales déclarées avec le mois, brouillons compris).
+     */
+    public static function paieChoisie(?string $paie): string
+    {
+        return $paie === 'tous' || ctype_digit((string) $paie) || isset(\App\Models\Paie::TYPES[$paie ?? '']) ? $paie : 'normale';
+    }
+
+    /** Paie désignée par son numéro (menu Prime : la prime ouverte), dans le dossier. */
+    public static function paieParNumero(Client $client, ?string $paie): ?\App\Models\Paie
+    {
+        return ctype_digit((string) $paie) ? \App\Models\Paie::where('client_id', $client->id)->find((int) $paie) : null;
+    }
+
+    /** Résultats de la paie éditée ; avec « tous », le type de paie spéciale est ajouté au nom du salarié. */
+    public static function resultats(Client $client, string $mois, ?string $paie = null): array
+    {
+        $paie = self::paieChoisie($paie);
+        if (ctype_digit($paie)) return ($p = self::paieParNumero($client, $paie)) ? PaieCalc::moisSpecial($client, $p) : [];
+        if ($paie === 'normale') return PaieCalc::mois($client, $mois);
+        $speciale = fn ($t) => \App\Models\Paie::where('client_id', $client->id)->where('mois', $mois)->where('type', $t)->first()
+            ?? new \App\Models\Paie(['client_id' => $client->id, 'mois' => $mois, 'type' => $t, 'statut' => 'brouillon']);
+        if ($paie !== 'tous') return PaieCalc::moisSpecial($client, $speciale($paie));
+        $R = PaieCalc::mois($client, $mois);
+        foreach (PaieCalc::speciales($client, $mois, true) as $p) {
+            foreach (PaieCalc::moisSpecial($client, $p) as $x) $R[] = ['nom' => $x['nom'].' — '.$p->nomType()] + $x;
+        }
+        return $R;
+    }
+
+    /** Période affichée en tête de l'état : « octobre 2026 », « 13ème mois — déclaré avec octobre 2026 », « Prime de bilan — déclarée avec … ». */
+    public static function periode(string $mois, ?string $paie = null, ?Client $client = null): string
+    {
+        $paie = self::paieChoisie($paie);
+        if (ctype_digit($paie)) return ($client && ($p = self::paieParNumero($client, $paie))) ? $p->libelle() : 'Paie n° '.$paie;
+        return match ($paie) {
+            'normale' => mois_fr($mois),
+            'tous' => mois_fr($mois).' · paie du mois et paies spéciales',
+            default => \App\Models\Paie::TYPES[$paie].' — déclaré avec '.mois_fr($mois),
+        };
+    }
+
+    /** Salariés payés par virement (tous, ou ceux d'une banque) : [[résultat de paie, fiche employé], …]. */
+    public static function aVirer(Client $client, string $mois, ?string $banque = null, ?string $paie = null): array
+    {
+        $sal = self::salaries($client);
+        $out = [];
+        foreach (self::resultats($client, $mois, $paie) as $x) {
+            $s = $sal[$x['salarie_id']] ?? null;
+            if ($s && $s->mode_paiement !== 'virement') continue;
+            if ($banque && ! self::estDeLaBanque($s, $banque)) continue;
+            $out[] = [$x, $s];
+        }
+        return $out;
+    }
+
+    /**
+     * Fichier texte de virement (une ligne par bénéficiaire, champs séparés par « ; ») : RIB du donneur d'ordre, RIB du bénéficiaire,
+     * montant en millimes, nom du bénéficiaire, motif. Format générique, à aligner sur la spécification remise par la banque.
+     */
+    public static function fichierVirement(Client $client, string $mois, ?string $banque = null, ?string $paie = null): string
+    {
+        $donneur = preg_replace('/\D/', '', (string) $client->paie_rib);
+        $p = self::paieChoisie($paie);
+        $nom = match (true) {
+            in_array($p, ['normale', 'tous'], true) => 'SALAIRE '.mois_fr($mois),
+            ctype_digit($p) => (self::paieParNumero($client, $p)?->nomType() ?? 'PRIME').' '.mois_fr($mois),
+            default => \App\Models\Paie::TYPES[$p].' '.substr($mois, 0, 4),
+        };
+        $motif = mb_strtoupper(\Illuminate\Support\Str::ascii($nom));
+        $lignes = [];
+        foreach (self::aVirer($client, $mois, $banque, $paie) as [$x, $s]) {
+            $nom = mb_strtoupper(\Illuminate\Support\Str::limit(\Illuminate\Support\Str::ascii($x['nom']), 35, ''));
+            $lignes[] = implode(';', [$donneur, preg_replace('/\D/', '', (string) $s?->rib), (string) (int) round($x['net'] * 1000), $nom, $motif]);
+        }
+        return implode("\r\n", $lignes).($lignes ? "\r\n" : '');
+    }
+
+    public static function etat(string $etat, Client $client, string $mois, array $opt = []): Etat
+    {
+        $e = self::construire($etat, $client, $mois, $opt);
         $k = $client->paie_config ?? [];
         if (! empty($k['afficher_logo']) && ! empty($k['logo'])) $e->logo = $k['logo'];
         return $e;
     }
 
-    private static function construire(string $etat, Client $client, string $mois): Etat
+    private static function construire(string $etat, Client $client, string $mois, array $opt = []): Etat
     {
         return match ($etat) {
-            'journal' => self::journal($client, $mois),
+            'journal' => self::journal($client, $mois, (string) ($opt['modele'] ?? 'modele1'), (string) ($opt['groupe'] ?? 'integral'), $opt['paie'] ?? null),
             'dcnss' => self::dcnss($client, $mois),
             'recap-cnss' => self::recapCnss($client, $mois),
             'dcnss-patronal' => self::dcnssPatronal($client, $mois),
+            'drc' => self::drc($client, $mois),
             'demp' => self::demp($client, $mois),
-            'virement' => self::virement($client, $mois),
-            'bordereau' => self::bordereau($client, $mois),
+            'virement' => self::virement($client, $mois, isset(self::BANQUES[$opt['banque'] ?? '']) ? $opt['banque'] : null, $opt['paie'] ?? null),
+            'bordereau' => self::bordereau($client, $mois, isset(self::MODES[$opt['mode'] ?? '']) ? $opt['mode'] : null, ($opt['groupe'] ?? null) === 'departement', $opt['paie'] ?? null),
+            'recap' => self::recap($client, $mois, $opt['paie'] ?? null),
+            'vierge' => self::vierge($client, $mois),
             'employes' => self::employes($client),
             'annuel' => self::annuel($client, $mois),
+            'conges-solde' => self::congesSolde($client, $mois),
+            'conges-registre' => self::congesRegistre($client, $mois),
+            'conges-salarie' => self::congesRegistre($client, $mois, true),
+            'acomptes-mois' => self::acomptesMois($client, $mois),
+            'acomptes-annuel' => self::acomptesAnnuel($client, $mois),
+            'prets-etat' => self::pretsEtat($client, $mois, (string) ($opt['type'] ?? 'societe')),
+            'prets-retenues' => self::pretsRetenues($client, $mois, (string) ($opt['type'] ?? 'societe')),
         };
     }
 
@@ -78,8 +356,8 @@ class EtatsPaie
         $tot = array_fill_keys($cles, 0.0);
         foreach (range(1, 12) as $i) {
             $m = sprintf('%s-%02d', $annee, $i);
-            $T = PaieCalc::totaux($R = PaieCalc::mois($client, $m));
-            $e->ligne([ucfirst(mois_fr($m)), (string) count($R), ...array_map(fn ($k) => $T[$k], $cles)]);
+            $T = PaieCalc::totaux($R = PaieCalc::moisDeclares($client, $m));
+            $e->ligne([ucfirst(mois_fr($m)), (string) count(array_unique(array_column($R, 'salarie_id'))), ...array_map(fn ($k) => $T[$k], $cles)]);
             foreach ($cles as $k) $tot[$k] += $T[$k];
         }
         $e->ligne(['TOTAL '.$annee, '', ...array_map('r3', array_values($tot))], 'total');
@@ -105,20 +383,84 @@ class EtatsPaie
         return PaieCalc::trier($client->salaries()->get(), PaieCalc::parametres($client)['tri'])->keyBy('id');
     }
 
-    /** Journal de paie du mois : une ligne par salarié, toutes les rubriques. */
-    public static function journal(Client $client, string $mois): Etat
+    /** Paie → Journal : modèles et regroupements. */
+    public const JOURNAUX = ['modele1' => 'Modèle 1', 'modele2' => 'Modèle 2', 'detaille' => 'Détaillé', 'variable' => 'Variable'];
+    public const GROUPES = ['integral' => 'Intégral', 'profil' => 'Par profil', 'regime' => 'Par régime salarial', 'departement' => 'Par département'];
+
+    /**
+     * Journal de paie du mois, une ligne par salarié :
+     *  - modèle 1 : pointage, brut, cotisations, impôt, net et charges patronales ;
+     *  - modèle 2 : vue condensée du brut au coût employeur (retenues regroupées) ;
+     *  - détaillé : une colonne par élément du bulletin, rubriques du dossier comprises ;
+     *  - variable : les seuls éléments variables du mois (pointage, congés, fériés, heures sup., primes, acompte, rubriques saisies).
+     * Regroupement intégral, par profil, par régime salarial ou par département, avec un sous-total par groupe.
+     */
+    public static function journal(Client $client, string $mois, string $modele = 'modele1', string $groupe = 'integral', ?string $paie = null): Etat
     {
-        $R = PaieCalc::mois($client, $mois);
-        $e = new Etat('Journal de paie', $client->nom, mois_fr($mois), [
-            ['Salarié', 'text'], ['Jours', 'text'], ['Salaire de base', 'num'], ['H. sup.', 'text'], ['Montant H. sup.', 'num'], ['Primes', 'num'], ['Brut', 'num'], ['CNSS salariale', 'num'], ['Imposable annuel', 'num'],
-            ['IRPP', 'num'], ['CSS', 'num'], ['Net à payer', 'num'], ['CNSS patronale', 'num'], ['TFP', 'num'], ['FOPROLOS', 'num'], ['Coût employeur', 'num'],
-        ]);
-        foreach ($R as $x) {
-            $e->ligne([$x['nom'], (string) ($x['jours'] ?? ''), $x['salaire'] ?? $x['base'], ($x['hs'] ?? 0) ? (string) $x['hs'] : '', $x['hs_montant'] ?? 0, $x['prime'], $x['brut'], $x['cnssS'], $x['bi'], $x['ir'], $x['css'], $x['net'], $x['cnssP'], $x['tfp'], $x['fop'], $x['cout']]);
+        $modele = isset(self::JOURNAUX[$modele]) ? $modele : 'modele1';
+        $groupe = isset(self::GROUPES[$groupe]) ? $groupe : 'integral';
+        $R = self::resultats($client, $mois, $paie);
+        $sal = self::salaries($client);
+        $aSaisir = $modele === 'variable' ? \App\Models\PaieRubrique::duDossier($client)->filter->aSaisir()->pluck('id')->all() : [];
+        $rubriques = collect($R)->flatMap(fn ($x) => $x['rubriques'] ?? [])->unique('code')->sortBy('code')
+            ->when($modele === 'variable', fn ($c) => $c->filter(fn ($l) => in_array($l['id'] ?? null, $aSaisir, true)))
+            ->when($modele === 'detaille', fn ($c) => $c->where('sens', '!=', 'note'))
+            ->values();
+        $rub = fn ($x, $l) => collect($x['rubriques'] ?? [])->where('code', $l['code'])->sum(fn ($y) => $l['sens'] === 'note' || $modele === 'variable' && $y['quantite'] !== null ? (float) $y['quantite'] : (float) $y['montant']);
+        $retenuesTot = fn ($x) => r3($x['cnssS'] + $x['ir'] + $x['css'] + ($x['retenues'] ?? 0) + ($x['nature'] ?? 0) + ($x['acompte'] ?? 0));
+
+        // Colonnes : [libellé, type, valeur(x), totalisable]
+        $c = fn ($l, $t, $f, $tot = true) => [$l, $t, $f, $tot && $t === 'num'];
+        $nom = [$c('Matricule', 'text', fn ($x) => $x['matricule'] ?? ($sal[$x['salarie_id']]->matricule ?? '')), $c('Nom et prénom', 'text', fn ($x) => $x['nom'])];
+        $nb = fn ($v) => $v === null || $v === '' || (float) $v == 0 ? '' : rtrim(rtrim(number_format((float) $v, 2, ',', ''), '0'), ',');
+        $cols = match ($modele) {
+            'modele2' => [...$nom,
+                $c('Brut', 'num', fn ($x) => $x['brut']), $c('CNSS', 'num', fn ($x) => $x['cnssS']), $c('IRPP + CSS', 'num', fn ($x) => $x['ras']),
+                $c('Autres retenues', 'num', fn ($x) => r3(($x['retenues'] ?? 0) + ($x['nature'] ?? 0) + ($x['acompte'] ?? 0))), $c('Total retenues', 'num', $retenuesTot),
+                $c('Net à payer', 'num', fn ($x) => $x['net']), $c('Charges patronales', 'num', fn ($x) => r3($x['cnssP'] + $x['tfp'] + $x['fop'])), $c('Coût employeur', 'num', fn ($x) => $x['cout'])],
+            'detaille' => [...$nom,
+                $c('Jours', 'text', fn ($x) => $nb($x['jours'] ?? null)), $c('Salaire', 'num', fn ($x) => $x['salaire'] ?? $x['base']), $c('H. sup.', 'num', fn ($x) => $x['hs_montant'] ?? 0),
+                $c('Primes', 'num', fn ($x) => $x['prime']),
+                ...$rubriques->map(fn ($l) => $c(trim($l['code'].' '.$l['nom']).($l['sens'] === 'retenue' ? ' (−)' : ''), 'num', fn ($x) => $rub($x, $l)))->all(),
+                $c('Brut', 'num', fn ($x) => $x['brut']), $c('CNSS', 'num', fn ($x) => $x['cnssS']), $c('Imposable annuel', 'num', fn ($x) => $x['bi'], false),
+                $c('IRPP', 'num', fn ($x) => $x['ir']), $c('CSS', 'num', fn ($x) => $x['css']), $c('Acompte', 'num', fn ($x) => $x['acompte'] ?? 0),
+                $c('Net à payer', 'num', fn ($x) => $x['net']), $c('CNSS patronale', 'num', fn ($x) => $x['cnssP']), $c('TFP', 'num', fn ($x) => $x['tfp']),
+                $c('FOPROLOS', 'num', fn ($x) => $x['fop']), $c('Coût employeur', 'num', fn ($x) => $x['cout'])],
+            'variable' => [...$nom,
+                $c('J/H ouv.', 'text', fn ($x) => $nb($x['jours_mois'] ?? null)), $c('J/H trav.', 'text', fn ($x) => $nb($x['pt_trav'] ?? null)),
+                $c('Congé', 'text', fn ($x) => $nb($x['pt_conge'] ?? null)), $c('Férié', 'text', fn ($x) => $nb($x['pt_ferie'] ?? null)),
+                $c('H. sup.', 'text', fn ($x) => $nb($x['hs'] ?? null)), $c('Primes', 'num', fn ($x) => $x['prime']), $c('Acompte', 'num', fn ($x) => $x['acompte'] ?? 0),
+                ...$rubriques->map(fn ($l) => $c(trim($l['code'].' '.$l['nom']), $l['quantite'] !== null || $l['sens'] === 'note' ? 'text' : 'num',
+                    fn ($x) => ($l['quantite'] !== null || $l['sens'] === 'note') ? $nb($rub($x, $l)) : $rub($x, $l)))->all()],
+            default => [...$nom,
+                $c('Jours', 'text', fn ($x) => $nb($x['jours'] ?? null)), $c('Salaire de base', 'num', fn ($x) => $x['salaire'] ?? $x['base']), $c('H. sup.', 'text', fn ($x) => $nb($x['hs'] ?? null)),
+                $c('Montant H. sup.', 'num', fn ($x) => $x['hs_montant'] ?? 0), $c('Primes', 'num', fn ($x) => $x['prime']), $c('Brut', 'num', fn ($x) => $x['brut']),
+                $c('CNSS salariale', 'num', fn ($x) => $x['cnssS']), $c('Imposable annuel', 'num', fn ($x) => $x['bi'], false), $c('IRPP', 'num', fn ($x) => $x['ir']),
+                $c('CSS', 'num', fn ($x) => $x['css']), $c('Net à payer', 'num', fn ($x) => $x['net']), $c('CNSS patronale', 'num', fn ($x) => $x['cnssP']),
+                $c('TFP', 'num', fn ($x) => $x['tfp']), $c('FOPROLOS', 'num', fn ($x) => $x['fop']), $c('Coût employeur', 'num', fn ($x) => $x['cout'])],
+        };
+
+        $titre = 'Journal de paie'.($modele !== 'modele1' ? ' — '.mb_strtolower(self::JOURNAUX[$modele]) : '');
+        $e = new Etat($titre, $client->nom, self::periode($mois, $paie, $client).($groupe !== 'integral' ? ' · '.mb_strtolower(self::GROUPES[$groupe]) : ''),
+            array_map(fn ($col) => [$col[0], $col[1]], $cols), count($cols) > 6);
+        $cle = fn ($x) => match ($groupe) {
+            'profil' => trim((string) ($x['profil'] ?? $sal[$x['salarie_id']]->profil ?? '')) ?: 'Sans profil',
+            'regime' => ($x['regime'] ?? 'mensuel') === 'horaire' ? 'Régime horaire' : 'Régime mensuel',
+            'departement' => trim((string) ($sal[$x['salarie_id']]->departement ?? '')) ?: 'Sans département',
+            default => '',
+        };
+        $somme = function (array $lignes, string $libelle, string $style) use ($cols, $e) {
+            $v = array_map(fn ($col) => $col[3] ? r3(array_sum(array_map(fn ($x) => (float) $col[2]($x), $lignes))) : null, $cols);
+            $v[0] = ''; $v[1] = $libelle.' ('.count($lignes).' salarié(s))';
+            $e->ligne($v, $style);
+        };
+        $groupes = collect($R)->groupBy($cle)->sortKeys();
+        foreach ($groupes as $g => $lignes) {
+            if ($groupe !== 'integral') $e->ligne(['', mb_strtoupper($g), ...array_fill(0, count($cols) - 2, null)], 'groupe');
+            foreach ($lignes as $x) $e->ligne(array_map(fn ($col) => $col[2]($x), $cols));
+            if ($groupe !== 'integral') $somme($lignes->all(), 'Sous-total '.$g, 'soustotal');
         }
-        $T = PaieCalc::totaux($R);
-        $e->ligne(['TOTAL (' . count($R) . ' salarié(s))', '', r3(array_sum(array_map(fn ($x) => $x['salaire'] ?? $x['base'], $R))), '', r3(array_sum(array_column($R, 'hs_montant'))), r3(array_sum(array_column($R, 'prime'))), $T['brut'], $T['cnssS'], null,
-            $T['ir'], $T['css'], $T['net'], $T['cnssP'], $T['tfp'], $T['fop'], $T['cout']], 'total');
+        $somme($R, 'TOTAL', 'total');
         return $e;
     }
 
@@ -131,7 +473,7 @@ class EtatsPaie
             ['N°', 'text'], ['Matricule CNSS', 'text'], ['Nom et prénom', 'text'], ['CIN', 'text'],
             ...array_map(fn ($m) => ['Salaire '.Carbon::parse($m.'-01')->locale('fr')->translatedFormat('F'), 'num'], $mm), ['Total trimestre', 'num'],
         ], false);
-        $par = self::parSalarie($client, $mm, 'brut');
+        $par = self::parSalarie($client, $mm, 'base_cnss', 'decl_cnss');
         $tot = [0, 0, 0, 0]; $n = 0;
         foreach ($par as $p) {
             $v = [...array_map(fn ($m) => $p['mois'][$m] ?? 0.0, $mm)];
@@ -152,9 +494,9 @@ class EtatsPaie
         ], false);
         $tot = [0, 0, 0, 0];
         foreach (self::trimestre($mois) as $m) {
-            $T = PaieCalc::totaux($R = PaieCalc::mois($client, $m));
+            $T = PaieCalc::totaux($R = self::declares(PaieCalc::moisDeclares($client, $m), 'decl_cnss'));
             $v = [$T['brut'], $T['cnssS'], $T['cnssP'], r3($T['cnssS'] + $T['cnssP'])];
-            $e->ligne([ucfirst(mois_fr($m)), (string) count($R), ...$v]);
+            $e->ligne([ucfirst(mois_fr($m)), (string) count(array_unique(array_column($R, 'salarie_id'))), ...$v]);
             foreach ($v as $k => $x) $tot[$k] += $x;
         }
         $e->ligne(['TOTAL DU TRIMESTRE', '', ...array_map('r3', $tot)], 'total');
@@ -171,7 +513,7 @@ class EtatsPaie
         ]);
         $cles = ['brut', 'cnssS', 'cnssP', 'tfp', 'fop'];
         $tot = array_fill(0, 6, 0.0);
-        foreach (self::cumul($client, $mm, $cles) as $p) {
+        foreach (self::cumul($client, $mm, $cles, 'decl_cnss') as $p) {
             $c = $p['cumul'];
             $v = [$c['brut'], $c['cnssS'], $c['cnssP'], r3($c['cnssS'] + $c['cnssP']), $c['tfp'], $c['fop']];
             $e->ligne([$p['cnss'], $p['nom'], ...$v]);
@@ -194,7 +536,7 @@ class EtatsPaie
         $cles = ['brut', 'cnssS', 'ir', 'css', 'net'];
         $tot = array_fill(0, 6, 0.0); $n = 0;
         $sal = self::salaries($client);
-        foreach (self::cumul($client, $mm, $cles) as $id => $p) {
+        foreach (self::cumul($client, $mm, $cles, 'decl_employeur') as $id => $p) {
             $c = $p['cumul'];
             $s = $sal[$id] ?? null;
             $v = [$c['brut'], $c['cnssS'], r3($c['brut'] - $c['cnssS']), $c['ir'], $c['css'], $c['net']];
@@ -206,50 +548,130 @@ class EtatsPaie
     }
 
     /** Ordre de virement des salaires nets du mois (salariés payés par virement). */
-    public static function virement(Client $client, string $mois): Etat
+    public static function virement(Client $client, string $mois, ?string $banque = null, ?string $paie = null): Etat
     {
-        $sal = self::salaries($client);
-        $e = new Etat('Ordre de virement des salaires', $client->nom, mois_fr($mois)
+        $e = new Etat($banque ? 'Récapitulatif de virement — '.self::BANQUES[$banque]['nom'] : 'Ordre de virement des salaires', $client->nom, self::periode($mois, $paie, $client)
             .($client->paie_rib ? ' · compte à débiter : '.trim($client->paie_banque.' '.$client->paie_rib) : ''), [
-            ['N°', 'text'], ['Bénéficiaire', 'text'], ['Banque', 'text'], ['RIB', 'text'], ['Montant net', 'num'],
+            ['N°', 'text'], ['Matricule', 'text'], ['Bénéficiaire', 'text'], ['Banque', 'text'], ['RIB', 'text'], ['Montant net', 'num'],
         ], false);
         $tot = 0.0; $n = 0;
-        foreach (PaieCalc::mois($client, $mois) as $x) {
-            $s = $sal[$x['salarie_id']] ?? null;
-            if ($s && $s->mode_paiement !== 'virement') continue;
-            $e->ligne([++$n, $x['nom'], $s?->banque, $s?->rib ?: 'RIB manquant', $x['net']]);
+        foreach (self::aVirer($client, $mois, $banque, $paie) as [$x, $s]) {
+            $e->ligne([++$n, $s?->matricule, $x['nom'], $s?->banque, $s?->rib ?: 'RIB manquant', $x['net']]);
             $tot += $x['net'];
         }
-        $e->ligne(['', 'TOTAL À VIRER', '', '', r3($tot)], 'total');
+        $e->ligne(['', '', 'TOTAL À VIRER ('.$n.')', '', '', r3($tot)], 'total');
         return $e;
     }
 
-    /** Bordereau de paie : liste d'émargement des nets payés du mois. */
-    public static function bordereau(Client $client, string $mois): Etat
+    /**
+     * Bordereau payeur : liste d'émargement des nets payés du mois, tous modes de paiement ou un seul ($mode),
+     * éventuellement regroupée par département avec un sous-total par département.
+     */
+    public static function bordereau(Client $client, string $mois, ?string $mode = null, bool $parDepartement = false, ?string $paie = null): Etat
     {
         $sal = self::salaries($client);
-        $modes = ['virement' => 'Virement', 'cheque' => 'Chèque', 'especes' => 'Espèces'];
-        $e = new Etat('Bordereau de paie (émargement)', $client->nom, mois_fr($mois), [
+        $e = new Etat('Bordereau payeur'.($mode ? ' — '.mb_strtolower(self::MODES[$mode]) : '').($parDepartement ? ' par département' : ''), $client->nom, self::periode($mois, $paie, $client), [
             ['N°', 'text'], ['Matricule', 'text'], ['Nom et prénom', 'text'], ['Mode de paiement', 'text'], ['Net à payer', 'num'], ['Signature', 'text'],
         ], false);
-        $tot = 0.0; $n = 0;
-        foreach (PaieCalc::mois($client, $mois) as $x) {
+        $lignes = [];
+        foreach (self::resultats($client, $mois, $paie) as $x) {
             $s = $sal[$x['salarie_id']] ?? null;
-            $e->ligne([++$n, $s?->matricule, $x['nom'], $modes[$s?->mode_paiement ?? 'virement'] ?? '', $x['net'], '']);
-            $tot += $x['net'];
+            $m = $s?->mode_paiement ?: 'virement';
+            if ($mode && $m !== $mode) continue;
+            $lignes[] = [$x, $s, $m];
         }
-        $e->ligne(['', '', 'TOTAL', '', r3($tot), ''], 'total');
+        $groupes = $parDepartement ? collect($lignes)->groupBy(fn ($l) => trim((string) $l[1]?->departement) ?: 'Sans département')->sortKeys() : collect(['' => collect($lignes)]);
+        $tot = 0.0; $n = 0;
+        foreach ($groupes as $g => $grp) {
+            if ($parDepartement) $e->ligne(['', '', mb_strtoupper($g), '', null, ''], 'groupe');
+            $st = 0.0;
+            foreach ($grp as [$x, $s, $m]) {
+                $e->ligne([++$n, $s?->matricule, $x['nom'], self::MODES[$m] ?? '', $x['net'], '']);
+                $st += $x['net'];
+            }
+            if ($parDepartement) $e->ligne(['', '', 'Sous-total '.$g.' ('.count($grp).')', '', r3($st), ''], 'soustotal');
+            $tot += $st;
+        }
+        $e->ligne(['', '', 'TOTAL ('.$n.' salarié(s))', '', r3($tot), ''], 'total');
+        return $e;
+    }
+
+    /**
+     * Récapitulation de paie du mois : total de chaque élément du bulletin (salaire de base, heures supplémentaires, primes,
+     * rubriques du dossier, cotisations, impôt, net) avec le nombre de salariés concernés, puis les charges patronales.
+     */
+    public static function recap(Client $client, string $mois, ?string $paie = null): Etat
+    {
+        $R = self::resultats($client, $mois, $paie);
+        $P = PaieCalc::parametres($client);
+        $e = new Etat('Récapitulation de paie', $client->nom, self::periode($mois, $paie, $client).' · '.count($R).' bulletin(s)', [
+            ['Code', 'text'], ['Élément', 'text'], ['Salariés', 'text'], ['Gains', 'num'], ['Retenues', 'num'],
+        ], false);
+        $ligne = function (string $code, string $lib, callable $f, bool $retenue = false, string $style = 'normal') use ($e, $R) {
+            $n = 0; $t = 0.0;
+            foreach ($R as $x) { $v = (float) $f($x); if (abs($v) > 0.0005) { $n++; $t += $v; } }
+            if ($style === 'normal' && ! $n) return;
+            $e->ligne([$code, $lib, $n ? (string) $n : '', $retenue ? null : r3($t), $retenue ? r3($t) : null], $style);
+        };
+        // Rubriques du dossier payées ce mois-ci (hors notes), dans l'ordre des codes.
+        $rub = collect($R)->flatMap(fn ($x) => $x['rubriques'] ?? [])->where('sens', '!=', 'note')
+            ->unique(fn ($l) => $l['code'].'|'.$l['sens'].'|'.(int) $l['cotisable'])->sortBy('code');
+        $mt = fn ($l) => fn ($x) => collect($x['rubriques'] ?? [])->where('code', $l['code'])->where('sens', $l['sens'])->where('cotisable', $l['cotisable'])->sum('montant');
+
+        $e->ligne(['', 'GAINS', '', null, null], 'groupe');
+        $ligne('', 'Salaire de base', fn ($x) => empty($x['special']) ? ($x['salaire'] ?? $x['base']) : 0);
+        foreach (collect($R)->pluck('special')->filter()->map(fn ($l) => preg_replace('/ payé \(.*$/', '', $l))->unique() as $lib) $ligne('', $lib, fn ($x) => ! empty($x['special']) && str_starts_with($x['special'], $lib) ? $x['salaire'] : 0);
+        $ligne('', 'Heures supplémentaires', fn ($x) => $x['hs_montant'] ?? 0);
+        $ligne('', 'Primes et indemnités imposables', fn ($x) => $x['prime'] ?? 0);
+        foreach ($rub->where('sens', 'gain') as $l) $ligne((string) $l['code'], $l['nom'].(! empty($l['nature']) ? ' (en nature)' : ''), $mt($l));
+        foreach ($rub->where('sens', 'retenue')->where('cotisable', true) as $l) $ligne((string) $l['code'], $l['nom'], $mt($l), true);
+        $ligne('', 'SALAIRE BRUT', fn ($x) => $x['brut'], false, 'soustotal');
+
+        $e->ligne(['', 'RETENUES', '', null, null], 'groupe');
+        $ligne('', 'CNSS salariale', fn ($x) => $x['cnssS'], true);
+        $ligne('', 'Retenue à la source IRPP', fn ($x) => $x['ir'], true);
+        $ligne('', 'Contribution sociale de solidarité', fn ($x) => $x['css'], true);
+        foreach ($rub->where('sens', 'retenue')->where('cotisable', false) as $l) $ligne((string) $l['code'], $l['nom'], $mt($l), true);
+        $ligne('', 'Avantages en nature (non versés)', fn ($x) => $x['nature'] ?? 0, true);
+        $ligne('', 'NET À PAYER', fn ($x) => $x['net'], false, 'total');
+
+        $e->ligne(['', 'CHARGES PATRONALES', '', null, null], 'groupe');
+        $ligne('', 'CNSS patronale', fn ($x) => $x['cnssP']);
+        $ligne('', 'TFP ('.$P['tfp'].' %)', fn ($x) => $x['tfp']);
+        $ligne('', 'FOPROLOS ('.$P['fop'].' %)', fn ($x) => $x['fop']);
+        $ligne('', 'COÛT TOTAL EMPLOYEUR', fn ($x) => $x['cout'], false, 'total');
+        return $e;
+    }
+
+    /**
+     * État vierge de saisie : les salariés payés le mois, avec des colonnes vides (jours, heures supplémentaires, primes
+     * et rubriques à saisir du dossier) à remplir à la main avant la saisie de la paie.
+     */
+    public static function vierge(Client $client, string $mois): Etat
+    {
+        $P = PaieCalc::parametres($client);
+        $aSaisir = \App\Models\PaieRubrique::duDossier($client)->filter->aSaisir()->values();
+        $cols = [['Matricule', 'text'], ['Nom et prénom', 'text'], ['Jours (/'.$P['jours_mois'].')', 'text'], ['H. sup.', 'text'], ['Primes', 'text'],
+            ...$aSaisir->map(fn ($rb) => [trim($rb->code.' '.$rb->nom), 'text'])->all(), ['Observations', 'text']];
+        $e = new Etat('État de saisie de la paie', $client->nom, mois_fr($mois), $cols, count($cols) > 7);
+        $e->grille = true;
+        $vide = array_fill(0, count($cols) - 2, '');
+        $fin = Carbon::parse($mois.'-01')->endOfMonth();
+        foreach (self::salaries($client) as $s) {
+            if (($s->date_embauche && $s->date_embauche->gt($fin)) || ! PaieCalc::payeLeMois($s, $mois)) continue;
+            $e->ligne([$s->matricule, $s->nomComplet(), ...$vide]);
+        }
         return $e;
     }
 
     /** Valeur d'une rubrique par salarié et par mois. */
-    private static function parSalarie(Client $client, array $mois, string $cle): array
+    private static function parSalarie(Client $client, array $mois, string $cle, ?string $decl = null): array
     {
         $par = [];
         foreach ($mois as $m) {
-            foreach (PaieCalc::mois($client, $m) as $x) {
+            foreach (self::declares(PaieCalc::moisDeclares($client, $m), $decl) as $x) {
                 $par[$x['salarie_id']] ??= ['nom' => $x['nom'], 'cin' => $x['cin'] ?? null, 'cnss' => $x['cnss'] ?? null, 'mois' => []];
-                $par[$x['salarie_id']]['mois'][$m] = $x[$cle];
+                $par[$x['salarie_id']]['mois'][$m] = r3(($par[$x['salarie_id']]['mois'][$m] ?? 0) + ($x[$cle] ?? $x['brut']));
             }
         }
         uasort($par, fn ($a, $b) => strcasecmp($a['nom'], $b['nom']));
@@ -257,11 +679,17 @@ class EtatsPaie
     }
 
     /** Cumul de plusieurs rubriques par salarié sur une liste de mois. */
-    private static function cumul(Client $client, array $mois, array $cles): array
+    /** Résultats limités aux employés dont le profil est inclus dans la déclaration ($decl : decl_cnss ou decl_employeur). */
+    private static function declares(array $R, ?string $decl): array
+    {
+        return $decl ? array_values(array_filter($R, fn ($x) => $x[$decl] ?? true)) : $R;
+    }
+
+    private static function cumul(Client $client, array $mois, array $cles, ?string $decl = null): array
     {
         $par = [];
         foreach ($mois as $m) {
-            foreach (PaieCalc::mois($client, $m) as $x) {
+            foreach (self::declares(PaieCalc::moisDeclares($client, $m), $decl) as $x) {
                 $par[$x['salarie_id']] ??= ['nom' => $x['nom'], 'cin' => $x['cin'] ?? null, 'cnss' => $x['cnss'] ?? null, 'cumul' => array_fill_keys($cles, 0.0)];
                 foreach ($cles as $k) $par[$x['salarie_id']]['cumul'][$k] = r3($par[$x['salarie_id']]['cumul'][$k] + $x[$k]);
             }

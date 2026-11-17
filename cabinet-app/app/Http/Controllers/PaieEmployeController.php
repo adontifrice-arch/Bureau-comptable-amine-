@@ -48,7 +48,7 @@ class PaieEmployeController extends Controller
         return view('paie.employe', PaieController::contexte($r, $client, 'sal', $mois) + [
             'e' => $e,
             'departements' => Salarie::where('client_id', $client->id)->whereNotNull('departement')->distinct()->orderBy('departement')->pluck('departement'),
-            'profils' => Salarie::where('client_id', $client->id)->whereNotNull('profil')->distinct()->orderBy('profil')->pluck('profil'),
+            'profils' => collect(\App\Models\PaieRubrique::profilsDisponibles($client))->sort(SORT_NATURAL | SORT_FLAG_CASE)->values(),
             'categories' => Salarie::where('client_id', $client->id)->whereNotNull('categorie')->distinct()->orderBy('categorie')->pluck('categorie'),
             'echelons' => Salarie::where('client_id', $client->id)->whereNotNull('echelon')->distinct()->orderBy('echelon')->pluck('echelon'),
         ]);
@@ -171,13 +171,13 @@ class PaieEmployeController extends Controller
             'enfants_detail' => 'nullable|array|max:4', 'enfants_detail.*.a_charge' => 'nullable|boolean', 'enfants_detail.*.etudiant' => 'nullable|boolean', 'enfants_detail.*.infirme' => 'nullable|boolean',
             'parents_charge' => 'nullable|integer|min:0|max:4',
             // Informations spécifiques
-            'poste' => 'required|max:100', 'regime' => 'required|in:mensuel,horaire', 'conges_acquis' => 'required|numeric|min:0|max:200',
+            'poste' => 'required|max:100', 'regime' => 'required|in:mensuel,horaire', 'conges_acquis' => 'required|numeric|min:0|max:200', 'conges_report' => 'nullable|numeric|min:-366|max:1000', 'conges_report_annee' => 'nullable|required_with:conges_report|integer|min:1990|max:2100',
             'categorie' => 'required|max:50', 'categorie_debut' => 'nullable|date', 'categorie_fin' => 'nullable|date|after_or_equal:categorie_debut',
             'echelon' => 'required|max:50', 'echelon_debut' => 'nullable|date', 'echelon_fin' => 'nullable|date|after_or_equal:echelon_debut',
             'salaire_base' => 'required|numeric|min:0', 'profil' => 'nullable|max:255', 'profil_debut' => 'nullable|date', 'profil_fin' => 'nullable|date|after_or_equal:profil_debut',
             'cnss_assujetti' => 'nullable|boolean', 'cnss' => 'nullable|max:30', 'nb_bulletin' => 'required|integer|min:1|max:5',
             'assurance_vie' => 'nullable|numeric|min:0', 'cea' => 'nullable|numeric|min:0', 'interets_bancaires' => 'nullable|numeric|min:0',
-            'retenue_etranger' => 'nullable|boolean', 'cnss_rc' => 'nullable|boolean', 'stc_solde_total' => 'nullable|boolean',
+            'retenue_etranger' => 'nullable|boolean', 'cnss_rc' => 'nullable|boolean', 'stc_solde_total' => 'nullable|boolean', 'regul_irpp' => 'nullable|boolean', 'regul_primes' => 'nullable|boolean',
             // Entrée / sortie
             'type_contrat' => 'nullable|in:'.implode(',', array_keys(Salarie::CONTRATS)), 'contrat_debut' => 'required|date', 'contrat_fin' => 'nullable|date|after_or_equal:contrat_debut',
             'departement' => 'nullable|max:100', 'etat_presence' => 'required|in:'.implode(',', array_keys(Salarie::ETATS)),
@@ -190,11 +190,11 @@ class PaieEmployeController extends Controller
             'contrat_fichier' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240', 'contrat_nom' => 'nullable|max:100',
             'diplome_fichier' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240', 'diplome_nom' => 'nullable|required_with:diplome_fichier|max:100',
         ], [], ['matricule' => 'matricule', 'prenom' => 'prénom', 'cin' => 'n° CIN / carte de séjour', 'situation_familiale' => 'situation familiale',
-            'poste' => 'qualification', 'regime' => 'régime salarial', 'conges_acquis' => 'acquis / mois', 'categorie' => 'catégorie', 'echelon' => 'échelon',
+            'poste' => 'qualification', 'regime' => 'régime salarial', 'conges_acquis' => 'acquis / mois', 'conges_report' => 'report de congés', 'conges_report_annee' => 'année du report', 'categorie' => 'catégorie', 'echelon' => 'échelon',
             'salaire_base' => 'salaire de base / taux horaire', 'nb_bulletin' => 'nombre de bulletins', 'contrat_debut' => 'date de début', 'etat_presence' => 'état de présence',
             'date_sortie' => 'date de sortie', 'diplome_nom' => 'nom du diplôme']);
 
-        foreach (['carte_sejour', 'chef_famille', 'cnss_assujetti', 'retenue_etranger', 'cnss_rc', 'stc_solde_total'] as $c) $d[$c] = $r->boolean($c);
+        foreach (['carte_sejour', 'chef_famille', 'cnss_assujetti', 'retenue_etranger', 'cnss_rc', 'stc_solde_total', 'regul_irpp', 'regul_primes'] as $c) $d[$c] = $r->boolean($c);
         $enfants = [];
         foreach (array_slice(array_values((array) $r->input('enfants_detail', [])), 0, 4) as $x) {
             $x = ['a_charge' => ! empty($x['a_charge']), 'etudiant' => ! empty($x['etudiant']), 'infirme' => ! empty($x['infirme'])];

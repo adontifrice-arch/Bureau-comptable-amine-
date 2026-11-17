@@ -32,6 +32,9 @@ class Etat
     /** Logo à afficher à la place de celui du cabinet (chemin sur le disque public), par ex. le logo de l'employeur sur les états de paie. */
     public ?string $logo = null;
 
+    /** Grille à remplir à la main (état vierge de saisie) : lignes hautes et cases encadrées à l'impression. */
+    public bool $grille = false;
+
     public function __construct(
         public string $titre,
         public string $client,

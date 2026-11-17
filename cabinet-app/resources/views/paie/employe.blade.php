@@ -7,7 +7,7 @@
     $req = '<span class="text-rose-600">*</span>';
     $onglets = [
         'civil' => ['adresse', 'ville', 'code_postal', 'tel_fixe', 'tel_mobile', 'cin', 'cin_date', 'date_naissance', 'nationalite', 'lieu_naissance', 'situation_familiale', 'enfants_detail', 'parents_charge'],
-        'spec' => ['poste', 'regime', 'conges_acquis', 'categorie', 'categorie_debut', 'categorie_fin', 'echelon', 'echelon_debut', 'echelon_fin', 'salaire_base', 'profil', 'profil_debut', 'profil_fin', 'cnss', 'nb_bulletin', 'assurance_vie', 'cea', 'interets_bancaires'],
+        'spec' => ['poste', 'regime', 'conges_acquis', 'conges_report', 'conges_report_annee', 'categorie', 'categorie_debut', 'categorie_fin', 'echelon', 'echelon_debut', 'echelon_fin', 'salaire_base', 'profil', 'profil_debut', 'profil_fin', 'cnss', 'nb_bulletin', 'assurance_vie', 'cea', 'interets_bancaires'],
         'es' => ['type_contrat', 'contrat_debut', 'contrat_fin', 'departement', 'etat_presence', 'date_sortie', 'motif_sortie', 'date_embauche', 'date_declaration_cnss'],
         'reg' => ['mode_paiement', 'banque', 'agence', 'rib'],
         'pj' => ['photo', 'cin1', 'cin2', 'contrat_fichier', 'contrat_nom', 'diplome_fichier', 'diplome_nom'],
@@ -113,6 +113,13 @@
                     <div><label class="label">Qualification {!! $req !!}</label><input name="poste" value="{{ $v('poste') }}" class="input">{!! $err('poste') !!}</div>
                     <div><label class="label">Régime salarial {!! $req !!}</label><select name="regime" x-model="regime" class="input"><option value="mensuel">Mensuel</option><option value="horaire">Horaire</option></select></div>
                     <div><label class="label">Acquis congé / mois {!! $req !!} <span class="text-xs font-normal text-slate-400" x-text="regime === 'horaire' ? '(heures)' : '(jours)'"></span></label><input type="number" step="0.01" min="0" name="conges_acquis" value="{{ $v('conges_acquis') ?? 2 }}" class="input">{!! $err('conges_acquis') !!}</div>
+                    <div><label class="label">Report de congés <span class="text-xs font-normal text-slate-400">(jours restant dus au 1er janvier de)</span></label>
+                        <div class="flex gap-2"><input type="number" step="0.5" name="conges_report" value="{{ $v('conges_report') }}" placeholder="0" class="input">
+                            <input type="number" min="1990" max="2100" name="conges_report_annee" value="{{ $v('conges_report_annee') }}" placeholder="{{ now()->year }}" class="input w-28"></div>
+                        {!! $err('conges_report') !!}{!! $err('conges_report_annee') !!}
+                        @if($e->exists)@php $sc = \App\Services\PaieCalc::soldeConges($e, now()->format('Y-m')); $jj = fn ($v) => rtrim(rtrim(number_format((float) $v, 2, ',', ' '), '0'), ','); @endphp
+                            <p class="mt-1 text-xs text-slate-500">Solde à ce jour : report {{ $jj($sc['report']) }} j + acquis {{ now()->year }} {{ $jj($sc['acquis']) }} j − pris {{ $jj($sc['pris']) }} j = <b>{{ $jj($sc['reste']) }} j</b></p>@endif
+                    </div>
                     <div><label class="label">Catégorie {!! $req !!}</label><input name="categorie" list="l-categories" value="{{ $v('categorie') }}" class="input">{!! $err('categorie') !!}</div>
                     <div><label class="label">Début catégorie</label><input type="date" name="categorie_debut" value="{{ $v('categorie_debut') }}" class="input"></div>
                     <div><label class="label">Fin catégorie</label><input type="date" name="categorie_fin" value="{{ $v('categorie_fin') }}" class="input">{!! $err('categorie_fin') !!}</div>
@@ -135,9 +142,10 @@
                 <div class="space-y-3 rounded-lg bg-slate-50 p-4 text-sm dark:bg-slate-800/60">
                     <label class="flex items-center gap-2 font-semibold"><input type="checkbox" name="retenue_etranger" value="1" @checked($coche('retenue_etranger'))> Retenue à la source étranger</label>
                     <label class="flex items-center gap-2 font-semibold"><input type="checkbox" name="cnss_rc" value="1" @checked($coche('cnss_rc'))> CNSS régime complémentaire</label>
-                    <label class="flex items-center gap-2 text-slate-400"><input type="checkbox" disabled @checked(!empty($k['regul_irpp']))> Régularisation mensuelle de l’IRPP</label>
-                    <label class="flex items-center gap-2 text-slate-400"><input type="checkbox" disabled checked> Régularisation sur les primes</label>
-                    <p class="text-xs text-slate-400">Les régularisations se règlent pour tout le dossier (Fichier → Renseignements employeur). « Retenue à la source étranger » et « CNSS régime complémentaire » sont enregistrés sur la fiche ; leur calcul sera ajouté avec les rubriques de paie.</p>
+                    @php $regDefaut = fn ($c, $dossier) => old($c, $e->exists && $e->$c !== null ? $e->$c : $dossier); @endphp
+                    <label class="flex items-center gap-2 font-semibold"><input type="checkbox" name="regul_irpp" value="1" @checked($regDefaut('regul_irpp', ! empty($k['regul_irpp'])))> Régularisation mensuelle de l’IRPP</label>
+                    <label class="flex items-center gap-2 font-semibold"><input type="checkbox" name="regul_primes" value="1" @checked($regDefaut('regul_primes', ($k['regul_primes'] ?? '') === 'regul'))> Régularisation sur les primes / autres / rappel</label>
+                    <p class="text-xs text-slate-400">Régularisation : l’IRPP est calculé sur le cumul imposable de l’année annualisé, diminué des retenues déjà opérées. Sur les primes / autres / rappel : la prime entre dans ce cumul ; sinon son IRPP est calculé par différence. Ces cases se cochent aussi dans Paie → Saisie Paie (colonnes Reg et RegP). « Retenue à la source étranger » et « CNSS régime complémentaire » sont enregistrés sur la fiche ; leur calcul sera ajouté avec les rubriques de paie.</p>
                 </div>
             </div>
 

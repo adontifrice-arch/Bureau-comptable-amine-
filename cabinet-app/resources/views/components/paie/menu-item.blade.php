@@ -1,5 +1,5 @@
 @props(['it'])
-{{-- Entrée d'un menu de la barre Paie. Clés : l (libellé), i (icône), href | modal | post | sub, confirm, badge, blank, off (grisé : texte de l'infobulle). --}}
+{{-- Entrée d'un menu de la barre Paie. Clés : l (libellé), i (icône), href | modal (+ detail) | post | sub, confirm, badge, blank, off (grisé : texte de l'infobulle). --}}
 @php $base = 'flex w-full items-center gap-2.5 px-3 py-2 text-left text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'; @endphp
 @if(!empty($it['sep']))
     <div class="my-1 border-t border-slate-100 dark:border-slate-800"></div>
@@ -13,7 +13,8 @@
 @elseif(!empty($it['off']) || (empty($it['href']) && empty($it['modal']) && empty($it['post'])))
     <span class="flex cursor-not-allowed items-center gap-2.5 px-3 py-2 text-slate-400" title="{{ is_string($it['off'] ?? null) ? $it['off'] : '' }}"><x-icon :name="$it['i'] ?? 'x'" class="h-4 w-4"/><span class="flex-1">{{ $it['l'] }}</span>@if(empty($it['off']))<span class="badge-gray">bientôt</span>@endif</span>
 @elseif(!empty($it['modal']))
-    <button type="button" @click="o = false; $dispatch('open-modal', '{{ $it['modal'] }}')" class="{{ $base }}"><x-icon :name="$it['i'] ?? 'file-text'" class="h-4 w-4 text-brand-600"/><span class="flex-1">{{ $it['l'] }}</span>@if(!empty($it['badge']))<span class="rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">{{ $it['badge'] }}</span>@endif</button>
+    {{-- detail : données passées à la fenêtre (événement « paie-choix ») avant son ouverture. --}}
+    <button type="button" @click="o = false; @if(!empty($it['detail'])) $dispatch('paie-choix', {{ \Illuminate\Support\Js::from($it['detail']) }}); @endif $dispatch('open-modal', '{{ $it['modal'] }}')" class="{{ $base }}"><x-icon :name="$it['i'] ?? 'file-text'" class="h-4 w-4 text-brand-600"/><span class="flex-1">{{ $it['l'] }}</span>@if(!empty($it['badge']))<span class="rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">{{ $it['badge'] }}</span>@endif</button>
 @elseif(!empty($it['post']))
     <form method="POST" action="{{ $it['post'] }}" @if(!empty($it['confirm'])) onsubmit="return confirm(@js($it['confirm']))" @endif>@csrf
         <button class="{{ $base }}"><x-icon :name="$it['i'] ?? 'check'" class="h-4 w-4 text-brand-600"/><span class="flex-1">{{ $it['l'] }}</span></button>

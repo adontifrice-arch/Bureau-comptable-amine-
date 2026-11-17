@@ -103,7 +103,7 @@
         <div class="card">
             @forelse($paies as $p)
                 <div class="flex flex-wrap items-center gap-4 border-b border-slate-100 px-5 py-4 last:border-0 dark:border-slate-800">
-                    <div class="min-w-0 flex-1"><div class="font-medium capitalize">Paie de {{ mois_fr($p->mois) }}</div><div class="text-xs text-slate-500">{{ count($p->resultats ?? []) }} salarié(s) · brut {{ tnd($p->totaux['brut'] ?? 0) }} · net {{ tnd($p->totaux['net'] ?? 0) }}</div></div>
+                    <div class="min-w-0 flex-1"><div class="font-medium">{{ $p->libelle() }}</div><div class="text-xs text-slate-500">{{ count($p->resultats ?? []) }} salarié(s) · brut {{ tnd($p->totaux['brut'] ?? 0) }} · net {{ tnd($p->totaux['net'] ?? 0) }}</div></div>
                     @if($p->statut === 'val')<span class="badge-green">Comptabilisée</span>
                     @else <span class="badge-amber">Transmise</span>
                         @if($chef)<form method="POST" action="{{ route('compta.paies.valider', $p) }}">@csrf<button class="btn-success btn-sm">Valider et comptabiliser</button></form>@endif

@@ -224,7 +224,7 @@ class ComptaController extends Controller
     {
         if (Ecriture::where('source', 'paie:'.$paie->id)->exists()) return back()->with('err', 'Cette paie est déjà comptabilisée.');
         DB::transaction(function () use ($paie) {
-            Compta::passer($paie->client_id, \Carbon\Carbon::parse($paie->mois.'-01')->endOfMonth()->format('Y-m-d'), 'PAI', 'Paie de '.mois_fr($paie->mois),
+            Compta::passer($paie->client_id, \Carbon\Carbon::parse($paie->mois.'-01')->endOfMonth()->format('Y-m-d'), 'PAI', $paie->libelle(),
                 \App\Services\PaieCalc::lignes($paie->totaux), 'paie:'.$paie->id, auth()->id());
             $paie->update(['statut' => 'val']);
         });

@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Paie;
+use App\Models\PaieProfil;
+use App\Models\PaieRubrique;
 use App\Models\Salarie;
 use App\Models\Setting;
 use App\Services\PaieCalc;
@@ -51,10 +53,10 @@ class PaieDossierController extends Controller
             'paie_rib' => 'nullable|max:30', 'cabinet_paie' => 'nullable|max:255',
             // Informations spécifiques
             'fop' => 'nullable|numeric|min:0|max:10', 'tfp' => 'nullable|in:1,2', 'arrondi' => 'required|integer|min:0|max:3', 'majoration_hs' => 'nullable|numeric|min:0|max:200',
-            'regul_irpp' => 'required|boolean', 'regul_primes' => 'required|in:mois',
+            'regul_irpp' => 'required|boolean', 'regul_primes' => 'required|in:mois,difference,regul',
             'cnssS' => 'required|numeric|min:0|max:30', 'at' => 'required|numeric|min:0|max:10',
             'solde_conge' => 'nullable|in:dernier,moyenne', 'tri' => 'required|in:nom,matricule', 'format_fiche' => 'nullable|in:a4,a5',
-            'smig_mensuel' => 'required|numeric|min:0', 'smig_horaire' => 'required|numeric|min:0', 'plafond_rc' => 'nullable|numeric|min:0',
+            'smig_mensuel' => 'required|numeric|min:0', 'smig_horaire' => 'required|numeric|min:0', 'plafond_rc' => 'nullable|numeric|min:0', 'rc_taux_s' => 'nullable|numeric|min:0|max:30', 'rc_taux_p' => 'nullable|numeric|min:0|max:30',
             // Logo
             'logo' => 'nullable|image|max:2048',
         ], [], ['cnss_mat' => 'n° employeur (matricule)', 'cnss_cle' => 'n° employeur (clé)', 'paie_activite' => 'activité', 'responsable_nom' => 'nom du responsable',
@@ -63,12 +65,12 @@ class PaieDossierController extends Controller
 
         $k = $client->paie_config ?? [];
         foreach (['ville', 'code_postal', 'fax', 'site_web', 'nb_employes', 'heures_semaine', 'responsable_nom', 'responsable_qualification', 'rne', 'agence', 'cabinet_paie',
-            'fop', 'tfp', 'arrondi', 'majoration_hs', 'regul_irpp', 'regul_primes', 'cnssS', 'at', 'solde_conge', 'tri', 'format_fiche', 'smig_mensuel', 'smig_horaire', 'plafond_rc'] as $c) {
+            'fop', 'tfp', 'arrondi', 'majoration_hs', 'regul_irpp', 'regul_primes', 'cnssS', 'at', 'solde_conge', 'tri', 'format_fiche', 'smig_mensuel', 'smig_horaire', 'plafond_rc', 'rc_taux_s', 'rc_taux_p'] as $c) {
             $k[$c] = $d[$c] ?? null;
         }
         foreach (['fop_actif', 'tfp_actif', 'notif_demarrage', 'afficher_logo'] as $c) $k[$c] = $r->boolean($c);
         foreach (['arrondi', 'nb_employes', 'tfp'] as $c) if ($k[$c] !== null) $k[$c] = (int) $k[$c];
-        foreach (['fop', 'majoration_hs', 'cnssS', 'at', 'heures_semaine', 'smig_mensuel', 'smig_horaire', 'plafond_rc'] as $c) if ($k[$c] !== null) $k[$c] = (float) $k[$c];
+        foreach (['fop', 'majoration_hs', 'cnssS', 'at', 'heures_semaine', 'smig_mensuel', 'smig_horaire', 'plafond_rc', 'rc_taux_s', 'rc_taux_p'] as $c) if ($k[$c] !== null) $k[$c] = (float) $k[$c];
         $k['regul_irpp'] = (bool) $k['regul_irpp'];
 
         if ($r->boolean('retirer_logo') && ! empty($k['logo'])) { Storage::disk('public')->delete($k['logo']); $k['logo'] = null; }
@@ -95,7 +97,9 @@ class PaieDossierController extends Controller
             'employeur' => $client->only(self::EMPLOYEUR),
             'salaries' => $client->salaries()->orderBy('nom')->get()->map(fn ($e) => ['id' => $e->id]
                 + collect($e->only(self::CHAMPS))->map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v)->all())->all(),
-            'paies' => Paie::where('client_id', $client->id)->orderBy('mois')->get(['mois', 'statut', 'primes', 'pointage', 'resultats', 'totaux'])->toArray(),
+            'profils' => PaieProfil::duDossier($client)->map(fn ($p) => $p->only(['nom', 'cnss_patronale', 'code_exploitant', ...array_keys(PaieProfil::OPTIONS)]))->all(),
+            'rubriques' => PaieRubrique::duDossier($client)->map(fn ($x) => collect($x->toArray())->except(['cabinet_id', 'client_id', 'created_at', 'updated_at'])->all())->all(),
+            'paies' => Paie::where('client_id', $client->id)->orderBy('mois')->get(['mois', 'type', 'libelle', 'rubrique_id', 'statut', 'primes', 'pointage', 'rubriques', 'resultats', 'totaux', 'jours_ouvrables', 'jours_feries', 'heures_jour', 'heures_ouvrables', 'options'])->toArray(),
         ];
         $this->log('Paie : sauvegarde du dossier', $client->id);
         return response()->streamDownload(fn () => print(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)),
@@ -122,16 +126,29 @@ class PaieDossierController extends Controller
                 if (empty($s['nom'])) continue;
                 $ids[$s['id'] ?? 0] = $this->enregistrerSalarie($client, array_intersect_key($s, array_flip(self::CHAMPS)))->id;
             }
-            $existants = Paie::where('client_id', $client->id)->pluck('mois')->all();
+            // Profils : ajoutés s'ils n'existent pas encore dans le dossier (rapprochement par nom), sans modifier les profils existants.
+            $profilsExistants = PaieProfil::parNom($client);
+            foreach ((array) ($data['profils'] ?? []) as $p) {
+                $nom = trim((string) ($p['nom'] ?? ''));
+                if ($nom === '' || $profilsExistants->has(mb_strtolower($nom))) continue;
+                PaieProfil::create(['client_id' => $client->id, 'nom' => $nom] + array_intersect_key($p, array_flip(['cnss_patronale', 'code_exploitant', ...array_keys(PaieProfil::OPTIONS)])));
+            }
+            $rids = $this->restaurerRubriques($client, (array) ($data['rubriques'] ?? []));
+            $existants = Paie::where('client_id', $client->id)->get(['mois', 'type', 'libelle'])->map(fn ($p) => $p->mois.'|'.$p->type.'|'.$p->libelle)->all();
             $n = 0;
             foreach ($data['paies'] ?? [] as $p) {
-                if (! preg_match('/^\d{4}-\d{2}$/', $p['mois'] ?? '') || in_array($p['mois'], $existants, true)) continue;
+                if (! preg_match('/^\d{4}-\d{2}$/', $p['mois'] ?? '') || in_array($p['mois'].'|'.($type = in_array($p['type'] ?? 'normale', array_keys(Paie::TYPES), true) ? ($p['type'] ?? 'normale') : 'normale').'|'.(string) ($p['libelle'] ?? ''), $existants, true)) continue;
                 $primes = [];
                 foreach ((array) ($p['primes'] ?? []) as $id => $v) if (isset($ids[$id])) $primes[$ids[$id]] = (float) $v;
                 $pointage = [];
                 foreach ((array) ($p['pointage'] ?? []) as $id => $v) if (isset($ids[$id])) $pointage[$ids[$id]] = $v;
+                $saisie = [];
+                foreach ((array) ($p['rubriques'] ?? []) as $id => $vals) {
+                    if (! isset($ids[$id])) continue;
+                    foreach ((array) $vals as $rid => $v) if (isset($rids[$rid])) $saisie[$ids[$id]][$rids[$rid]] = $v;
+                }
                 $res = array_map(fn ($x) => ['salarie_id' => $ids[$x['salarie_id'] ?? 0] ?? null] + $x, (array) ($p['resultats'] ?? []));
-                Paie::create(['client_id' => $client->id, 'mois' => $p['mois'], 'primes' => $primes, 'pointage' => PaieCalc::pointage($pointage), 'resultats' => $res ?: null, 'totaux' => $p['totaux'] ?? null,
+                Paie::create(['client_id' => $client->id, 'mois' => $p['mois'], 'primes' => $primes, 'type' => $type, 'libelle' => (string) ($p['libelle'] ?? ''), 'rubrique_id' => $rids[$p['rubrique_id'] ?? 0] ?? null, 'pointage' => $type === 'normale' ? PaieCalc::pointage($pointage) : $pointage, ...array_intersect_key($p, array_flip(['jours_ouvrables', 'jours_feries', 'heures_jour', 'heures_ouvrables', 'options'])), 'rubriques' => PaieCalc::saisieRubriques($saisie) ?: null, 'resultats' => $res ?: null, 'totaux' => $p['totaux'] ?? null,
                     'statut' => ($p['statut'] ?? 'brouillon') === 'brouillon' ? 'brouillon' : 'transmise']);
                 $n++;
             }
@@ -163,7 +180,7 @@ class PaieDossierController extends Controller
         $client = $this->dossier($r);
         $mois = $r->validate(['mois' => 'nullable|date_format:Y-m'])['mois'] ?? now()->format('Y-m');
         $P = PaieCalc::parametres($client);
-        $paie = Paie::where('client_id', $client->id)->where('mois', $mois)->first();
+        $paie = Paie::where('client_id', $client->id)->where('mois', $mois)->normale()->first();
         $lignes = PaieCalc::trier($client->salaries()->get(), $P['tri'])->map(fn ($e) => [$mois, $e->matricule, $e->cin, $e->nom,
             $paie?->pointage[$e->id]['jours'] ?? $P['jours_mois'], $paie?->pointage[$e->id]['hs'] ?? 0, (float) ($paie?->primes[$e->id] ?? 0)])->all();
         return $this->classeur('Pointage', ['Mois', 'Matricule', 'CIN', 'Nom et prénom', 'Jours travaillés', 'Heures supplémentaires', 'Primes'],
@@ -226,7 +243,7 @@ class PaieDossierController extends Controller
         $faits = []; $clos = [];
         DB::transaction(function () use ($client, $parMois, $d, &$faits, &$clos) {
             foreach ($parMois as $mois => $lignes) {
-                $paie = Paie::firstOrNew(['client_id' => $client->id, 'mois' => $mois]);
+                $paie = Paie::firstOrNew(['client_id' => $client->id, 'mois' => $mois, 'type' => 'normale']);
                 if ($paie->exists && $paie->statut !== 'brouillon') { $clos[] = $mois; continue; }
                 $pt = (array) $paie->pointage; $pr = (array) $paie->primes;
                 foreach ($lignes as $id => $v) {
@@ -355,6 +372,33 @@ class PaieDossierController extends Controller
         return redirect()->route('paie.index', ['tab' => 'sal'])->with($erreurs ? 'err' : 'ok', "$ok employé(s) importé(s)".($erreurs ? '. À vérifier : '.implode(' ; ', array_slice($erreurs, 0, 5)) : '.'));
     }
 
+    /**
+     * Rubriques d'une sauvegarde : rapprochées par nom (une rubrique existante n'est pas modifiée), les autres sont créées
+     * avec leur code, ou le prochain code libre s'il est déjà pris.
+     * Renvoie la correspondance ancien id → id du dossier ; les références entre rubriques (base, note) sont recalées.
+     */
+    private function restaurerRubriques(Client $client, array $liste): array
+    {
+        $ids = [];
+        $creees = [];
+        $champs = array_merge(['code', 'categorie', 'nom', 'profils', 'note_id', 'nb_jours_ouv', 'nb_heures_ouv', 'mode', 'montant', 'base', 'taux', 'numerateur', 'denominateur'], array_keys(PaieRubrique::OPTIONS));
+        foreach ($liste as $x) {
+            if (empty($x['code']) || empty($x['nom']) || ! isset(PaieRubrique::CATEGORIES[$x['categorie'] ?? ''])) continue;
+            $exist = PaieRubrique::where('client_id', $client->id)->get()->first(fn ($e) => mb_strtolower(trim($e->nom)) === mb_strtolower(trim($x['nom'])));
+            if ($exist) { $ids[$x['id'] ?? 0] = $exist->id; continue; }
+            $val = array_intersect_key($x, array_flip($champs));
+            if (PaieRubrique::where('client_id', $client->id)->where('code', (int) $x['code'])->exists()) $val['code'] = PaieRubrique::prochainCode($client);
+            $rub = PaieRubrique::create(['client_id' => $client->id] + $val);
+            $ids[$x['id'] ?? 0] = $rub->id;
+            $creees[] = $rub;
+        }
+        foreach ($creees as $rub) {
+            $base = str_starts_with((string) $rub->base, 'r:') ? (isset($ids[(int) substr($rub->base, 2)]) ? 'r:'.$ids[(int) substr($rub->base, 2)] : 'base') : $rub->base;
+            $rub->update(['base' => $base, 'note_id' => $rub->note_id ? ($ids[$rub->note_id] ?? null) : null]);
+        }
+        return $ids;
+    }
+
     /** Mise à jour du dossier : retire des paies en brouillon les primes d'employés supprimés et signale les paies figées sur d'anciens taux. */
     public function mettreAJour(Request $r)
     {
@@ -374,12 +418,15 @@ class PaieDossierController extends Controller
     public function rouvrir(Request $r)
     {
         $client = $this->dossier($r);
-        $mois = $r->validate(['mois' => 'required|date_format:Y-m'])['mois'];
-        $paie = Paie::where('client_id', $client->id)->where('mois', $mois)->firstOrFail();
+        $d = $r->validate(['mois' => 'required|date_format:Y-m', 'type' => 'nullable|in:'.implode(',', array_keys(Paie::TYPES))]);
+        $mois = $d['mois'];
+        $paie = $r->filled('paie_id') ? Paie::where('client_id', $client->id)->findOrFail((int) $r->input('paie_id'))
+            : Paie::where('client_id', $client->id)->where('mois', $mois)->where('type', $d['type'] ?? 'normale')->firstOrFail();
         if ($paie->statut === 'val') return back()->with('err', 'Cette paie est déjà comptabilisée : annulez d’abord l’écriture en comptabilité.');
         $paie->update(['statut' => 'brouillon', 'resultats' => null, 'totaux' => null]);
-        $this->log('Paie : réouverture de la paie '.$mois, $client->id);
-        return redirect()->route('paie.index', ['mois' => $mois])->with('ok', 'Paie de '.mois_fr($mois).' rouverte : elle peut de nouveau être modifiée.');
+        $this->log('Paie : réouverture — '.$paie->libelle(), $client->id);
+        $retour = $paie->estStc() ? ['tab' => 'stc', 'stc' => $paie->id, 'mois' => $mois] : ($paie->estRappel() ? ['tab' => 'rappel', 'rappel' => $paie->id, 'mois' => $mois] : ($paie->estPrime() ? ['tab' => 'prime', 'prime' => $paie->id, 'mois' => $mois] : ($paie->estSpeciale() ? ['tab' => 'autre', 'type' => $paie->type, 'annee' => substr($mois, 0, 4), 'decl' => $mois, 'mois' => $mois] : ['mois' => $mois])));
+        return redirect()->route('paie.index', $retour)->with('ok', $paie->libelle().' rouverte : elle peut de nouveau être modifiée.');
     }
 
     /** Calculatrice de paie : du brut vers le net, ou du net vers le brut. */

@@ -23,6 +23,8 @@
         tr.groupe td { background: #f1f5f9; font-weight: bold; border-bottom: 1px solid #999; }
         tr.soustotal td { font-weight: bold; border-top: 1px solid #666; }
         tr.total td { font-weight: bold; border-top: 2px double #111; background: #f8fafc; }
+        table.grille td, table.grille th { border: 1px solid #777; }
+        table.grille td { height: 20pt; vertical-align: middle; }
         .actions { margin: 10px 0; font-family: Arial, sans-serif; }
         .actions button { padding: 6px 12px; }
         @media print { .actions { display: none; } }
@@ -30,7 +32,10 @@
 </head>
 <body>
     @if($impression)
-        <div class="actions"><button onclick="window.print()">Imprimer</button> <button onclick="history.back()">Retour</button></div>
+        @php $route = request()->route(); $autres = $route && $route->hasParameter('format') ? ['pdf' => 'PDF', 'xlsx' => 'Excel', 'docx' => 'Word'] : []; @endphp
+        <div class="actions"><button onclick="window.print()">Imprimer</button> <button onclick="history.back()">Retour</button>
+            @foreach($autres as $f => $l) <a href="{{ route($route->getName(), ['format' => $f] + $route->parameters() + request()->query()) }}" style="margin-left: 8px">{{ $l }}</a>@endforeach
+        </div>
     @endif
     <div class="entete">
         <div>
@@ -45,7 +50,7 @@
         </div>
         <div class="droite meta">Édité le {{ now()->format('d/m/Y à H:i') }}<br>Montants en TND</div>
     </div>
-    <table>
+    <table class="{{ $etat->grille ? 'grille' : '' }}">
         <thead><tr>@foreach($etat->colonnes as [$libelle, $type])<th class="{{ $type === 'num' ? 'num' : '' }}">{{ $libelle }}</th>@endforeach</tr></thead>
         <tbody>
         @forelse($etat->lignes as $l)

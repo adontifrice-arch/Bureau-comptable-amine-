@@ -31,10 +31,11 @@ class Ecriture extends Model
         return match ($type) {
             'fr' => 'Facture d’achat'.(($f = FactureRecue::find($id)) ? ' '.$f->fournisseur.($f->reference ? ' n° '.$f->reference : '') : ''),
             'fv' => 'Facture de vente'.(($f = FactureVente::find($id)) ? ' '.$f->tiers.($f->reference ? ' n° '.$f->reference : '') : ''),
-            'paie' => 'Paie'.(($p = Paie::find($id)) ? ' de '.mois_fr($p->mois) : ''),
+            'paie' => ($p = Paie::find($id)) ? $p->libelle() : 'Paie',
             'rb' => 'Relevé bancaire'.(($l = ReleveLigne::find($id)) ? ' — '.$l->libelle : ''),
             'immo' => 'Acquisition d’immobilisation'.(($i = Immobilisation::find($id)) ? ' — '.$i->designation : ''),
             'amo' => 'Dotations aux amortissements '.$id,
+            'pret' => 'Versement d’un prêt au personnel'.(($p = Pret::with('salarie')->find($id)) ? ' — '.$p->salarie?->nomComplet() : ''),
             default => $this->source,
         };
     }

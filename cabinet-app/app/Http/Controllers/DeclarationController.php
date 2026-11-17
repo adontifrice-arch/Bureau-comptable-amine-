@@ -365,8 +365,10 @@ class DeclarationController extends Controller
         $f[$k] = $ca; $f['caex'] = r3($f['caex'] + $susp); $f['tvac'] = $tvac; $f['tvad2'] = r3($immo); $f['tvad1'] = r3($dtot - $immo);
         $prev = Declaration::where(['client_id' => $c->id, 'type' => 'men', 'periode' => Carbon::parse($from)->subMonth()->format('Y-m')])->first();
         $f['tvacr'] = $prev ? max(0, -static::calc('men', $prev->champs ?? [], $c)['tvap']) : 0;
-        $p = Paie::where('client_id', $c->id)->where('mois', $mo)->where('statut', '!=', 'brouillon')->first();
-        $f['rsal'] = $p->totaux['ir'] ?? 0; $f['css'] = $p->totaux['css'] ?? 0; $f['tfp'] = $p->totaux['tfp'] ?? 0; $f['fop'] = $p->totaux['fop'] ?? 0;
+        // Paie du mois et paies spéciales (congé, 13ème mois…) déclarées avec ce mois.
+        $ps = Paie::where('client_id', $c->id)->where('mois', $mo)->where('statut', '!=', 'brouillon')->get();
+        $p = $ps->first();
+        foreach (['rsal' => 'ir', 'css' => 'css', 'tfp' => 'tfp', 'fop' => 'fop'] as $k => $t) $f[$k] = r3($ps->sum(fn ($x) => $x->totaux[$t] ?? 0));
         $f['rhon'] = r3($rh); $f['rmar'] = r3($rm);
         $d->champs = $f;
         return 'Pré-remplissage : CA '.tnd($ca).', TVA collectée '.tnd($tvac).', TVA déductible '.tnd($dtot).', '.($p ? 'paie du mois reprise' : 'aucune paie clôturée').', '.$ks->count().' facture(s) reçue(s). Vérifiez la répartition par taux.';
