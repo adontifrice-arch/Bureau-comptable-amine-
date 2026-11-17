@@ -1,7 +1,7 @@
 {{-- Liste détaillée des factures émises en suspension des taxes sur le chiffre d'affaires (modèle papier DGI, en arabe), suivie du reçu de dépôt. --}}
 @php
     [$an, $t] = \App\Services\Exports\FichierDgi::trimestre($periode);
-    $cases = fn ($s, $n) => collect(mb_str_split(str_pad((string) $s, $n)))->map(fn ($c) => '<span class="bx">'.e(trim($c)).'</span>')->implode('');
+    $cases = fn ($s, $n) => '<span class="cases" dir="ltr">'.collect(mb_str_split(str_pad((string) $s, $n)))->map(fn ($c) => '<span class="bx">'.e(trim($c)).'</span>')->implode('').'</span>';
     preg_match('/\b(\d{4})\b(?!.*\b\d{4}\b)/', (string) ($d->champs['adresse'] ?? ''), $cp);
     $dn = fn ($v) => (float) $v ? number_format((float) $v, 3, ',', ' ') : '';
     $pc = fn ($v) => (float) $v ? str_replace('.', ',', (string) (float) $v).' %' : '';

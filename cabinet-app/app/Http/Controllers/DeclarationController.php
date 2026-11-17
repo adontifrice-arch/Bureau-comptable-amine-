@@ -11,6 +11,8 @@ use App\Models\PassageFiscal;
 use App\Models\Salarie;
 use App\Models\Setting;
 use App\Services\Compta;
+use App\Services\DeclarationAnnuelle;
+use App\Services\DeclarationMensuelle;
 use App\Services\Exports\BonsCommandeSuspension;
 use App\Services\Exports\DeclarationEmployeur;
 use App\Services\Exports\FacturesSuspension;
@@ -89,8 +91,7 @@ class DeclarationController extends Controller
     {
         $n = fn ($k) => (float) ($f[$k] ?? 0); $o = [];
         if ($type === 'men') {
-            $o['tvap'] = r3($n('tvac') - $n('tvad1') - $n('tvad2') - $n('tvacr'));
-            $o['tot'] = r3(max(0, $o['tvap']) + $n('rsal') + $n('rhon') + $n('rmar') + $n('raut') + $n('css') + $n('tfp') + $n('fop') + $n('tim') + $n('autr'));
+            return DeclarationMensuelle::calcul($f);
         } elseif ($type === 'ann') {
             $o['rf'] = r3($n('rc') + $n('rei') - $n('ded'));
             $o['ist'] = $c->estPhysique() ? r3(PaieCalc::bareme(max(0, $o['rf']), Setting::paie()['bar'])) : r3(max(0, $o['rf']) * $n('taux') / 100);
@@ -133,6 +134,52 @@ class DeclarationController extends Controller
             $d->champs = $champs;
             $d->save();
             return back()->with('ok', $r->boolean('reprendre') ? 'Récapitulatif recalculé depuis les annexes.' : 'Déclaration enregistrée.');
+        }
+        if ($type === 'ann') {
+            // Modèle officiel (IS ou IR selon la fiche client) : entête, rubriques, tableaux à lignes, cases des impôts concernés
+            $mod = DeclarationAnnuelle::modele($client);
+            [$DEF, $TAB, $IMP, $ENT] = DeclarationAnnuelle::definitions($mod);
+            $num = fn ($v) => $v === null || $v === '' ? null : (float) str_replace([' ', ','], ['', '.'], (string) $v);
+            $f = ['modele' => $mod];
+            foreach ($ENT as $k) { $v = $r->input("e.$k"); if ($v !== null && $v !== '') $f[$k] = is_string($v) ? trim($v) : $v; }
+            $in = (array) $r->input('f');
+            foreach ($DEF as [, , $L]) foreach ($L as $k => [, , $nat]) {
+                if ($nat === 'c' || ! array_key_exists($k, $in)) continue;
+                $v = $in[$k];
+                $v = match ($nat) { 'm', 'r' => $num($v), 'x' => (bool) $v, default => ($v === null || trim((string) $v) === '') ? null : trim((string) $v) };
+                if ($v !== null && $v !== false) $f[$k] = $v;
+            }
+            if (isset($in['taux'])) $f['taux'] = (float) $in['taux'];
+            foreach ($TAB as $t => [, , $cols]) {
+                $rows = [];
+                foreach ((array) ($r->input("t.$t") ?? []) as $l) {
+                    $l = array_intersect_key((array) $l, $cols);
+                    foreach ($l as $c => $v) $l[$c] = in_array($cols[$c][2], ['m', 'r'], true) ? $num($v) : (trim((string) $v) === '' ? null : trim((string) $v));
+                    if (array_filter($l, fn ($v) => $v !== null)) $rows[] = $l;
+                }
+                if ($rows) $f[$t] = $rows;
+            }
+            if ($r->boolean('imp_saisie')) $f['imp'] = array_values(array_intersect(array_keys($IMP), (array) $r->input('imp')));
+            $d->champs = $f;
+            $d->save();
+            return back()->with('ok', 'Déclaration enregistrée.');
+        }
+        if ($type === 'men') {
+            // Rubriques du modèle officiel : base, taux (gardé s'il diffère du taux par défaut) et montant (gardé s'il diffère du calcul)
+            $num = fn ($v) => $v === null || $v === '' ? null : (float) str_replace([' ', ','], ['', '.'], (string) $v);
+            $in = (array) $r->input('f');
+            $f = ['acte' => in_array((string) $r->input('acte'), array_map('strval', array_keys(DeclarationMensuelle::ACTES)), true) ? (string) $r->input('acte') : '0'];
+            if ($r->boolean('imp_saisie')) $f['imp'] = array_values(array_intersect(array_keys(DeclarationMensuelle::IMPOTS), (array) $r->input('imp')));
+            foreach (DeclarationMensuelle::rubriques() as $k => [, $t0]) {
+                $x = array_map($num, array_intersect_key((array) ($in[$k] ?? []), array_flip(['b', 't', 'm'])));
+                if (isset($x['t']) && $t0 !== null && abs($x['t'] - $t0) < 0.00001) unset($x['t']);
+                $x = array_filter($x, fn ($v) => $v !== null);
+                if ($x) $f[$k] = $x;
+            }
+            $f['pen'] = array_filter(array_map($num, array_intersect_key((array) $r->input('pen'), DeclarationMensuelle::SECTIONS)), fn ($v) => $v !== null && $v != 0);
+            $d->champs = $f;
+            $d->save();
+            return back()->with('ok', 'Déclaration enregistrée.');
         }
         $d->champs = collect((array) $r->input('f'))->map(fn ($v) => $v === null || $v === '' ? null : (float) str_replace(',', '.', $v))->all();
         $d->save();
@@ -310,6 +357,48 @@ class DeclarationController extends Controller
         return ['n' => $L->count(), 'ht' => r3($L->sum('ht')), 'fodec' => r3($L->sum('fodec')), 'dc' => r3($L->sum('dc')), 'tva' => r3($L->sum('tva'))];
     }
 
+    /** Récapitulatif fiscal de l'année : montants des déclarations mensuelles, mois par mois (écran, impression, CSV). */
+    public function recapitulatif(Request $r)
+    {
+        $client = $this->dossier($r);
+        if (! $client) return view('compta.vide');
+        $annee = (int) $r->input('annee', now()->year);
+        $D = Declaration::where('client_id', $client->id)->where('type', 'men')->where('periode', 'like', "$annee-%")->get()->keyBy('periode');
+        $lignes = []; $tot = ['sections' => array_fill_keys(array_keys(DeclarationMensuelle::SECTIONS), 0.0), 'bases' => array_fill_keys(array_keys(DeclarationMensuelle::SECTIONS), 0.0), 'pen' => 0.0, 'tot' => 0.0];
+        for ($m = 1; $m <= 12; $m++) {
+            $mo = sprintf('%d-%02d', $annee, $m);
+            $d = $D[$mo] ?? null;
+            if (! $d) { $lignes[$mo] = null; continue; }
+            $c = DeclarationMensuelle::calcul($d->champs ?? []);
+            $c['pen'] = r3(array_sum(array_column($c['sections'], 'pen')));
+            $c['statut'] = $d->statut;
+            foreach ($c['sections'] as $s => $x) { $tot['sections'][$s] = r3($tot['sections'][$s] + $x['du']); $tot['bases'][$s] = r3($tot['bases'][$s] + $x['base']); }
+            $tot['pen'] = r3($tot['pen'] + $c['pen']); $tot['tot'] = r3($tot['tot'] + $c['tot']);
+            $lignes[$mo] = $c;
+        }
+        if ($r->input('format') === 'csv') {
+            $nn = fn ($v) => number_format((float) $v, 3, ',', '');
+            $entetes = ['Mois'];
+            foreach (DeclarationMensuelle::SECTIONS as $t) array_push($entetes, "$t – base", "$t – montant");
+            $out = "\xEF\xBB\xBF".implode(';', array_merge($entetes, ['Crédit de TVA', 'Pénalités', 'Total à payer', 'Statut']))."\r\n";
+            $paires = fn ($sec) => array_merge(...array_map(fn ($x) => [$nn($x['base']), $nn($x['du'])], array_values($sec)));
+            foreach ($lignes as $mo => $l) $out .= implode(';', $l ? array_merge([$mo], $paires($l['sections']), [$nn($l['credit']), $nn($l['pen']), $nn($l['tot']), $l['statut']]) : [$mo, 'non établie'])."\r\n";
+            $T = array_map(fn ($s) => ['base' => $tot['bases'][$s], 'du' => $tot['sections'][$s]], array_keys(DeclarationMensuelle::SECTIONS));
+            $out .= implode(';', array_merge(['Total'], $paires($T), ['', $nn($tot['pen']), $nn($tot['tot'])]))."\r\n";
+            return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => "attachment; filename=\"recapitulatif-fiscal-$annee.csv\""]);
+        }
+        return view('declarations.recap', ['client' => $client, 'annee' => $annee, 'lignes' => $lignes, 'tot' => $tot, 'clients' => Client::orderBy('nom')->get(['id', 'nom'])]);
+    }
+
+    /** Déclaration mensuelle sur le modèle officiel en arabe (التصريح الشهري بالأداءات), à imprimer. */
+    public function arabe(Request $r)
+    {
+        [$client, $type, $periode, $d] = $this->ctx($r);
+        abort_unless(in_array($type, ['men', 'ann'], true), 404);
+        if ($type === 'ann') return view('declarations.annuelle_'.DeclarationAnnuelle::modele($client).'_ar', ['client' => $client, 'periode' => $periode, 'd' => $d]);
+        return view('declarations.mensuelle_ar', ['client' => $client, 'periode' => $periode, 'd' => $d]);
+    }
+
     public function print(Request $r)
     {
         [$client, $type, $periode, $d] = $this->ctx($r);
@@ -360,6 +449,39 @@ class DeclarationController extends Controller
                 $out .= "\r\n";
             }
         } else {
+            if ($type === 'ann') {
+                $mod = DeclarationAnnuelle::modele($client);
+                $f = DeclarationAnnuelle::champs($d->champs ?? [], $client, (int) $periode);
+                [$DEF, $TAB] = DeclarationAnnuelle::definitions($mod);
+                $C = $mod === 'is' ? DeclarationAnnuelle::calculIs($f) : DeclarationAnnuelle::calculIr($f);
+                $out .= ($mod === 'is' ? 'Impôt sur les sociétés' : 'Impôt sur le revenu')."\r\nSection;Rubrique;Valeur\r\n";
+                foreach ($DEF as [$titre, , $L]) foreach ($L as $k => [$lib, , $nat]) {
+                    $v = $k === 'ded_acp' ? ($C['acomptes'] ?? 0) : ($f[$k] ?? null);
+                    if ($v === null || $v === '' || $v === false || (in_array($nat, ['m', 'r', 'c'], true) && ! (float) $v)) continue;
+                    $out .= '"'.$titre.'";"'.$lib.'";'.(in_array($nat, ['m', 'r', 'c'], true) ? $nn($v) : ($nat === 'x' ? 'oui' : '"'.$v.'"'))."\r\n";
+                }
+                foreach ($TAB as $t => [$tt, , $cols]) if (! empty($f[$t])) {
+                    $out .= "\r\n\"$tt\"\r\n".implode(';', array_map(fn ($x) => '"'.$x[0].'"', $cols))."\r\n";
+                    foreach ($f[$t] as $l) $out .= implode(';', array_map(fn ($c) => in_array($cols[$c][2], ['m', 'r'], true) ? $nn($l[$c] ?? 0) : '"'.($l[$c] ?? '').'"', array_keys($cols)))."\r\n";
+                }
+                $out .= "\r\nSynthèse;Dû;Pénalités;Total\r\n";
+                foreach ($C['synthese'] as $k => $x) $out .= '"'.DeclarationAnnuelle::LIB_SYNTHESE[$k].'";'.$nn($x['III']).';'.$nn($x['pen']).';'.$nn($x['tot'])."\r\n";
+                $out .= 'Total à payer;;;'.$nn($C['tot'])."\r\n";
+                return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => "attachment; filename=\"declaration-ann-$periode.csv\""]);
+            }
+            if ($type === 'men') {
+                $f = DeclarationMensuelle::convertir($d->champs ?? []);
+                $out .= "Section;Rubrique;Base;Taux;Montant\r\n";
+                foreach (DeclarationMensuelle::LIGNES as $sec => $L) foreach ($L as $k => [$lib, , $mode]) {
+                    $v = DeclarationMensuelle::valeur($f, $k);
+                    if ($v['b'] || $v['m']) $out .= implode(';', ['"'.DeclarationMensuelle::SECTIONS[$sec].'"', '"'.$lib.'"', $nn($v['b']), in_array($mode, ['bt', 'tm', 'q'], true) ? $v['t'] : '', $nn($v['m'])])."\r\n";
+                }
+                $c = DeclarationMensuelle::calcul($f);
+                $out .= "\r\nSynthèse;Montant dû;Pénalités\r\n";
+                foreach ($c['sections'] as $sec => $x) $out .= '"'.DeclarationMensuelle::SECTIONS[$sec].'";'.$nn($x['du']).';'.$nn($x['pen'])."\r\n";
+                $out .= 'Total à payer;'.$nn($c['tot'])."\r\n";
+                return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => "attachment; filename=\"declaration-men-$periode.csv\""]);
+            }
             $c = static::calc($type, $d->champs ?? [], $client);
             $out .= "Rubrique;Montant\r\n";
             foreach (config('cabinet.'.($type === 'men' ? 'MEN' : 'ANN')) as $row) if ($row[0] !== 'h') $out .= '"'.$row[1].'";'.$nn(($row[2] ?? '') === 'c' ? ($c[$row[0]] ?? 0) : ($d->champs[$row[0]] ?? 0))."\r\n";
@@ -378,49 +500,133 @@ class DeclarationController extends Controller
         return $R;
     }
 
+    /**
+     * Déclaration mensuelle (modèle DGI) : bases et montants repris
+     * - des factures de vente validées du mois (chiffre d'affaires par taux de TVA, ventes en suspension, timbre),
+     *   à défaut de la comptabilité (classe 70, 4367) ;
+     * - des factures reçues validées (TVA déductible, immobilisations, retenues à la source par nature) ;
+     * - de la paie clôturée du mois (IRPP, CSS, TFP, FOPROLOS) ;
+     * - de la déclaration du mois précédent (crédit de TVA).
+     */
     private function fillMen(Client $c, string $mo, Declaration $d): string
     {
         $from = $mo.'-01'; $to = Carbon::parse($from)->endOfMonth()->format('Y-m-d');
-        $S = fn ($pre, $side) => Compta::somme($c->id, $from, $to, $pre, $side);
-        $ca = r3($S('70', 'credit') - $S('70', 'debit'));
-        $tvac = r3($S('4367', 'credit') - $S('4367', 'debit'));     // 4367 TVA collectée
-        $dtot = r3($S('4366', 'debit') - $S('4366', 'credit'));       // 4366 TVA déductible
-        $ks = FactureRecue::where('client_id', $c->id)->where('statut', 'val')->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get();
-        $immo = 0; $rh = 0; $rm = 0;
-        foreach ($ks as $x) {
-            if ($x->tva_deductible) $immo += array_sum(array_column($x->lignesImmobilisations(), 'tva'));    // lignes de la facture imputées en classe 2
-            if (($rs = $x->retenue()) > 0) { if (in_array(Compta::categorieRetenue($x), ['hon', 'loy', 'com', 'cou'])) $rh += $rs; else $rm += $rs; }
+        $f = ['acte' => (string) ((DeclarationMensuelle::convertir($d->champs ?? []))['acte'] ?? '0')];
+        $add = function (string $k, float $b, ?float $m = null) use (&$f) {
+            $f[$k]['b'] = r3(($f[$k]['b'] ?? 0) + $b);
+            if ($m !== null) $f[$k]['m'] = r3(($f[$k]['m'] ?? 0) + $m);
+        };
+
+        // Chiffre d'affaires et TVA collectée
+        $ventes = FactureVente::where('client_id', $c->id)->where('statut', 'val')->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get();
+        $ca = 0.0; $tvac = 0.0;
+        if ($ventes->count()) {
+            foreach ($ventes as $v) {
+                if ($v->tva_suspension) { $add('inf_vsusp', (float) $v->ht); $ca += (float) $v->ht; continue; }
+                foreach ($v->lignesSaisie() as $l) {
+                    $k = match ((int) round($l['tva_taux'])) { 7 => 'tva7', 13 => 'tva13', 19 => 'tva19', 0 => 'inf_caexo', default => 'tvax1' };
+                    if ($k === 'tvax1') { $f['tvax1']['t'] = $l['tva_taux']; $add($k, $l['ht'], $l['tva']); }
+                    else $add($k, $l['ht']);
+                    $ca += $l['ht']; $tvac += $l['tva'];
+                }
+            }
+            $timbres = $ventes->filter(fn ($v) => (float) $v->timbre > 0)->count();
+            if ($timbres) $add('tim4', $timbres);
+        } else {
+            $S = fn ($pre, $side) => Compta::somme($c->id, $from, $to, $pre, $side);
+            $ca = r3($S('70', 'credit') - $S('70', 'debit'));
+            $tvac = r3($S('4367', 'credit') - $S('4367', 'debit'));
+            $ratio = $ca > 0 ? $tvac / $ca * 100 : 0;
+            $k = abs($ratio - 19) < .6 ? 'tva19' : (abs($ratio - 13) < .6 ? 'tva13' : (abs($ratio - 7) < .6 ? 'tva7' : ($tvac == 0 && $ca > 0 ? 'inf_caexo' : 'tva19')));
+            if ($ca) $add($k, $ca);
         }
-        $f = $d->champs ?? [];
-        foreach (['ca19', 'ca13', 'ca7', 'caex', 'caxp'] as $k) $f[$k] = 0;
-        // Ventes en suspension de TVA (factures de vente validées du mois) : CA suspendu, hors répartition par taux.
-        $susp = r3((float) FactureVente::where('client_id', $c->id)->where('statut', 'val')->where('tva_suspension', true)
-            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->sum('ht'));
-        $ca = r3(max(0, $ca - $susp));
-        $ratio = $ca > 0 ? $tvac / $ca * 100 : 0;
-        $k = abs($ratio - 19) < .6 ? 'ca19' : (abs($ratio - 13) < .6 ? 'ca13' : (abs($ratio - 7) < .6 ? 'ca7' : ($tvac == 0 && $ca > 0 ? 'caex' : 'ca19')));
-        $f[$k] = $ca; $f['caex'] = r3($f['caex'] + $susp); $f['tvac'] = $tvac; $f['tvad2'] = r3($immo); $f['tvad1'] = r3($dtot - $immo);
-        $prev = Declaration::where(['client_id' => $c->id, 'type' => 'men', 'periode' => Carbon::parse($from)->subMonth()->format('Y-m')])->first();
-        $f['tvacr'] = $prev ? max(0, -static::calc('men', $prev->champs ?? [], $c)['tvap']) : 0;
-        // Paie du mois et paies spéciales (congé, 13ème mois…) déclarées avec ce mois.
+        if ($ca > 0) $add('tcl_loc', r3($ca + $tvac));
+
+        // Achats : TVA déductible et retenues à la source
+        $achats = FactureRecue::where('client_id', $c->id)->where('statut', 'val')->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->get();
+        $nrs = 0;
+        foreach ($achats as $x) {
+            if ($x->tva_suspension) $add('inf_susp', (float) $x->ht);
+            elseif ($x->tva_deductible && (float) $x->tva > 0) {
+                $immos = $x->lignesImmobilisations();
+                $ti = array_sum(array_column($immos, 'tva')); $hi = array_sum(array_column($immos, 'ht'));
+                if ($ti > 0) $add('tvd_eql', $hi, $ti);
+                $add('tvd_al', r3((float) $x->ht - $hi), r3((float) $x->tva - $ti));
+            } elseif ((float) $x->tva == 0) $add('inf_exo', (float) $x->ht);
+            if (($rs = $x->retenue()) > 0) {
+                $cat = Compta::categorieRetenue($x); $tx = (float) $x->retenue_taux;
+                $pm = (\App\Services\Exports\FichierDgi::matricule($x->matricule_fiscal)['cat'] ?? '') === 'M';
+                $k = match (true) {
+                    $cat === 'hon' && $tx <= 3 => 'rs6', $cat === 'hon' => 'rs5',
+                    in_array($cat, ['loy', 'com', 'cou'], true) => $pm ? 'rs4b' : 'rs4a',
+                    $tx >= 1.5 => 'rs17d', $tx >= 1 => 'rs17a', default => 'rs17b',
+                };
+                $add($k, r3((float) $x->ht + (float) $x->tva), $rs);
+                $nrs++;
+            }
+        }
+
+        // Paie du mois et paies spéciales (congé, 13ème mois…) déclarées avec ce mois
         $ps = Paie::where('client_id', $c->id)->where('mois', $mo)->where('statut', '!=', 'brouillon')->get();
-        $p = $ps->first();
-        foreach (['rsal' => 'ir', 'css' => 'css', 'tfp' => 'tfp', 'fop' => 'fop'] as $k => $t) $f[$k] = r3($ps->sum(fn ($x) => $x->totaux[$t] ?? 0));
-        $f['rhon'] = r3($rh); $f['rmar'] = r3($rm);
+        if ($ps->count()) {
+            $brut = 0.0; $imp = 0.0;
+            foreach ($ps as $p) foreach ($p->resultats ?? [] as $x) { $brut += (float) ($x['brut'] ?? 0); $imp += max(0, (float) ($x['brut_imp'] ?? $x['brut'] ?? 0) - (float) ($x['cnssS'] ?? 0)); }
+            $T = fn ($k) => r3($ps->sum(fn ($p) => $p->totaux[$k] ?? 0));
+            $add('rs1', r3($imp), $T('ir')); $add('rs3', r3($imp), $T('css'));
+            if ($T('tfp')) $add('tfp2', r3($brut), $T('tfp'));
+            if ($T('fop')) $add('fop', r3($brut), $T('fop'));
+        }
+
+        // Crédit de TVA du mois précédent
+        $prev = Declaration::where(['client_id' => $c->id, 'type' => 'men', 'periode' => Carbon::parse($from)->subMonth()->format('Y-m')])->first();
+        $credit = $prev ? DeclarationMensuelle::calcul($prev->champs ?? [])['credit'] : 0;
+        if ($credit > 0) $f['tva_prec'] = ['m' => $credit];
+
+        // Montants arrondis au millime ; un montant égal au calcul (base × taux) n'est pas figé
+        foreach ($f as $k => $x) if (is_array($x) && isset($x['m']) && isset(DeclarationMensuelle::rubriques()[$k])) {
+            if (abs(DeclarationMensuelle::valeur(array_diff_key($f, [$k => 0]) + [$k => array_diff_key($x, ['m' => 0])], $k)['calc'] - $x['m']) < 0.0005) unset($f[$k]['m']);
+        }
+        $ancien = DeclarationMensuelle::convertir($d->champs ?? []);
+        $f['pen'] = $ancien['pen'] ?? [];
+        if (isset($ancien['imp'])) $f['imp'] = $ancien['imp'];
         $d->champs = $f;
-        return 'Pré-remplissage : CA '.tnd($ca).', TVA collectée '.tnd($tvac).', TVA déductible '.tnd($dtot).', '.($p ? 'paie du mois reprise' : 'aucune paie clôturée').', '.$ks->count().' facture(s) reçue(s). Vérifiez la répartition par taux.';
+        return 'Pré-remplissage : chiffre d’affaires '.tnd($ca).' ('.$ventes->count().' facture(s) de vente), TVA collectée '.tnd($tvac).', '
+            .$achats->count().' facture(s) reçue(s) dont '.$nrs.' avec retenue, '.($ps->count() ? 'paie du mois reprise' : 'aucune paie clôturée').'. Vérifiez chaque rubrique.';
     }
 
+    /**
+     * Déclaration annuelle : états financiers de l'exercice (et stock de l'exercice précédent), TVA collectée,
+     * résultat fiscal de la liasse (F6005) ou du tableau de passage, acomptes et retenues du tableau de passage.
+     */
     private function fillAnn(Client $c, int $y, Declaration $d): string
     {
+        $mod = DeclarationAnnuelle::modele($c);
+        $f = (array) ($d->champs ?? []);
         $F = Compta::etats($c->id, $y); $P = $F['P'];
+        $F0 = Compta::etats($c->id, $y - 1);
         $L = PassageFiscal::where('client_id', $c->id)->where('annee', $y)->first()?->donnees ?? [];
-        $f = $d->champs ?? [];
-        $f['ca'] = $P['ca']; $f['prod'] = r3($P['prod'] + $P['pfi']); $f['chg'] = r3($P['chg'] + $P['fin']); $f['rc'] = $P['rav'];
-        foreach (['rei' => 'rei', 'ded' => 'ded', 'taux' => 'taux', 'min' => 'min', 'acp' => 'acp', 'rsub' => 'rs'] as $k => $s) if (isset($L[$s])) $f[$k] = $L[$s];
-        $f['taux'] = $f['taux'] ?? 15;
+        $tvac = r3(Compta::somme($c->id, "$y-01-01", "$y-12-31", '4367', 'credit') - Compta::somme($c->id, "$y-01-01", "$y-12-31", '4367', 'debit'));
+        $rf = isset($L['rei']) || isset($L['ded']) ? r3($P['rav'] + (float) ($L['rei'] ?? 0) - (float) ($L['ded'] ?? 0)) : $P['rav'];
+        $imposable = max(0, $rf);
+        $source = $L ? 'tableau de passage' : 'résultat comptable';
+        try {
+            $V = \App\Services\LiasseFiscale::calculer($c, $y)['docs']['F6005']['n'] ?? [];
+            if (! empty($V[55]) || ! empty($V[101])) { $rf = r3((float) $V[55]); $imposable = max(0, r3((float) ($V[101] ?? 0))); $source = 'liasse fiscale (F6005)'; }
+        } catch (\Throwable) {
+        }
+        $f['modele'] = $mod;
+        $set = function (array $x) use (&$f) { foreach ($x as $k => $v) $f[$k] = $v; };
+        if ($mod === 'is') {
+            $set(['stk_deb' => r3($F0['g']['stk']), 'stk_fin' => r3($F['g']['stk']), 'achats' => r3($P['ach']), 'ca_loc' => r3($P['ca']), 'ca_ttc' => r3($P['ca'] + $tvac),
+                'res_compta' => r3($P['rav']), 'res_fiscal' => $rf, 'benef_av' => $imposable, 'benef_net' => $imposable, 'ca_min_ttc' => r3($P['ca'] + $tvac), 'ca_min' => r3($P['ca'] + $tvac)]);
+            if (isset($L['taux'])) $f['taux'] = (float) $L['taux'];
+            if (! empty($L['rs'])) $f['ded_rs'] = (float) $L['rs'];
+            if (! empty($L['acp']) && empty($f['acomptes'])) $f['acomptes'] = [['montant' => (float) $L['acp']]];
+        } else {
+            DeclarationAnnuelle::preremplirIr($f, $c, $y, $P, $tvac, $rf, $L);
+        }
         $d->champs = $f;
-        return 'Pré-remplissage depuis les états financiers '.$y.($L ? ' et le tableau de passage de la liasse.' : ' (tableau de passage non renseigné).');
+        return 'Pré-remplissage depuis les états financiers '.$y.' et le '.$source.'. Vérifiez chaque rubrique avant le dépôt.';
     }
 
     /**

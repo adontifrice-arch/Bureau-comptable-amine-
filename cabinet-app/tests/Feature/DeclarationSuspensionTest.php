@@ -268,13 +268,13 @@ class DeclarationSuspensionTest extends TestCase
         $this->assertSame(['ATT-9', '1', '7654321CAM000'], [$L[0]['att'], $L[0]['idk'], $L[0]['id']]);
         $this->assertEqualsWithDelta(380, $L[0]['tva'], 0.001);
 
-        // Déclaration mensuelle : la vente en suspension va en CA exonéré ou suspendu.
+        // Déclaration mensuelle : la vente en suspension est déclarée pour information (ventes en suspension de TVA).
         $this->post(route('declarations.prefill'), ['type' => 'men', 'periode' => '2026-10'])->assertSessionHas('ok');
         $f = Declaration::firstWhere('type', 'men')->champs;
-        $this->assertEqualsWithDelta(500, $f['ca19'], 0.001);
-        $this->assertEqualsWithDelta(2000, $f['caex'], 0.001);
-        $this->assertEqualsWithDelta(95, $f['tvac'], 0.001);
-        $this->assertEqualsWithDelta(38, $f['tvad1'], 0.001);
+        $this->assertEqualsWithDelta(500, $f['tva19']['b'], 0.001);
+        $this->assertEqualsWithDelta(2000, $f['inf_vsusp']['b'], 0.001);
+        $this->assertEqualsWithDelta(95, \App\Services\DeclarationMensuelle::calcul($f)['tva_I'], 0.001);
+        $this->assertEqualsWithDelta(38, $f['tvd_al']['m'], 0.001);
 
         // Décocher la case rétablit la TVA facturée.
         $fv2 = FactureVente::create(['client_id' => $this->client->id, 'date' => '2026-10-20', 'tiers' => 'X', 'ht' => 1, 'compte' => '7011', 'statut' => 'prop']);

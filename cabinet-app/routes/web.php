@@ -217,6 +217,8 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::get('declarations/liste-factures', [C\DeclarationController::class, 'liste'])->name('declarations.liste');
     Route::get('declarations/bordereau', [C\DeclarationController::class, 'bordereau'])->name('declarations.bordereau');
     Route::get('declarations/imprimer', [C\DeclarationController::class, 'print'])->name('declarations.print');
+    Route::get('declarations/modele-arabe', [C\DeclarationController::class, 'arabe'])->name('declarations.arabe');
+    Route::get('declarations/recapitulatif', [C\DeclarationController::class, 'recapitulatif'])->name('declarations.recap');
     Route::get('declarations/export', [C\DeclarationController::class, 'csv'])->name('declarations.csv');
 
     // ---------- Audit ----------

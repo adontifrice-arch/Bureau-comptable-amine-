@@ -5,6 +5,8 @@
     <x-doc-sheet :titre="'DÉCLARATION '.$lab" :numero="\App\Http\Controllers\DeclarationController::libellePeriode($type, $periode)">
         <div class="mb-6 text-sm"><b>{{ $client->nom }}</b> · Matricule fiscal {{ $client->matricule_fiscal ?: '—' }}<br>Statut : {{ ['brouillon' => 'Brouillon', 'validee' => 'Validée', 'deposee' => 'Déposée'][$d->statut] }}</div>
         @if($susp) @include('declarations._suspension', ['print' => true])
+        @elseif($type === 'men') @include('declarations._mensuelle_print')
+        @elseif($type === 'ann') @include('declarations._annuelle_print')
         @elseif($type !== 'emp') @include('declarations._champs', ['print' => true])
         @else
             @php $E = \App\Services\Exports\DeclarationEmployeur::class; $R = $E::lignesRecap($d); @endphp

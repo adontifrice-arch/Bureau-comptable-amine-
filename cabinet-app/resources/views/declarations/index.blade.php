@@ -5,7 +5,7 @@
     <x-page-header title="Déclarations fiscales" :subtitle="$client->nom">
         <x-client-picker :clients="$clients" :current="$client" :route="route('declarations.index')" :params="['type' => $type]"/>
     </x-page-header>
-    <x-tabs :active="$type" :items="['men' => ['Déclaration mensuelle', route('declarations.index', ['type' => 'men'])], 'ann' => ['Déclaration annuelle', route('declarations.index', ['type' => 'ann'])], 'emp' => ['Déclaration d’employeur', route('declarations.index', ['type' => 'emp'])], 'sach' => ['Achats en suspension de TVA', route('declarations.index', ['type' => 'sach'])], 'sven' => ['Ventes en suspension de TVA', route('declarations.index', ['type' => 'sven'])]]"/>
+    @include('declarations._onglets', ['actif' => $type])
 
     @php $DC = \App\Http\Controllers\DeclarationController::class; $trim = $DC::trimestrielle($type); $fmt = $trim ? $DC::format($type) : null; @endphp
     <div class="card mb-6 flex flex-wrap items-center gap-4 p-4">
@@ -34,6 +34,7 @@
                 <a href="{{ route('declarations.bordereau', $q) }}" class="btn-secondary"><x-icon name="printer" class="h-4 w-4"/> Bordereau</a>
                 @if($type === 'sven')<a href="{{ route('declarations.liste', $q) }}" class="btn-secondary" title="Modèle papier en arabe, avec le reçu de dépôt"><x-icon name="printer" class="h-4 w-4"/> Liste détaillée</a>@endif
             @endif
+            @if(in_array($type, ['men', 'ann'], true))<a href="{{ route('declarations.arabe', $q) }}" class="btn-secondary" title="Modèle officiel DGI en arabe, rempli"><x-icon name="printer" class="h-4 w-4"/> Formulaire arabe</a>@endif
             <a href="{{ route('declarations.print', $q) }}" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> PDF</a>
         </div>
     </div>
@@ -98,6 +99,10 @@
                 <div class="flex items-end justify-end md:col-span-2"><button class="btn-primary">Ajouter</button></div>
             </form>
         </x-modal>
+    @elseif($type === 'ann')
+        @include('declarations._annuelle')
+    @elseif($type === 'men')
+        @include('declarations._mensuelle')
     @elseif($type !== 'emp')
         <div class="grid gap-6 lg:grid-cols-3">
             <form method="POST" action="{{ route('declarations.save') }}" class="card overflow-hidden lg:col-span-2">@include('declarations._hidden')
