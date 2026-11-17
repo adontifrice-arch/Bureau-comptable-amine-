@@ -12,6 +12,7 @@ use App\Models\Salarie;
 use App\Models\Setting;
 use App\Services\Compta;
 use App\Services\Exports\BonsCommandeSuspension;
+use App\Services\Exports\DeclarationEmployeur;
 use App\Services\Exports\FacturesSuspension;
 use App\Services\Exports\FichierDgi;
 use App\Services\PaieCalc;
@@ -20,15 +21,8 @@ use Illuminate\Http\Request;
 
 class DeclarationController extends Controller
 {
-    public const ANNEXES = [
-        'a1' => 'Annexe 1 : traitements, salaires, pensions et rentes viagères',
-        'a2' => 'Annexe 2 : honoraires, commissions, courtages, loyers servis à des résidents',
-        'a3' => 'Annexe 3 : revenus des capitaux mobiliers et intérêts',
-        'a4' => 'Annexe 4 : montants servis à des non-résidents ou non établis',
-        'a5' => 'Annexe 5 : acquisitions et marchés soumis à la retenue (≥ 1 000 TND)',
-        'a6' => 'Annexe 6 : ristournes, ventes aux forfaitaires, avances',
-        'a7' => 'Annexe 7 : montants payés pour autrui',
-    ];
+    /** Annexes de la déclaration d'employeur (cahier des charges DGI : voir DeclarationEmployeur). */
+    public const ANNEXES = DeclarationEmployeur::ANNEXES;
 
     /**
      * Opérations en suspension de TVA (lignes stockées dans annexes['l']).
@@ -112,6 +106,7 @@ class DeclarationController extends Controller
         [$client, $type, $periode, $d] = $this->ctx($r);
         $ax = $r->input('ax', 'rec');
         if (static::trimestrielle($type)) $d->champs = $this->entete($client, $d);
+        if ($type === 'emp') $d->champs = $this->enteteEmp($client, $d);
         return view('declarations.index', ['client' => $client, 'type' => $type, 'periode' => $periode, 'd' => $d, 'ax' => $ax,
             'calc' => static::calc($type, $d->champs ?? [], $client), 'rec' => $this->recap($d), 'clients' => Client::orderBy('nom')->get(['id', 'nom'])]);
     }
@@ -124,6 +119,20 @@ class DeclarationController extends Controller
             $d->champs = $r->validate(['f.aut' => 'nullable|max:30', 'f.activite' => 'nullable|max:40', 'f.adresse' => 'nullable|max:120'])['f'] ?? [];
             $d->save();
             return back()->with('ok', 'Renseignements du déclarant enregistrés.');
+        }
+        if ($type === 'emp') {
+            $e = $r->validate(['e.acte' => 'nullable|in:0,1,2', 'e.activite' => 'nullable|max:40', 'e.ville' => 'nullable|max:40', 'e.rue' => 'nullable|max:72',
+                'e.num' => 'nullable|digits_between:1,4', 'e.cp' => 'nullable|digits:4', 'r' => 'nullable|array', 'r.*.a' => 'nullable|numeric|min:0', 'r.*.r' => 'nullable|numeric|min:0'])['e'] ?? null;
+            $champs = $this->enteteEmp($client, $d);
+            if ($e !== null) $champs = array_merge($champs, array_map(fn ($v) => $v ?? '', $e));
+            if ($r->boolean('reprendre')) unset($champs['r']);
+            elseif ($r->has('r')) {
+                $champs['r'] = collect((array) $r->input('r'))->only(array_keys(DeclarationEmployeur::RECAP))
+                    ->map(fn ($x) => ['a' => r3((float) str_replace(',', '.', $x['a'] ?? 0)), 'r' => r3((float) str_replace(',', '.', $x['r'] ?? 0))])->all();
+            }
+            $d->champs = $champs;
+            $d->save();
+            return back()->with('ok', $r->boolean('reprendre') ? 'Récapitulatif recalculé depuis les annexes.' : 'Déclaration enregistrée.');
         }
         $d->champs = collect((array) $r->input('f'))->map(fn ($v) => $v === null || $v === '' ? null : (float) str_replace(',', '.', $v))->all();
         $d->save();
@@ -155,15 +164,27 @@ class DeclarationController extends Controller
         [$c, $type, $periode, $d] = $this->ctx($r);
         if ($d->verrouillee()) return back()->with('err', 'Déclaration verrouillée.');
         $ax = $r->validate(['ax' => 'required|in:a1,a2,a3,a4,a5,a6,a7'])['ax'];
-        $l = $r->validate(['idk' => 'nullable|max:2', 'id' => 'nullable|max:30', 'nom' => 'required|max:255', 'adr' => 'nullable|max:255', 'act' => 'nullable|max:255',
-            'code' => 'nullable|max:3', 'brut' => 'required|numeric', 'taux' => 'nullable|numeric', 'ret' => 'nullable|numeric']);
-        $l['ret'] = $r->filled('ret') ? (float) $l['ret'] : r3($l['brut'] * ($l['taux'] ?? 0) / 100);
-        $l['net'] = r3($l['brut'] - $l['ret']);
+        $regles = ['i' => 'nullable|integer|min:0', 'idk' => 'required|in:'.implode(',', DeclarationEmployeur::IDK[$ax]), 'id' => 'required|max:20', 'nom' => 'required|max:255',
+            'adr' => 'nullable|max:255', 'act' => 'nullable|max:255', 'pm' => 'nullable|boolean'];
+        foreach (DeclarationEmployeur::ZONES[$ax] as $k => [, $nat, $len]) {
+            if ($nat === 'x') continue;
+            $regles[$k] = match ($nat) {
+                'm' => 'nullable|numeric|min:0|max:999999999999', 't' => 'nullable|numeric|min:0|max:100', 'n' => 'nullable|integer|min:0|max:'.(10 ** $len - 1),
+                'd' => 'nullable|date', default => 'nullable|in:'.implode(',', array_keys(DeclarationEmployeur::CODES["$ax.$k"] ?? [])),
+            };
+        }
+        $l = $r->validate($regles);
+        $i = $l['i'] ?? null; unset($l['i']);
+        $l['pm'] = $r->boolean('pm');
+        if (array_key_exists('net', $l) && $l['net'] === null) $l['net'] = 0;   // net non saisi : montant servi − retenues
+        $l = DeclarationEmployeur::normaliser($ax, $l);
         $A = $d->annexes ?? [];
-        $A[$ax][] = $l;
+        $L = $A[$ax] ?? [];
+        if ($i !== null && isset($L[$i])) $L[$i] = $l; else $L[] = $l;
+        $A[$ax] = array_values($L);
         $d->annexes = $A;
         $d->save();
-        return back()->with('ok', 'Ligne ajoutée à l’'.strtolower(substr(self::ANNEXES[$ax], 0, 8)).'.');
+        return back()->with('ok', ($i !== null ? 'Ligne modifiée dans l’' : 'Ligne ajoutée à l’').strtolower(trim(strtok(self::ANNEXES[$ax], ':'))).'.');
     }
 
     public function annexeDestroy(Request $r)
@@ -236,6 +257,10 @@ class DeclarationController extends Controller
     public function fichierDgi(Request $r)
     {
         [$client, $type, $periode, $d] = $this->ctx($r);
+        if ($type === 'emp') {
+            $d->champs = $this->enteteEmp($client, $d);
+            return response()->download(DeclarationEmployeur::archive($client, $d), 'Declaration_employeur_'.$periode.'.zip')->deleteFileAfterSend();
+        }
         abort_unless(static::trimestrielle($type), 404);
         $d->champs = $this->entete($client, $d);
         $f = static::format($type);
@@ -317,9 +342,21 @@ class DeclarationController extends Controller
             $t = static::totauxSuspension($d);
             $out .= 'Total;;;;;;;;;'.$mil($t['ht']).';;'.$mil($t['fodec']).';;'.$mil($t['dc']).';;'.$mil($t['tva'])."\r\n";
         } elseif ($type === 'emp') {
+            $out .= "Tableau récapitulatif\r\nCode;Libellé;Assiette;Taux;Retenue\r\n";
+            foreach (DeclarationEmployeur::lignesRecap($d) as $code => $x) {
+                $tx = DeclarationEmployeur::RECAP[$code][1];
+                $out .= implode(';', ['="'.$code.'"', '"'.DeclarationEmployeur::RECAP[$code][0].'"', $nn($x['a']), is_numeric($tx) ? $tx : '', $nn($x['r'])])."\r\n";
+            }
+            $out .= ';Total des retenues;;;'.$nn(DeclarationEmployeur::totalRetenues($d))."\r\n\r\n";
             foreach (self::ANNEXES as $k => $t) {
-                $out .= "$t\r\nType id;Identifiant;Nom;Adresse;Montant brut;Taux;Retenue;Net servi\r\n";
-                foreach ($d->annexes[$k] ?? [] as $l) $out .= implode(';', [$l['idk'] ?? '', $l['id'] ?? '', '"'.$l['nom'].'"', '"'.($l['adr'] ?? '').'"', $nn($l['brut']), $l['taux'] ?? '', $nn($l['ret']), $nn($l['net'])])."\r\n";
+                $z = array_filter(DeclarationEmployeur::ZONES[$k], fn ($x) => $x[1] !== 'x');
+                $out .= "$t\r\n".implode(';', array_merge(['N°', 'Type id', 'Identifiant', 'Nom', 'Activité', 'Adresse'], array_map(fn ($x) => $x[0], $z)))."\r\n";
+                foreach (array_values($d->annexes[$k] ?? []) as $i => $l) {
+                    $l = DeclarationEmployeur::normaliser($k, $l);
+                    $val = fn ($kk, $x) => match ($x[1]) { 'm' => $nn($l[$kk] ?? 0), 'd' => ! empty($l[$kk]) ? dfr($l[$kk]) : '', default => $l[$kk] ?? '' };
+                    $out .= implode(';', array_merge([$i + 1, $l['idk'] ?? '', '"'.($l['id'] ?? '').'"', '"'.$l['nom'].'"', '"'.($l['act'] ?? '').'"', '"'.($l['adr'] ?? '').'"'],
+                        array_map($val, array_keys($z), $z)))."\r\n";
+                }
                 $out .= "\r\n";
             }
         } else {
@@ -335,8 +372,8 @@ class DeclarationController extends Controller
     {
         $R = [];
         foreach (self::ANNEXES as $k => $t) {
-            $L = collect($d->annexes[$k] ?? []);
-            $R[$k] = ['t' => $t, 'n' => $L->count(), 'brut' => r3($L->sum('brut')), 'ret' => r3($L->sum('ret')), 'net' => r3($L->sum('net'))];
+            $L = collect($d->annexes[$k] ?? [])->map(fn ($l) => DeclarationEmployeur::normaliser($k, $l));
+            $R[$k] = ['t' => $t, 'n' => $L->count(), 'brut' => r3($L->sum('brut')), 'ret' => r3($L->sum('retenues')), 'net' => r3($L->sum('net'))];
         }
         return $R;
     }
@@ -436,31 +473,92 @@ class DeclarationController extends Controller
         return $A;
     }
 
+    /**
+     * Déclaration d'employeur : annexe I depuis la paie clôturée de l'année (une ligne par salarié),
+     * annexes II et V depuis les factures reçues validées avec retenue (une ligne par fournisseur et nature).
+     * Les lignes saisies à la main sont conservées ; le récapitulatif est recalculé depuis les annexes.
+     */
     private function fillEmp(Client $c, int $y, Declaration $d): string
     {
         $A = collect($d->annexes ?? [])->map(fn ($L) => array_values(array_filter($L, fn ($l) => empty($l['auto']))))->all();
-        $paies = Paie::where('client_id', $c->id)->where('mois', 'like', "$y-%")->where('statut', '!=', 'brouillon')->get();
+        $paies = Paie::where('client_id', $c->id)->where('mois', 'like', "$y-%")->where('statut', '!=', 'brouillon')->orderBy('mois')->get();
         $tot = [];
         foreach ($paies as $p) foreach ($p->resultats ?? [] as $x) {
-            $k = $x['salarie_id']; $tot[$k] ??= ['brut' => 0, 'ret' => 0];
-            $tot[$k]['brut'] += $x['brut']; $tot[$k]['ret'] += $x['ir'] + $x['css'];
+            $k = $x['salarie_id'];
+            $tot[$k] ??= ['imp' => 0, 'nat' => 0, 'ir' => 0, 'css' => 0, 'net' => 0, 'mois' => []];
+            $tot[$k]['imp'] += max(0, (float) ($x['brut_imp'] ?? $x['brut'] ?? 0) - (float) ($x['cnssS'] ?? 0));
+            $tot[$k]['nat'] += (float) ($x['nature'] ?? 0);
+            $tot[$k]['ir'] += (float) ($x['ir'] ?? 0); $tot[$k]['css'] += (float) ($x['css'] ?? 0); $tot[$k]['net'] += (float) ($x['net'] ?? 0);
+            $tot[$k]['mois'][] = substr($p->mois, 0, 7);
         }
+        $sit = ['celibataire' => '1', 'marie' => '2', 'divorce' => '3', 'veuf' => '4'];
         $n1 = 0;
         foreach (Salarie::where('client_id', $c->id)->get() as $e) {
             if (! isset($tot[$e->id])) continue;
-            $A['a1'][] = ['auto' => 1, 'idk' => '2', 'id' => $e->cin, 'nom' => $e->nom, 'adr' => '', 'act' => $e->poste, 'brut' => r3($tot[$e->id]['brut']), 'taux' => null, 'ret' => r3($tot[$e->id]['ret']), 'net' => r3($tot[$e->id]['brut'] - $tot[$e->id]['ret'])];
+            $t = $tot[$e->id];
+            $deb = Carbon::parse(min($t['mois']).'-01'); $fin = Carbon::parse(max($t['mois']).'-01')->endOfMonth();
+            if ($e->date_embauche && Carbon::parse($e->date_embauche)->year === $y && Carbon::parse($e->date_embauche)->gt($deb)) $deb = Carbon::parse($e->date_embauche);
+            if ($e->date_sortie && Carbon::parse($e->date_sortie)->year === $y && Carbon::parse($e->date_sortie)->lt($fin)) $fin = Carbon::parse($e->date_sortie);
+            $etr = (bool) $e->retenue_etranger;
+            $A['a1'][] = DeclarationEmployeur::normaliser('a1', ['auto' => 1, 'idk' => ! $e->cin && $e->carte_sejour ? '3' : '2', 'id' => $e->cin ?: $e->carte_sejour,
+                'nom' => trim($e->nom.' '.$e->prenom), 'act' => $e->poste, 'adr' => trim(implode(' ', array_filter([$e->adresse, $e->code_postal, $e->ville]))),
+                'sit' => $sit[$e->situation_familiale] ?? ($e->chef_famille ? '2' : '1'), 'enf' => min(99, (int) $e->enfants),
+                'deb' => $deb->format('Y-m-d'), 'fin' => $fin->format('Y-m-d'), 'jours' => (int) $deb->diffInDays($fin) + 1,
+                'imp' => r3($t['imp']), 'nat' => r3($t['nat']), 'ret' => $etr ? 0 : r3($t['ir']), 'ret_etr' => $etr ? r3($t['ir']) : 0, 'css' => r3($t['css']), 'net' => r3($t['net'])]);
             $n1++;
         }
-        $n2 = 0; $n5 = 0;
+
+        // Factures reçues avec retenue : regroupées par fournisseur et nature du montant
+        $g = [];
         foreach (FactureRecue::where('client_id', $c->id)->where('statut', 'val')->whereYear('date', $y)->get() as $f) {
             if (($rs = $f->retenue()) <= 0) continue;
-            $cat = Compta::categorieRetenue($f); $ax = $cat === 'mar' ? 'a5' : 'a2';
-            $brut = r3($f->ht + $f->tva);
-            $A[$ax][] = ['auto' => 1, 'idk' => preg_match('/\d{7}/', (string) $f->matricule_fiscal) ? '1' : '', 'id' => $f->matricule_fiscal, 'nom' => $f->fournisseur, 'adr' => '', 'act' => $f->description,
-                'brut' => $brut, 'taux' => (float) $f->retenue_taux, 'ret' => $rs, 'net' => r3($brut - $rs)];
-            $ax === 'a5' ? $n5++ : $n2++;
+            $cat = Compta::categorieRetenue($f); $tx = (float) $f->retenue_taux;
+            [$ax, $col, $type] = match (true) {
+                $cat === 'hon' && $tx <= 3 => ['a2', 'm_reel', '1'],
+                $cat === 'hon' => ['a2', 'm_res', '1'],
+                $cat === 'loy' => ['a2', 'm_res', '4'],
+                $cat === 'com' => ['a2', 'm_res', '2'],
+                $cat === 'cou' => ['a2', 'm_res', '3'],
+                $tx >= 1.5 => ['a5', 'm_aut', null],
+                $tx >= 1 => ['a5', 'm_15', null],
+                default => ['a5', 'm_10', null],
+            };
+            $mf = strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) $f->matricule_fiscal));
+            $idk = preg_match('/^\d{1,8}$/', $mf) ? '2' : '1';
+            $k = "$ax|$col|$type|".($mf ?: mb_strtolower(trim($f->fournisseur)));
+            $g[$k] ??= ['auto' => 1, 'ax' => $ax, 'idk' => $idk, 'id' => $mf, 'nom' => $f->fournisseur, 'act' => '', 'adr' => '', 'nat' => $type, $col => 0, 'ret' => 0];
+            $g[$k][$col] = r3($g[$k][$col] + (float) $f->ht + (float) $f->tva);
+            $g[$k]['ret'] = r3($g[$k]['ret'] + $rs);
+        }
+        $n = ['a2' => 0, 'a5' => 0];
+        foreach ($g as $l) {
+            $ax = $l['ax']; unset($l['ax']);
+            if ($l['nat'] === null) unset($l['nat']);
+            $A[$ax][] = DeclarationEmployeur::normaliser($ax, $l + ['net' => 0]);
+            $n[$ax]++;
         }
         $d->annexes = $A;
-        return "Pré-remplissage : annexe 1 depuis la paie ($n1 salarié(s), ".$paies->count()." mois clôturé(s)), annexe 2 : $n2 ligne(s), annexe 5 : $n5 ligne(s) depuis les factures reçues avec retenue.";
+        $champs = $this->enteteEmp($c, $d);
+        unset($champs['r']);
+        $d->champs = $champs;
+        return "Pré-remplissage : annexe I depuis la paie ($n1 salarié(s), ".$paies->count()." paie(s) clôturée(s)), annexe II : {$n['a2']} ligne(s), annexe V : {$n['a5']} ligne(s) "
+            .'depuis les factures reçues avec retenue. Le récapitulatif est recalculé ; complétez les zones manquantes signalées par le contrôle.';
+    }
+
+    /** Entête du déposant (déclaration d'employeur) : saisie, sinon déclaration de l'année précédente, sinon fiche client. */
+    private function enteteEmp(Client $c, Declaration $d): array
+    {
+        $adr = trim((string) $c->adresse);
+        preg_match('/\b(\d{4})\b(?!.*\b\d{4}\b)/', $adr, $cp);
+        preg_match('/^\s*(\d{1,4})\s*(?:,|bis\b|\s)\s*/i', $adr, $num);
+        $rue = trim(preg_replace(['/^\s*\d{1,4}\s*(?:,|bis\b)?\s*/i', '/\b\d{4}\b(?!.*\b\d{4}\b)/'], '', $adr), " ,-");
+        $defaut = ['acte' => '0', 'activite' => $c->paie_activite ?: (string) (((array) Setting::get('ef.'.$c->id, []))['activite'] ?? ''), 'ville' => '', 'rue' => $rue, 'num' => $num[1] ?? '', 'cp' => $cp[1] ?? ''];
+        $prev = Declaration::where('client_id', $c->id)->where('type', 'emp')->where('id', '!=', $d->id ?? 0)->where('periode', '<', $d->periode)->orderByDesc('periode')->first()?->champs ?? [];
+        $h = (array) ($d->champs ?? []);
+        $cles = array_keys($defaut);
+        $e = array_merge($defaut, array_filter(array_intersect_key((array) $prev, array_flip($cles)), fn ($v) => $v !== null && $v !== ''),
+            array_filter(array_intersect_key($h, array_flip($cles)), fn ($v) => $v !== null && $v !== ''));
+        if (isset($h['r'])) $e['r'] = $h['r'];
+        return $e;
     }
 }
