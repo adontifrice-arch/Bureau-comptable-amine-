@@ -1,9 +1,11 @@
-@php $lab = ['men' => 'MENSUELLE', 'ann' => 'ANNUELLE', 'emp' => 'D’EMPLOYEUR'][$type]; @endphp
+@php $lab = ['men' => 'MENSUELLE', 'ann' => 'ANNUELLE', 'emp' => 'D’EMPLOYEUR', 'sach' => 'DES BONS DE COMMANDES ET FACTURES D’ACHATS EN SUSPENSION DE TVA', 'sven' => 'DES FACTURES ÉMISES EN SUSPENSION DE TVA'][$type];
+     $susp = isset(\App\Http\Controllers\DeclarationController::SUSPENSION[$type]); @endphp
 <x-layouts.app title="Déclaration">
     <div class="no-print"><x-page-header :title="'Déclaration '.strtolower($lab)" :subtitle="$client->nom" :back="route('declarations.index', ['type' => $type, 'periode' => $periode])"><button onclick="window.print()" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> Imprimer / PDF</button></x-page-header></div>
-    <x-doc-sheet :titre="'DÉCLARATION '.$lab" :numero="$type === 'men' ? mois_fr($periode) : $periode">
+    <x-doc-sheet :titre="'DÉCLARATION '.$lab" :numero="\App\Http\Controllers\DeclarationController::libellePeriode($type, $periode)">
         <div class="mb-6 text-sm"><b>{{ $client->nom }}</b> · Matricule fiscal {{ $client->matricule_fiscal ?: '—' }}<br>Statut : {{ ['brouillon' => 'Brouillon', 'validee' => 'Validée', 'deposee' => 'Déposée'][$d->statut] }}</div>
-        @if($type !== 'emp') @include('declarations._champs', ['print' => true])
+        @if($susp) @include('declarations._suspension', ['print' => true])
+        @elseif($type !== 'emp') @include('declarations._champs', ['print' => true])
         @else
             <table class="w-full text-sm"><thead><tr class="bg-slate-100 text-left text-xs uppercase"><th class="px-3 py-2">Annexe</th><th class="px-3 py-2 text-right">Lignes</th><th class="px-3 py-2 text-right">Montants</th><th class="px-3 py-2 text-right">Retenues</th></tr></thead><tbody>
                 @foreach($rec as $x)<tr class="border-b"><td class="px-3 py-2">{{ $x['t'] }}</td><td class="px-3 py-2 text-right">{{ $x['n'] }}</td><td class="px-3 py-2 text-right font-mono">{{ tnd($x['brut'], false) }}</td><td class="px-3 py-2 text-right font-mono">{{ tnd($x['ret'], false) }}</td></tr>@endforeach

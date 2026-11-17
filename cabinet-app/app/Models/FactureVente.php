@@ -14,7 +14,7 @@ class FactureVente extends Model
 
     protected $table = 'factures_ventes';
     protected $guarded = [];
-    protected $casts = ['date' => 'date', 'ht' => 'float', 'tva' => 'float', 'timbre' => 'float', 'tva_taux' => 'float', 'lignes' => 'array'];
+    protected $casts = ['date' => 'date', 'ht' => 'float', 'tva' => 'float', 'timbre' => 'float', 'tva_taux' => 'float', 'lignes' => 'array', 'tva_suspension' => 'boolean', 'tva_suspendue' => 'float', 'suspension_date' => 'date'];
 
     public function client() { return $this->belongsTo(Client::class); }
     public function validePar() { return $this->belongsTo(User::class, 'valide_par'); }

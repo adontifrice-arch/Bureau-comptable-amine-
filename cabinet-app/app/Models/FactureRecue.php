@@ -12,7 +12,7 @@ class FactureRecue extends Model
 
     protected $table = 'factures_recues';
     protected $guarded = [];
-    protected $casts = ['date'=>'date','tva_deductible'=>'boolean','anomalies'=>'array','lignes'=>'array'];
+    protected $casts = ['date'=>'date','tva_deductible'=>'boolean','anomalies'=>'array','lignes'=>'array','tva_suspension'=>'boolean','tva_suspendue'=>'float','suspension_date'=>'date'];
     public function client() { return $this->belongsTo(Client::class); }
     public function validePar() { return $this->belongsTo(User::class, 'valide_par'); }
     public function ttc(): float { return round($this->ht + $this->tva + $this->timbre, 3); }

@@ -103,7 +103,7 @@ class SaisieController extends Controller
         // Lignes « compte · HT · taux · TVA » (ou, saisie à une seule ligne, champs ht / compte / tva_taux / tva)
         $ventilee = $r->has('lignes');
         $d = $r->validate(['date' => 'required|date', 'tiers' => 'required|max:255', 'matricule_fiscal' => 'nullable|max:50', 'reference' => 'nullable|max:100',
-            'description' => 'nullable|max:255', 'timbre' => 'nullable|numeric|min:0', 'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp'] + ($ventilee
+            'description' => 'nullable|max:255', 'timbre' => 'nullable|numeric|min:0', 'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp'] + ['suspension_ref' => 'nullable|max:20'] + FactureVente::reglesSuspension() + ($ventilee
             ? ['lignes' => 'required|array|min:1|max:50', 'lignes.*.compte' => 'nullable|regex:/^7\d{0,9}$/', 'lignes.*.ht' => 'nullable|numeric|min:0',
                 'lignes.*.tva_taux' => 'nullable|numeric|min:0|max:100', 'lignes.*.tva' => 'nullable|numeric|min:0']
             : ['ht' => 'required|numeric|min:0.001', 'tva_taux' => 'nullable|numeric|min:0', 'tva' => 'nullable|numeric|min:0', 'compte' => 'nullable|regex:/^7\d{0,9}$/']),
@@ -115,7 +115,7 @@ class SaisieController extends Controller
         unset($d['lignes']);
         $d = $v + $d;
         $d['timbre'] = $d['timbre'] ?? 0;
-        return $d;
+        return FactureVente::appliquerSuspension($d, $r->boolean('tva_suspension'));
     }
 
     public function venteStore(Request $r)

@@ -13,6 +13,7 @@
         <tr>
             <td>{{ dfr($f->date) }}</td>
             <td><div class="font-medium">{{ $f->tiers }}</div><div class="text-xs text-slate-500">{{ $f->reference }} {{ $f->matricule_fiscal ? '· MF '.$f->matricule_fiscal : '' }} {{ $f->description ? '· '.$f->description : '' }}</div>
+                @if($f->tva_suspension)<div class="mt-0.5"><span class="badge-amber" title="Attestation {{ $f->suspension_ref }}">Suspension TVA · {{ tnd($f->tva_suspendue, false) }}</span></div>@endif
                 @if($f->statut === 'rej')<div class="text-xs text-rose-600">Motif : {{ $f->motif_rejet }}</div>@endif</td>
             <td class="text-xs">@php $lf = $f->lignesSaisie(); @endphp @if(count($lf) > 1)@foreach($lf as $x)<div><span class="font-mono">{{ $x['compte'] ?: '—' }}</span> <span class="text-slate-400">{{ n3($x['ht']) }} · {{ (float) $x['tva_taux'] }} %</span></div>@endforeach @else{{ $f->compte ? $f->compte.' '.\App\Services\Compta::libelle($f->compte) : '—' }}@endif</td>
             <td class="num">{{ tnd($f->ht, false) }}</td><td class="num">{{ tnd($f->tva, false) }}</td><td class="num font-semibold">{{ tnd($f->ttc(), false) }}</td>
@@ -24,7 +25,7 @@
                         <form method="POST" action="{{ route('compta.ventes.valider', $f) }}" class="inline">@csrf<button class="btn-success btn-sm">Valider</button></form>
                         <form method="POST" action="{{ route('compta.ventes.rejeter', $f) }}" class="inline" onsubmit="this.motif.value = prompt('Motif du rejet ?') || ''">@csrf<input type="hidden" name="motif"><button class="btn-secondary btn-sm !text-rose-600">Rejeter</button></form>
                     @endif
-                    <button class="btn-icon" title="Modifier" x-data @click="$dispatch('fv-edit', @js($f->only(['id', 'tiers', 'matricule_fiscal', 'reference', 'description', 'ht', 'tva_taux', 'tva', 'timbre', 'compte']) + ['lignes' => $f->lignesSaisie(), 'date' => $f->date->format('Y-m-d')])); $dispatch('open-modal', 'fv')"><x-icon name="edit" class="h-4 w-4"/></button>
+                    <button class="btn-icon" title="Modifier" x-data @click="$dispatch('fv-edit', @js($f->only(['id', 'tiers', 'matricule_fiscal', 'reference', 'description', 'ht', 'tva_taux', 'tva', 'timbre', 'compte']) + ['lignes' => $f->lignesSaisie(), 'date' => $f->date->format('Y-m-d'), 'tva_suspension' => $f->tva_suspension, 'suspension_ref' => $f->suspension_ref, 'suspension_date' => $f->suspension_date?->format('Y-m-d')])); $dispatch('open-modal', 'fv')"><x-icon name="edit" class="h-4 w-4"/></button>
                     <x-confirm-delete :action="route('compta.ventes.destroy', $f)"/>
                 @endif
             </td>
@@ -69,10 +70,11 @@
                     <div class="flex flex-wrap items-center gap-2">
                         <button type="button" class="btn-secondary btn-sm" @click="ajouter()">+ Ligne</button>
                         <div class="flex flex-wrap items-center gap-1" x-show="propositions.length"><span class="text-[11px] text-slate-400" x-text="(deModele ? 'Modèle' : 'Proposés') + (lignes.length > 1 ? ' (ligne ' + (active + 1) + ') :' : ' :')"></span><template x-for="c in propositions" :key="c.compte"><button type="button" class="!py-0.5" :class="lignes[active] && lignes[active].compte === c.compte ? 'badge-blue' : 'badge-gray'" @click="choisirCompte(c.compte)" :title="window.libelleCompte(c.compte)" x-text="c.compte + ' · ' + pourcent(c.tva_taux)"></button></template></div>
-                        <div class="ml-auto text-sm">HT <b class="font-mono" x-text="tnd(totalHt)"></b> · TVA <b class="font-mono" x-text="tnd(totalTva)"></b> · TTC <b class="font-mono" x-text="tnd(ttc)"></b></div>
+                        <div class="ml-auto text-sm">HT <b class="font-mono" x-text="tnd(totalHt)"></b> · <span x-text="e.tva_suspension ? 'TVA suspendue' : 'TVA'"></span> <b class="font-mono" x-text="tnd(totalTva)"></b> · TTC <b class="font-mono" x-text="tnd(ttc)"></b></div>
                     </div>
                 </div>
         <div><label class="label" for="fv-tim">Droit de timbre ({{ $pv['compte_timbre'] }})</label><input id="fv-tim" type="number" step="0.001" name="timbre" class="input" x-model="e.timbre"></div>
+        @include('compta._suspension_tva', ['p' => 'fv'])
         <div class="md:col-span-2"><label class="label" for="fv-fic">Pièce (PDF / image)</label><input id="fv-fic" type="file" name="fichier" accept=".pdf,image/*" class="input"></div>
         <div class="flex flex-wrap items-center justify-between gap-3 md:col-span-3">
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="memoriser" value="1" class="rounded border-slate-300 text-brand-600"> Mémoriser comme modèle pour ce client</label>

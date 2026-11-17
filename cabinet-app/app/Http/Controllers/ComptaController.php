@@ -127,7 +127,7 @@ class ComptaController extends Controller
         $ventilee = $r->has('lignes');
         $d = $r->validate(['date' => 'required|date', 'fournisseur' => 'required|max:255', 'matricule_fiscal' => 'nullable|max:50', 'reference' => 'nullable|max:100',
             'description' => 'nullable|max:255', 'timbre' => 'nullable|numeric|min:0', 'tva_deductible' => 'nullable|boolean', 'retenue_taux' => 'nullable|numeric|min:0|max:100',
-            'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp'] + ($ventilee
+            'fichier' => 'nullable|file|max:20480|mimes:pdf,jpg,jpeg,png,webp'] + ['suspension_ref' => 'nullable|regex:/^\d{1,13}$/'] + FactureRecue::reglesSuspension() + ($ventilee
             ? ['lignes' => 'required|array|min:1|max:50', 'lignes.*.compte' => 'nullable|regex:/^\d{1,10}$/', 'lignes.*.ht' => 'nullable|numeric|min:0',
                 'lignes.*.tva_taux' => 'nullable|numeric|min:0|max:100', 'lignes.*.tva' => 'nullable|numeric|min:0']
             : ['ht' => 'required|numeric|min:0.001', 'tva_taux' => 'nullable|numeric|min:0', 'tva' => 'nullable|numeric|min:0', 'compte' => 'nullable|max:20']),
@@ -141,7 +141,7 @@ class ComptaController extends Controller
         $d['timbre'] = $d['timbre'] ?? 0;
         $d['retenue_taux'] = $d['retenue_taux'] ?? 0;
         $d['tva_deductible'] = $r->boolean('tva_deductible', true);
-        return $d;
+        return FactureRecue::appliquerSuspension($d, $r->boolean('tva_suspension'));
     }
 
     /** Validation par le chef comptable → comptabilisation au journal des achats. */

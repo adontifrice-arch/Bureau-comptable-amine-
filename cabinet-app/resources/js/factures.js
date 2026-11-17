@@ -25,7 +25,9 @@ export default (cfg) => ({
         this.e = Object.assign({}, cfg.vide, detail);
         const l = detail.lignes && detail.lignes.length ? detail.lignes : [{ compte: detail.compte ?? cfg.vide.compte, ht: detail.ht ?? '', tva_taux: detail.tva_taux ?? cfg.taux, tva: detail.tva }];
         this.lignes = l.map((x) => ({ compte: x.compte || '', ht: x.ht ?? '', tva_taux: x.tva_taux ?? cfg.taux, tva: x.tva ?? '' }));
-        this.lignes.forEach((x) => { if (x.tva === '' || x.tva === null) this.calc(x); });
+        // Facture en suspension : la TVA enregistrée est à zéro, la TVA suspendue est recalculée sur chaque ligne.
+        this.e.tva_suspension = !!this.e.tva_suspension;
+        this.lignes.forEach((x) => { if (x.tva === '' || x.tva === null || this.e.tva_suspension) this.calc(x); });
         this.active = 0;
     },
 
@@ -79,6 +81,7 @@ export default (cfg) => ({
 
     get totalHt() { return this.lignes.reduce((s, l) => s + (+l.ht || 0), 0); },
     get totalTva() { return this.lignes.reduce((s, l) => s + (+l.tva || 0), 0); },
-    get ttc() { return this.totalHt + this.totalTva + (+this.e.timbre || 0); },
+    /** En suspension de TVA, la TVA n'est pas facturée : TTC = HT + timbre. */
+    get ttc() { return this.totalHt + (this.e.tva_suspension ? 0 : this.totalTva) + (+this.e.timbre || 0); },
     pourcent(t) { return String(+t).replace('.', ',') + ' %'; },
 });

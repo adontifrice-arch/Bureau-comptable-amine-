@@ -180,6 +180,11 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('declarations/statut', [C\DeclarationController::class, 'statut'])->name('declarations.statut');
     Route::post('declarations/annexe', [C\DeclarationController::class, 'annexeStore'])->name('declarations.annexe.store');
     Route::delete('declarations/annexe', [C\DeclarationController::class, 'annexeDestroy'])->name('declarations.annexe.destroy');
+    Route::post('declarations/suspension', [C\DeclarationController::class, 'suspensionStore'])->name('declarations.suspension.store');
+    Route::delete('declarations/suspension', [C\DeclarationController::class, 'suspensionDestroy'])->name('declarations.suspension.destroy');
+    Route::get('declarations/fichier-dgi', [C\DeclarationController::class, 'fichierDgi'])->name('declarations.fichier');
+    Route::get('declarations/liste-factures', [C\DeclarationController::class, 'liste'])->name('declarations.liste');
+    Route::get('declarations/bordereau', [C\DeclarationController::class, 'bordereau'])->name('declarations.bordereau');
     Route::get('declarations/imprimer', [C\DeclarationController::class, 'print'])->name('declarations.print');
     Route::get('declarations/export', [C\DeclarationController::class, 'csv'])->name('declarations.csv');
 

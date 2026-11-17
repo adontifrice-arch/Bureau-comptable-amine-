@@ -38,6 +38,26 @@ trait EstVentilee
         return $r;
     }
 
+    /** Règles de validation de la case « en suspension de TVA ». */
+    public static function reglesSuspension(): array
+    {
+        return ['tva_suspension' => 'nullable|boolean', 'suspension_ref' => 'nullable|max:60', 'suspension_date' => 'nullable|date'];
+    }
+
+    /**
+     * Facture en suspension de TVA : la TVA calculée n'est pas facturée (TVA et TVA des lignes à zéro, aucune écriture 4366 / 4367),
+     * son montant est conservé dans tva_suspendue pour les déclarations d'achats et de ventes en suspension.
+     */
+    public static function appliquerSuspension(array $d, bool $suspension): array
+    {
+        if (! $suspension) return ['tva_suspension' => false, 'tva_suspendue' => 0, 'suspension_ref' => null, 'suspension_date' => null] + $d;
+        $d['tva_suspension'] = true;
+        $d['tva_suspendue'] = round((float) ($d['tva'] ?? 0), 3);
+        $d['tva'] = 0;
+        if (! empty($d['lignes'])) $d['lignes'] = array_map(fn ($l) => ['tva' => 0] + $l, $d['lignes']);
+        return $d;
+    }
+
     /**
      * Lignes saisies → valeurs à enregistrer : lignes sans montant écartées, TVA calculée si absente,
      * totaux HT / TVA, compte et taux de la première ligne.
