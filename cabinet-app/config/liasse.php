@@ -13,6 +13,9 @@
 return [
     'namespace' => 'http://www.impots.finances.gov.tn/liasse',
 
+    // Schémas XSD officiels (XSD 1.1) livrés avec l'application ; ceux déposés depuis l'écran (xsd_dir) sont prioritaires.
+    'xsd_integres' => resource_path('xsd/liasse'),
+
     'documents' => [
         'F6001' => [
             'titre' => 'Bilan — actifs',
@@ -390,7 +393,7 @@ return [
                 104 => ['Déduction des déficits reportés (cas déficitaire)'],
                 105 => ['Déduction des amortissements de l’exercice (cas déficitaire)'],
                 106 => ['Déduction des amortissements différés (cas déficitaire)'],
-                107 => ['RÉSULTAT FISCAL (déficit reportable)', '='],
+                107 => ['RÉSULTAT FISCAL (déficit reportable)', '=', true],
                 108 => ['Autre résultat imposable (bénéfice d’exportation au-delà de 10 ans)'],
             ],
         ],

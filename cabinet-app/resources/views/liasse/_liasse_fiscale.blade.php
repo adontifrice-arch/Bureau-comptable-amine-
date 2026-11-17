@@ -60,8 +60,8 @@
         @php $xsd = collect(LiasseFiscale::DOCUMENTS)->filter(fn ($c) => LiasseFiscale::xsd($c)); @endphp
         <form method="POST" action="{{ route('liasse.lf.xsd') }}" enctype="multipart/form-data" class="space-y-1 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">@csrf
             <div class="text-slate-500">Schémas XSD officiels :
-                @if($xsd->count())<b class="text-emerald-700">{{ $xsd->implode(', ') }}</b>@else<b>aucun déposé</b> (contrôle selon le cahier des charges uniquement)@endif
-                <span class="block text-slate-400">Attendus : {{ collect(LiasseFiscale::DOCUMENTS)->map(fn ($c) => LiasseFiscale::schema($c).'.xsd')->implode(', ') }} (avec Entete.xsd et Typescommuns.xsd s’ils y sont importés).</span></div>
+                @if($xsd->count())<b class="text-emerald-700">{{ $xsd->map(fn ($c) => LiasseFiscale::schema($c).(LiasseFiscale::xsdDepose($c) ? ' (déposé)' : ''))->implode(', ') }}</b>@else<b>aucun déposé</b> (contrôle selon le cahier des charges uniquement)@endif
+                <span class="block text-slate-400">Les schémas de la DGI (XSD 1.1 : types, formules de totalisation et règles du tableau F6005) sont livrés avec l’application ; un schéma déposé ici les remplace, par exemple pour une nouvelle version.</span></div>
             <div class="flex items-center gap-2"><input type="file" name="fichiers[]" multiple accept=".xsd,.zip" class="text-xs" required>
                 <button class="btn-secondary !py-1 text-xs">Déposer</button></div>
             @error('fichiers')<div class="text-rose-600">{{ $message }}</div>@enderror

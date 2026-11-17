@@ -8,6 +8,7 @@ use App\Models\Liasse;
 use App\Models\User;
 use App\Services\Compta;
 use App\Services\LiasseFiscale;
+use App\Services\Xsd11;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -87,7 +88,7 @@ class LiasseFiscaleTest extends TestCase
 
         // Déficit (cas 1) : lignes 56 à 101 à zéro, déficit reportable
         $v = LiasseFiscale::resultatFiscal(-3000, [44 => 500, 66 => 999, 104 => 200]);
-        $this->assertSame([-2500.0, 0.0, 0.0, -2500.0, 2700.0], [$v[55], $v[56], $v[66], $v[102], $v[107]]);
+        $this->assertSame([-2500.0, 0.0, 0.0, -2500.0, -2700.0], [$v[55], $v[56], $v[66], $v[102], $v[107]]);
 
         // Réintégrations par défaut : tableau de passage simplifié ; résultat avant impôt (2 050 + IS 200)
         $this->post(route('liasse.passage'), ['annee' => 2024, 'rei' => 150, 'ded' => 50]);
@@ -147,14 +148,15 @@ class LiasseFiscaleTest extends TestCase
 
     public function test_bouton_valider_controle_selon_le_cahier_des_charges(): void
     {
-        $this->get(route('liasse.index', ['tab' => 'lf', 'annee' => 2024]))->assertSee('Valider')->assertSee('aucun déposé');
+        // Schémas officiels livrés avec l'application (XSD 1.1)
+        $this->get(route('liasse.index', ['tab' => 'lf', 'annee' => 2024]))->assertSee('Valider')->assertSee('F6001, F6002, F6003, F6004-MODELE-AUT, F6005');
 
         // Activité non renseignée : anomalie d'entête sur chaque fichier
         $this->post(route('liasse.lf.valider'), ['annee' => 2024])->assertRedirect()->assertSessionHas('validation_ko');
         $v = session('validation');
         $this->assertSame(LiasseFiscale::DOCUMENTS, array_keys($v));
         $this->assertStringContainsString('Activité', implode(' ', $v['F6001']['erreurs']));
-        $this->assertFalse($v['F6001']['xsd']);
+        $this->assertTrue($v['F6001']['xsd']);
 
         // Entête complète : liasse conforme
         $this->post(route('liasse.lf.entete'), ['annee' => 2024, 'activite' => 'Club de tennis', 'acte' => '0', 'nature' => 'D', 'unite' => 'millimes', 'categorie' => 'M', 'forme' => 'SC']);
@@ -184,7 +186,7 @@ class LiasseFiscaleTest extends TestCase
     public function test_validation_par_le_schema_xsd_depose(): void
     {
         $dir = sys_get_temp_dir().'/lf-xsd-'.uniqid();
-        config(['liasse.xsd_dir' => $dir]);
+        config(['liasse.xsd_dir' => $dir, 'liasse.xsd_integres' => null]);     // schémas déposés seuls
         $this->post(route('liasse.lf.entete'), ['annee' => 2024, 'activite' => 'Club de tennis', 'acte' => '0', 'nature' => 'D', 'unite' => 'millimes', 'categorie' => 'M', 'forme' => 'SC']);
         $ns = 'http://www.impots.finances.gov.tn/liasse';
         $schema = fn (string $racine, string $contenu) => '<?xml version="1.0"?><xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="'.$ns.'" elementFormDefault="qualified">'
@@ -220,6 +222,59 @@ class LiasseFiscaleTest extends TestCase
 
         $this->post(route('liasse.lf.xsd'), ['fichiers' => [\Illuminate\Http\UploadedFile::fake()->createWithContent('notes.txt', 'x')]])->assertSessionHasErrors('fichiers');
         array_map('unlink', glob($dir.'/*')); rmdir($dir);
+    }
+
+    public function test_schemas_officiels_xsd_11(): void
+    {
+        $this->post(route('liasse.lf.entete'), ['annee' => 2024, 'activite' => 'Club de tennis', 'acte' => '0', 'nature' => 'D', 'unite' => 'millimes', 'categorie' => 'M', 'forme' => 'SC']);
+        $L = LiasseFiscale::calculer($this->client, 2024);
+        $xsd = fn ($c) => LiasseFiscale::xsd($c);
+        $this->assertStringEndsWith('F6004-MODELE-AUT.xsd', $xsd('F6004'));
+
+        // Les cinq fichiers générés respectent les schémas officiels : types, formules de totalisation, règles du F6005
+        foreach (LiasseFiscale::DOCUMENTS as $c) $this->assertSame([], Xsd11::valider(LiasseFiscale::xml($c, $this->client, 2024, $L), $xsd($c)), $c);
+
+        // Total faux : la formule du schéma le signale avec les montants lus et attendus
+        $x = str_replace('<lf:F60012068>11150000<', '<lf:F60012068>11150001<', LiasseFiscale::xml('F6001', $this->client, 2024, $L));
+        $e = implode("\n", Xsd11::valider($x, $xsd('F6001')));
+        $this->assertStringContainsString('Règle XSD non respectée : F60012068 = sum(', $e);
+        $this->assertStringContainsString('(lu 11150001, attendu 11150000)', $e);
+
+        // Déficit : montant du résultat en négatif (type conditionnel PerteComptable / PerteFiscal), lignes 56 à 101 à zéro
+        $L['docs']['F6005']['n'] = LiasseFiscale::resultatFiscal(-3000, [44 => 500, 104 => 200]);
+        $x = LiasseFiscale::xml('F6005', $this->client, 2024, $L);
+        $this->assertStringContainsString('<lf:F60050001 resultat="P" F60050002="-3000000"/>', $x);
+        $this->assertStringContainsString('<lf:F60050055 resultat="P" F60050955="-2500000"/>', $x);
+        $this->assertSame([], Xsd11::valider($x, $xsd('F6005')));
+        $this->assertSame([], LiasseFiscale::verifier('F6005', 'F6005-1874290R-2024.xml', $x)['liste']);
+
+        // Cas 2 à 4 : bénéfice absorbé par les déficits reportés
+        $L2 = $L;
+        $L2['docs']['F6005']['n'] = LiasseFiscale::resultatFiscal(1000, [65 => 5000]);
+        $this->assertSame([], Xsd11::valider(LiasseFiscale::xml('F6005', $this->client, 2024, $L2), $xsd('F6005')));
+
+        // Perte déclarée avec un montant positif : refusée par le type conditionnel et par le contrôle
+        $x = str_replace('resultat="P" F60050002="-3000000"', 'resultat="P" F60050002="3000000"', $x);
+        $this->assertStringContainsString('F60050002', implode("\n", Xsd11::valider($x, $xsd('F6005'))));
+        $this->assertStringContainsString('F60050001 : montant F60050002 invalide', implode("\n", LiasseFiscale::verifier('F6005', 'F6005-1874290R-2024.xml', $x)['liste']));
+
+        // Règle conditionnelle : forme juridique incompatible avec la catégorie
+        $x = str_replace('categorie="M" codeformejuridique="SC"', 'categorie="C" codeformejuridique="SC"', LiasseFiscale::xml('F6005', $this->client, 2024, LiasseFiscale::calculer($this->client, 2024)));
+        $this->assertStringContainsString('F60050000/@codeformejuridique', implode("\n", Xsd11::valider($x, $xsd('F6005'))));
+    }
+
+    public function test_evaluateur_xpath_des_assertions(): void
+    {
+        $d = new \DOMDocument();
+        $d->loadXML('<r xmlns:lf="urn:x"><lf:a>5</lf:a><lf:b>-2</lf:b><lf:c t="P" m="-7">3</lf:c></r>');
+        $v = fn ($e) => Xsd11::evaluer($e, $d->documentElement);
+        $this->assertSame([true], $v('lf:a = sum( ((lf:b) , (-1)*(lf:b) , (lf:a)))'));
+        $this->assertSame([10], $v('lf:a - (if (lf:b >= 0) then 0 else lf:b) + 3'));
+        $this->assertSame([true], $v("lf:c/@t eq 'P' and lf:c/@m < 0 or 1 = 2"));
+        $this->assertSame(['PP'], $v("if (lf:c/@t = 'B') then ('SC') else (if (lf:c/@t = 'P') then ( 'PP' ) else ())"));
+        $this->assertSame([], $v('lf:absent'));
+        $this->assertSame([0], $v('sum(lf:absent)'));
+        $this->assertSame([false], $v('lf:absent = 0'));
     }
 
     public function test_ecran_liasse_fiscale(): void

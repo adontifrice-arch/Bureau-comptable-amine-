@@ -124,7 +124,7 @@ class LiasseFiscale
         if ($v[55] < 0) {                                       // cas 1 : déficit fiscal
             $zero(56, 101);
             $v[102] = $v[55];
-            $v[107] = round(max(0, -($v[102] + $v[103] - $v[104] - $v[105] - $v[106])), 3);
+            $v[107] = round($v[102] + $v[103] - $v[104] - $v[105] - $v[106], 3);    // schéma DGI : 107 = 102 + 103 − 104 − 105 − 106 (négatif si déficit)
             return $v;
         }
         $v[56] = $v[55];
@@ -133,9 +133,9 @@ class LiasseFiscale
         $x = round($v[63] + $v[64] - $v[65] - $v[66] - $v[67], 3);
         if ($x < 0) {                                           // cas 2 à 4 : déficit après amortissements et déficits reportés
             $zero(68, 101);
-            $v[102] = 0.0;
+            $v[102] = 0.0;                                      // inf(55 ; 0), le résultat 55 étant positif
             [$v[103], $v[104], $v[105], $v[106]] = [$v[64], $v[65], $v[66], $v[67]];
-            $v[107] = round(-$x, 3);
+            $v[107] = round($v[102] + $v[103] - $v[104] - $v[105] - $v[106], 3);
             return $v;
         }
         $v[68] = $x;
@@ -296,13 +296,13 @@ class LiasseFiscale
                 $w->endElement();
                 $w->startElement("lf:F6005{$chiffre}001");
                 $w->writeAttribute('resultat', $v[2] < 0 ? 'P' : 'B');
-                $w->writeAttribute("F6005{$chiffre}002", self::entier(abs($v[2]), $e['unite']));
+                $w->writeAttribute("F6005{$chiffre}002", self::entier($v[2], $e['unite']));     // signé : négatif en cas de perte (XSD)
                 $w->endElement();
                 for ($l = 3; $l <= 108; $l++) {
-                    if ($l === 55) {                // résultat fiscal avant provisions : signe en attribut, montant en valeur absolue
+                    if ($l === 55) {                // résultat fiscal avant provisions : nature en attribut, montant signé
                         $w->startElement("lf:F6005{$chiffre}055");
                         $w->writeAttribute('resultat', ($v[55] ?? 0) < 0 ? 'P' : 'B');
-                        $w->writeAttribute("F6005{$chiffre}955", self::entier(abs($v[55] ?? 0), $e['unite']));
+                        $w->writeAttribute("F6005{$chiffre}955", self::entier($v[55] ?? 0, $e['unite']));
                         $w->endElement();
                         continue;
                     }
@@ -350,15 +350,27 @@ class LiasseFiscale
         return $code === 'F6004' ? 'F6004-MODELE-AUT' : $code;
     }
 
-    /** Schéma officiel d'un document s'il a été déposé (F6001.xsd ou F6001_2015.xsd…), sinon null. */
+    /**
+     * Schéma officiel d'un document : celui déposé depuis l'écran (F6001.xsd ou F6001_2015.xsd…) en priorité,
+     * sinon celui livré avec l'application (resources/xsd/liasse), sinon null.
+     */
     public static function xsd(string $code): ?string
     {
         $base = self::schema($code);
-        foreach (glob(self::dossierXsd().'/'.$base.'*.xsd') ?: [] as $f) {
-            if ($base === $code && preg_match('/^'.$code.'-MODELE/i', basename($f))) continue;   // F6004-MODELE-REF… n'est pas le schéma de F6004 généré
-            return $f;
+        foreach (array_filter([self::dossierXsd(), config('liasse.xsd_integres')]) as $dossier) {
+            foreach (glob($dossier.'/'.$base.'*.xsd') ?: [] as $f) {
+                if ($base === $code && preg_match('/^'.$code.'-MODELE/i', basename($f))) continue;   // F6004-MODELE-REF… n'est pas le schéma de F6004 généré
+                return $f;
+            }
         }
         return null;
+    }
+
+    /** Vrai si le schéma vient du dépôt de l'utilisateur (et non des schémas livrés avec l'application). */
+    public static function xsdDepose(string $code): bool
+    {
+        $f = self::xsd($code);
+        return $f !== null && realpath(dirname($f)) === realpath(self::dossierXsd());
     }
 
     /**
@@ -376,20 +388,17 @@ class LiasseFiscale
             $xml = self::xml($code, $client, $annee, $liasse, $entete);
             $erreurs = self::verifier($code, $fichier, $xml, $entete['unite']);
             $schema = self::xsd($code);
-            if ($schema && ! $erreurs['bloquant']) {
-                $prec = libxml_use_internal_errors(true);
-                libxml_clear_errors();
-                $dom = new \DOMDocument();
-                $dom->loadXML($xml);
-                if (! @$dom->schemaValidate($schema)) {
-                    foreach (array_slice(libxml_get_errors(), 0, 30) as $e) $erreurs['liste'][] = 'XSD ligne '.$e->line.' : '.trim($e->message);
-                }
-                libxml_clear_errors();
-                libxml_use_internal_errors($prec);
-            }
+            // Schémas officiels en XSD 1.1 (types conditionnels et assertions de calcul) : voir Xsd11
+            if ($schema && ! $erreurs['bloquant']) array_push($erreurs['liste'], ...Xsd11::valider($xml, $schema));
             $r[$code] = ['fichier' => $fichier, 'xsd' => (bool) $schema, 'erreurs' => $erreurs['liste']];
         }
         return $r;
+    }
+
+    /** Montant d'un résultat (F6005) : négatif ou nul pour une perte, positif ou nul pour un bénéfice. */
+    private static function signeResultat(string $nature, string $montant): bool
+    {
+        return match ($nature) { 'P' => (bool) preg_match('/^(-\d{1,15}|0)$/', $montant), 'B' => (bool) preg_match('/^\d{1,15}$/', $montant), default => true };
     }
 
     /** Contrôle d'un fichier selon le cahier des charges. */
@@ -442,7 +451,7 @@ class LiasseFiscale
         if (! preg_match('#\s'.preg_quote(self::schema($code), '#').'\.xsd$#', $racine->getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'schemaLocation')))
             $E[] = 'xsi:schemaLocation doit désigner '.self::schema($code).'.xsd.';
 
-        // Montants : présence, unicité, entiers sur 13 chiffres au plus, signe selon le type
+        // Montants : présence, unicité, entiers sur 15 chiffres au plus (types T_Nombre15 des schémas), signe selon le type
         $doc = self::document($code);
         $lus = [];
         $details = $x->query('/lf:'.$code.'/lf:Details')->item(0);
@@ -464,14 +473,14 @@ class LiasseFiscale
                 if (! $b) $E[] = "Élément F6005{$c}001 absent.";
                 else {
                     if (! in_array($b->getAttribute('resultat'), ['B', 'P'], true)) $E[] = "F6005{$c}001 : attribut resultat (B/P) invalide.";
-                    if (! preg_match('/^\d{1,13}$/', $b->getAttribute("F6005{$c}002"))) $E[] = "F6005{$c}001 : montant F6005{$c}002 invalide.";
+                    if (! self::signeResultat($b->getAttribute('resultat'), $b->getAttribute("F6005{$c}002"))) $E[] = "F6005{$c}001 : montant F6005{$c}002 invalide (entier négatif ou nul si perte « P », positif ou nul si bénéfice « B »).";
                 }
                 // Ligne 55 (résultat fiscal avant provisions) : attribut resultat B/P et montant absolu en attribut F6005x955
                 $r = $x->query("/lf:F6005/lf:Details/lf:F6005{$c}055")->item(0);
                 if (! $r) $E[] = "Élément F6005{$c}055 absent.";
                 else {
                     if (! in_array($r->getAttribute('resultat'), ['B', 'P'], true)) $E[] = "F6005{$c}055 : attribut resultat (B/P) invalide.";
-                    if (! preg_match('/^\d{1,13}$/', $r->getAttribute("F6005{$c}955"))) $E[] = "F6005{$c}055 : montant F6005{$c}955 invalide.";
+                    if (! self::signeResultat($r->getAttribute('resultat'), $r->getAttribute("F6005{$c}955"))) $E[] = "F6005{$c}055 : montant F6005{$c}955 invalide (entier négatif ou nul si perte « P », positif ou nul si bénéfice « B »).";
                 }
                 unset($lus["F6005{$c}000"], $lus["F6005{$c}001"], $lus["F6005{$c}055"]);
                 foreach (range(3, 108) as $l) if ($l !== 55) $attendus[sprintf('F6005%s%03d', $c, $l)] = [$c === '0' ? 'n' : 'n1', $l];
@@ -486,7 +495,7 @@ class LiasseFiscale
         foreach ($attendus as $nom => [$col, $l]) {
             if (! array_key_exists($nom, $lus)) { $E[] = "Élément $nom absent."; continue; }
             $v = $lus[$nom];
-            if (! preg_match('/^-?\d{1,13}$/', $v)) { $E[] = "$nom : « $v » n’est pas un nombre entier de 13 chiffres au plus."; continue; }
+            if (! preg_match('/^-?\d{1,15}$/', $v)) { $E[] = "$nom : « $v » n’est pas un nombre entier de 15 chiffres au plus."; continue; }
             if ((int) $v < 0 && empty($doc['lignes'][$l][2])) $E[] = "$nom (".$doc['lignes'][$l][0].") : montant négatif dans une zone « nombre positif ».";
             $valeurs[$col][$l] = (int) $v;
         }
