@@ -11,6 +11,7 @@ use App\Models\PassageFiscal;
 use App\Models\Salarie;
 use App\Models\Setting;
 use App\Services\Compta;
+use App\Services\DeclarationAcompte;
 use App\Services\DeclarationAnnuelle;
 use App\Services\DeclarationMensuelle;
 use App\Services\Exports\BonsCommandeSuspension;
@@ -36,7 +37,7 @@ class DeclarationController extends Controller
         'sven' => 'Liste détaillée des factures émises en suspension de TVA',
     ];
 
-    public const TYPES = ['men', 'ann', 'emp', 'sach', 'sven'];
+    public const TYPES = ['men', 'ann', 'emp', 'acp', 'sach', 'sven'];
 
     public static function mensuelle(string $type): bool
     {
@@ -58,6 +59,7 @@ class DeclarationController extends Controller
     public static function libellePeriode(string $type, string $periode): string
     {
         if (static::mensuelle($type)) return mois_fr($periode);
+        if ($type === 'acp') return DeclarationAcompte::libelle($periode);
         if (static::trimestrielle($type)) { [$an, $t] = BonsCommandeSuspension::trimestre($periode); return ($t === 1 ? '1er' : $t.'e').' trimestre '.$an; }
         return $periode;
     }
@@ -80,6 +82,7 @@ class DeclarationController extends Controller
         $p = (string) $r->input('periode');
         $periode = match (true) {
             static::trimestrielle($type) => preg_match('/^\d{4}-T[1-4]$/', $p) ? $p : now()->subQuarter()->year.'-T'.now()->subQuarter()->quarter,
+            $type === 'acp' => preg_match('/^\d{4}-A[1-3]$/', $p) ? $p : DeclarationAcompte::periodeParDefaut(),
             static::mensuelle($type) => $r->input('periode', now()->subMonth()->format('Y-m')),
             default => (string) $r->input('periode', now()->year - ($type === 'ann' ? 1 : 0)),
         };
@@ -134,6 +137,16 @@ class DeclarationController extends Controller
             $d->champs = $champs;
             $d->save();
             return back()->with('ok', $r->boolean('reprendre') ? 'Récapitulatif recalculé depuis les annexes.' : 'Déclaration enregistrée.');
+        }
+        if ($type === 'acp') {
+            $num = fn ($v) => $v === null || $v === '' ? null : (float) str_replace([' ', ','], ['', '.'], (string) $v);
+            $f = ['acte' => in_array((string) $r->input('acte'), array_map('strval', array_keys(DeclarationAcompte::ACTES)), true) ? (string) $r->input('acte') : '0',
+                'rc' => trim((string) $r->input('rc')) ?: null, 'activite' => trim((string) $r->input('activite')) ?: null];
+            foreach (DeclarationAcompte::LIGNES as $k => [, , $nat]) if ($nat !== 'c' && ($v = $num($r->input("f.$k"))) !== null) $f[$k] = $v;
+            foreach (["regime", "taux", "min"] as $k) if (isset($d->champs[$k])) $f[$k] = $d->champs[$k];   // paramètres repris de la déclaration annuelle
+            $d->champs = array_filter($f, fn ($v) => $v !== null);
+            $d->save();
+            return back()->with('ok', 'Déclaration enregistrée.');
         }
         if ($type === 'ann') {
             // Modèle officiel (IS ou IR selon la fiche client) : entête, rubriques, tableaux à lignes, cases des impôts concernés
@@ -190,7 +203,7 @@ class DeclarationController extends Controller
     {
         [$c, $type, $periode, $d] = $this->ctx($r);
         if ($d->exists && $d->verrouillee()) return back()->with('err', 'Déclaration verrouillée.');
-        $msg = match ($type) { 'men' => $this->fillMen($c, $periode, $d), 'ann' => $this->fillAnn($c, (int) $periode, $d), 'sach', 'sven' => $this->fillSuspension($c, $type, $periode, $d), default => $this->fillEmp($c, (int) $periode, $d) };
+        $msg = match ($type) { 'acp' => DeclarationAcompte::preremplir($c, $d), 'men' => $this->fillMen($c, $periode, $d), 'ann' => $this->fillAnn($c, (int) $periode, $d), 'sach', 'sven' => $this->fillSuspension($c, $type, $periode, $d), default => $this->fillEmp($c, (int) $periode, $d) };
         $d->save();
         return back()->with('ok', $msg);
     }
@@ -394,7 +407,8 @@ class DeclarationController extends Controller
     public function arabe(Request $r)
     {
         [$client, $type, $periode, $d] = $this->ctx($r);
-        abort_unless(in_array($type, ['men', 'ann'], true), 404);
+        abort_unless(in_array($type, ['men', 'ann', 'acp'], true), 404);
+        if ($type === 'acp') return view('declarations.acompte_ar', ['client' => $client, 'periode' => $periode, 'd' => $d]);
         if ($type === 'ann') return view('declarations.annuelle_'.DeclarationAnnuelle::modele($client).'_ar', ['client' => $client, 'periode' => $periode, 'd' => $d]);
         return view('declarations.mensuelle_ar', ['client' => $client, 'periode' => $periode, 'd' => $d]);
     }
@@ -449,6 +463,13 @@ class DeclarationController extends Controller
                 $out .= "\r\n";
             }
         } else {
+            if ($type === 'acp') {
+                $f = $d->champs ?? []; $C = DeclarationAcompte::calcul($f);
+                $out .= DeclarationAcompte::libelle($periode)."\r\nRubrique;Montant\r\n";
+                foreach (DeclarationAcompte::LIGNES as $k => [$lib, , $nat]) $out .= '"'.$lib.'";'.$nn($nat === 'c' ? $C[$k] : ($f[$k] ?? 0))."\r\n";
+                $out .= '"Total des déductions (II)";'.$nn($C['II'])."\r\n".'"Reste (III = I − II)";'.$nn($C['III'])."\r\n".'"Total à payer";'.$nn($C['tot'])."\r\n";
+                return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => "attachment; filename=\"acompte-provisionnel-$periode.csv\""]);
+            }
             if ($type === 'ann') {
                 $mod = DeclarationAnnuelle::modele($client);
                 $f = DeclarationAnnuelle::champs($d->champs ?? [], $client, (int) $periode);

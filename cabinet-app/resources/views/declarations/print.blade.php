@@ -1,4 +1,4 @@
-@php $lab = ['men' => 'MENSUELLE', 'ann' => 'ANNUELLE', 'emp' => 'D’EMPLOYEUR', 'sach' => 'DES BONS DE COMMANDES ET FACTURES D’ACHATS EN SUSPENSION DE TVA', 'sven' => 'DES FACTURES ÉMISES EN SUSPENSION DE TVA'][$type];
+@php $lab = ['men' => 'MENSUELLE', 'ann' => 'ANNUELLE', 'emp' => 'D’EMPLOYEUR', 'acp' => 'DE L’ACOMPTE PROVISIONNEL', 'sach' => 'DES BONS DE COMMANDES ET FACTURES D’ACHATS EN SUSPENSION DE TVA', 'sven' => 'DES FACTURES ÉMISES EN SUSPENSION DE TVA'][$type];
      $susp = isset(\App\Http\Controllers\DeclarationController::SUSPENSION[$type]); @endphp
 <x-layouts.app title="Déclaration">
     <div class="no-print"><x-page-header :title="'Déclaration '.strtolower($lab)" :subtitle="$client->nom" :back="route('declarations.index', ['type' => $type, 'periode' => $periode])"><button onclick="window.print()" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> Imprimer / PDF</button></x-page-header></div>
@@ -7,6 +7,7 @@
         @if($susp) @include('declarations._suspension', ['print' => true])
         @elseif($type === 'men') @include('declarations._mensuelle_print')
         @elseif($type === 'ann') @include('declarations._annuelle_print')
+        @elseif($type === 'acp') @include('declarations._acompte', ['print' => true])
         @elseif($type !== 'emp') @include('declarations._champs', ['print' => true])
         @else
             @php $E = \App\Services\Exports\DeclarationEmployeur::class; $R = $E::lignesRecap($d); @endphp

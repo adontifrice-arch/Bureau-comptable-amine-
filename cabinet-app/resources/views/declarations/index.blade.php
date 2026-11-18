@@ -1,5 +1,5 @@
 @php $lock = $d->verrouillee(); $st = ['brouillon' => ['Brouillon', 'gray'], 'validee' => ['Validée', 'amber'], 'deposee' => ['Déposée', 'green']][$d->statut];
-     $lab = ['men' => 'mensuelle', 'ann' => 'annuelle', 'emp' => 'd’employeur', 'sach' => 'des achats en suspension de TVA', 'sven' => 'des ventes en suspension de TVA'][$type]; $q = ['type' => $type, 'periode' => $periode];
+     $lab = ['men' => 'mensuelle', 'ann' => 'annuelle', 'emp' => 'd’employeur', 'acp' => 'd’acompte provisionnel', 'sach' => 'des achats en suspension de TVA', 'sven' => 'des ventes en suspension de TVA'][$type]; $q = ['type' => $type, 'periode' => $periode];
      $susp = isset(\App\Http\Controllers\DeclarationController::SUSPENSION[$type]); $mens = \App\Http\Controllers\DeclarationController::mensuelle($type); @endphp
 <x-layouts.app title="Déclarations">
     <x-page-header title="Déclarations fiscales" :subtitle="$client->nom">
@@ -10,8 +10,10 @@
     @php $DC = \App\Http\Controllers\DeclarationController::class; $trim = $DC::trimestrielle($type); $fmt = $trim ? $DC::format($type) : null; @endphp
     <div class="card mb-6 flex flex-wrap items-center gap-4 p-4">
         <form class="flex items-end gap-2"><input type="hidden" name="type" value="{{ $type }}">
-            <div><label class="label">{{ $trim ? 'Trimestre' : ($mens ? 'Mois' : 'Année') }}</label>
-                @if($trim)
+            <div><label class="label">{{ $trim ? 'Trimestre' : ($mens ? 'Mois' : ($type === 'acp' ? 'Acompte' : 'Année')) }}</label>
+                @if($type === 'acp')
+                    <select name="periode" class="input" onchange="this.form.submit()">@for($y = now()->year + 1; $y >= now()->year - 3; $y--)@for($t = 3; $t >= 1; $t--)<option value="{{ $y }}-A{{ $t }}" @selected($periode === "$y-A$t")>{{ \App\Services\DeclarationAcompte::libelle("$y-A$t") }}</option>@endfor @endfor</select>
+                @elseif($trim)
                     <select name="periode" class="input" onchange="this.form.submit()">@for($y = now()->year; $y >= now()->year - 3; $y--)@for($t = 4; $t >= 1; $t--)<option value="{{ $y }}-T{{ $t }}" @selected($periode === "$y-T$t")>{{ $DC::libellePeriode($type, "$y-T$t") }}</option>@endfor @endfor</select>
                 @elseif($mens)<input type="month" name="periode" value="{{ $periode }}" class="input" onchange="this.form.submit()">@else<input type="number" name="periode" value="{{ $periode }}" class="input w-28" onchange="this.form.submit()">@endif</div>
         </form>
@@ -34,7 +36,7 @@
                 <a href="{{ route('declarations.bordereau', $q) }}" class="btn-secondary"><x-icon name="printer" class="h-4 w-4"/> Bordereau</a>
                 @if($type === 'sven')<a href="{{ route('declarations.liste', $q) }}" class="btn-secondary" title="Modèle papier en arabe, avec le reçu de dépôt"><x-icon name="printer" class="h-4 w-4"/> Liste détaillée</a>@endif
             @endif
-            @if(in_array($type, ['men', 'ann'], true))<a href="{{ route('declarations.arabe', $q) }}" class="btn-secondary" title="Modèle officiel DGI en arabe, rempli"><x-icon name="printer" class="h-4 w-4"/> Formulaire arabe</a>@endif
+            @if(in_array($type, ['men', 'ann', 'acp'], true))<a href="{{ route('declarations.arabe', $q) }}" class="btn-secondary" title="Modèle officiel DGI en arabe, rempli"><x-icon name="printer" class="h-4 w-4"/> Formulaire arabe</a>@endif
             <a href="{{ route('declarations.print', $q) }}" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> PDF</a>
         </div>
     </div>
@@ -99,6 +101,8 @@
                 <div class="flex items-end justify-end md:col-span-2"><button class="btn-primary">Ajouter</button></div>
             </form>
         </x-modal>
+    @elseif($type === 'acp')
+        @include('declarations._acompte')
     @elseif($type === 'ann')
         @include('declarations._annuelle')
     @elseif($type === 'men')
