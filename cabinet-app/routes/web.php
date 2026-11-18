@@ -155,6 +155,7 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::get('paie/bulletins/generer', [C\PaieController::class, 'bulletinsZip'])->name('paie.bulletins.zip');
     Route::post('paie/supprimer', [C\PaieController::class, 'supprimer'])->name('paie.supprimer');
     Route::get('paie/virement/fichier/{format}', [C\PaieController::class, 'fichierVirement'])->name('paie.virement.fichier');
+    Route::get('paie/virement/banque/{modele}', [C\PaieController::class, 'fichierBanque'])->name('paie.virement.banque');
     Route::get('paie/virement/employes', [C\PaieController::class, 'virementEmployes'])->name('paie.virement.employes');
     Route::get('paie/stc/{paie}/quittance', [C\PaieController::class, 'quittance'])->name('paie.stc.quittance');
     Route::post('paie/conges/anterieurs', [C\PaieCongeController::class, 'anterieurs'])->name('paie.conges.anterieurs');

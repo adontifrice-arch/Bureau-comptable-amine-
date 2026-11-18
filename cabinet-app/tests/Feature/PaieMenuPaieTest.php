@@ -39,7 +39,7 @@ class PaieMenuPaieTest extends TestCase
     public function test_le_menu_paie_propose_toutes_les_entrees(): void
     {
         $r = $this->get(route('paie.index', ['mois' => '2026-10']))->assertOk();
-        foreach (['Saisie Paie', 'Saisie Autre', 'Tous les bulletins', 'Par matricule', 'Par Nom/ Année', 'Par période', 'Générer les bulletins CIN', 'A5 Double reste congé', 'Matricielle', 'Modèle 2', 'Détaillé', 'Par régime salarial', 'Récapitulatif de virement', 'UIB-virement en masse', 'Par Employé', 'BIAT',
+        foreach (['Saisie Paie', 'Saisie Autre', 'Tous les bulletins', 'Par matricule', 'Par Nom/ Année', 'Par période', 'Générer les bulletins CIN', 'A5 Double reste congé', 'Matricielle', 'Modèle 2', 'Détaillé', 'Par régime salarial', 'Récapitulatif de virement', 'Fichier pour la banque', 'UIB — virement de masse', 'Par Employé', 'BIAT',
             'Bordereau payeur', 'Ordre de virement', 'Enveloppe Paie', 'Récapitulation de paie', 'Etat vierge de saisie',
             'Nb. jrs ouv.', 'Mois non encore enregistré', 'À l’envers', 'Actualiser tout', 'Variable'] as $l) $r->assertSee($l);
         $this->get(route('paie.index', ['tab' => 'variable', 'mois' => '2026-10']))->assertOk()->assertSee('Saisie des éléments variables');

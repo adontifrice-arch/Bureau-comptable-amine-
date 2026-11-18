@@ -455,6 +455,23 @@ class PaieController extends Controller
         return response(EtatsPaie::fichierVirement($client, $mois, $banque, $r->input('paie')), 200, ['Content-Type' => 'text/plain; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="'.$nom.'"']);
     }
 
+    /**
+     * Fichier de virement au modèle de la banque de l'employeur (BT, STB, UIB, BIAT, ATB, UBCI, Zitouna, BH Bank) :
+     * tous les salariés payés par virement. Refusé si un RIB (employeur ou salarié) est absent ou incomplet.
+     */
+    public function fichierBanque(Request $r, string $modele)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client && isset(\App\Services\Exports\FichiersVirement::MODELES[$modele]), 404);
+        $mois = $r->validate(['mois' => 'nullable|date_format:Y-m'])['mois'] ?? now()->format('Y-m');
+        [$D, $erreurs] = \App\Services\Exports\FichiersVirement::donnees($client, $mois, $r->input('paie'));
+        if ($erreurs) return back()->with('err', 'Fichier de virement '.\App\Services\Exports\FichiersVirement::MODELES[$modele]['nom'].' non généré. '.implode(' ', $erreurs));
+        $nom = \App\Services\Exports\FichiersVirement::nomFichier($modele, $D);
+        $this->log('Paie : fichier de virement '.$nom.' ('.count($D['lignes']).' bénéficiaires)', $client->id);
+        $type = $modele === 'bt' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/plain; charset=UTF-8';
+        return response(\App\Services\Exports\FichiersVirement::contenu($modele, $D), 200, ['Content-Type' => $type, 'Content-Disposition' => 'attachment; filename="'.$nom.'"']);
+    }
+
     /** Ordre de virement → Par employé : un ordre de virement par salarié payé par virement, à remettre à la banque. */
     public function virementEmployes(Request $r)
     {

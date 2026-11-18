@@ -5,9 +5,12 @@
     $bul = fn ($f) => route('paie.bulletins', ['mois' => $mois, 'format' => $f]);
     $peutSauver = $tab === 'calc' && ! $lock && count($R);
     $chef = auth()->user()->estChef();
+    // Fichier de virement au modèle de la banque de l'employeur, pour la paie $extra (mois, paie).
+    $fichiersBanque = fn (array $extra) => collect(\App\Services\Exports\FichiersVirement::MODELES)
+        ->map(fn ($m, $k) => ['l' => $m['nom'], 'i' => 'download', 'href' => route('paie.virement.banque', [$k] + $extra)])->values()->all();
     $reserve = 'Réservé au chef comptable';
     // Menus Prime et Rappel : saisie, ouverture et éditions de la paie séparée ouverte ($po).
-    $menuSepare = function (?\App\Models\Paie $po, array $t) use ($mois) {
+    $menuSepare = function (?\App\Models\Paie $po, array $t) use ($mois, $fichiersBanque) {
         $sans = $t['sans'];
         $ed = fn ($e, $extra = [], $f = 'imprimer') => $po ? ['href' => route('paie.edition', [$e, $f, 'mois' => $po->mois, 'paie' => $po->id] + $extra), 'blank' => true] : ['off' => $sans];
         $bul = fn ($f) => $po ? ['href' => route('paie.bulletins', ['paie' => $po->id, 'format' => $f]), 'blank' => true] : ['off' => $sans];
@@ -33,6 +36,7 @@
                 ['l' => 'Récapitulatif de virement', 'i' => 'settings', 'sub' => collect(\App\Services\Exports\EtatsPaie::BANQUES)->map(fn ($b, $k) => ['l' => $b['nom'], 'i' => 'bank'] + $ed('virement', ['banque' => $k]))->values()->all()],
                 ['l' => 'Par Employé', 'i' => 'settings'] + $lien('paie.virement.employes'),
                 ['l' => 'Fichier de virement .txt', 'i' => 'download'] + ($po ? ['href' => route('paie.virement.fichier', ['txt', 'mois' => $po->mois, 'paie' => $po->id])] : ['off' => $sans]),
+                ['l' => 'Fichier pour la banque', 'i' => 'bank'] + ($po ? ['sub' => $fichiersBanque(['mois' => $po->mois, 'paie' => $po->id])] : ['off' => $sans]),
             ]],
             ['l' => $t['enveloppe'], 'i' => 'receipt'] + $lien('paie.enveloppes'),
             ['l' => $t['recap'], 'i' => 'list'] + $ed('recap'),
@@ -121,7 +125,7 @@
             ['sep' => true],
             ['l' => 'Saisie des rubriques du mois', 'i' => 'wallet', 'href' => $lien('variable')],
         ]],
-        'Paie' => ['wallet', (function () use ($mois, $lien, $ed, $bul) {
+        'Paie' => ['wallet', (function () use ($mois, $lien, $ed, $bul, $fichiersBanque) {
             $formats = fn ($e, $t = 'Imprimer') => [
                 ['l' => $t, 'i' => 'printer', 'href' => $ed($e), 'blank' => true],
                 ['l' => 'PDF', 'i' => 'file-text', 'href' => $ed($e, 'pdf'), 'blank' => true],
@@ -178,7 +182,7 @@
                     ['l' => 'Intégral', 'i' => 'settings', 'href' => $ed('virement'), 'blank' => true],
                     ['l' => 'Récapitulatif de virement', 'i' => 'settings', 'sub' => $banques],
                     ['l' => 'Par Employé', 'i' => 'settings', 'href' => route('paie.virement.employes', ['mois' => $mois]), 'blank' => true],
-                    ['l' => 'UIB-virement en masse', 'i' => 'bank', 'href' => $vir('txt', ['masse' => 1])],
+                    ['l' => 'Fichier pour la banque', 'i' => 'bank', 'sub' => $fichiersBanque(['mois' => $mois])],
                 ]],
                 ['l' => 'Enveloppe Paie', 'i' => 'receipt', 'href' => route('paie.enveloppes', ['mois' => $mois]), 'blank' => true],
                 ['l' => 'Récapitulation de paie', 'i' => 'list', 'href' => $ed('recap'), 'blank' => true],
@@ -234,7 +238,7 @@
             ]])->values()->all(),
         ]])->values()->all()],
         // Edition : éditions « Global » (paie du mois, primes, paies Autre, rappels et STC du mois), déclarations, envoi par mail.
-        'Edition' => ['printer', (function () use ($mois) {
+        'Edition' => ['printer', (function () use ($mois, $fichiersBanque) {
             $G = fn ($e, $extra = [], $f = 'imprimer') => route('paie.edition', [$e, $f, 'mois' => $mois] + $extra);
             $fmt = fn ($e, $extra = []) => [
                 ['l' => 'Imprimer', 'i' => 'printer', 'href' => $G($e, $extra), 'blank' => true],
@@ -256,6 +260,7 @@
                     ['l' => 'Récapitulatif de virement', 'i' => 'settings', 'sub' => collect(\App\Services\Exports\EtatsPaie::BANQUES)->map(fn ($b, $k) => ['l' => $b['nom'], 'i' => 'bank', 'href' => $G('virement', $tous + ['banque' => $k]), 'blank' => true])->values()->all()],
                     ['l' => 'Par Employé', 'i' => 'settings', 'href' => route('paie.virement.employes', ['mois' => $mois] + $tous), 'blank' => true],
                     ['l' => 'Fichier de virement .txt', 'i' => 'download', 'href' => route('paie.virement.fichier', ['txt', 'mois' => $mois] + $tous)],
+                    ['l' => 'Fichier pour la banque', 'i' => 'bank', 'sub' => $fichiersBanque(['mois' => $mois] + $tous)],
                 ]],
                 ['l' => 'Déclaration CNSS', 'i' => 'file-text', 'sub' => [
                     ['l' => 'Déclaration trimestrielle des salaires', 'i' => 'settings', 'sub' => $fmt('dcnss')],
