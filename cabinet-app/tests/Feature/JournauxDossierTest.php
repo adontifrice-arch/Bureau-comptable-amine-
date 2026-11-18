@@ -63,6 +63,22 @@ class JournauxDossierTest extends TestCase
         $this->assertArrayNotHasKey('BQ2', Ecriture::journaux($this->client->id));
     }
 
+    public function test_compte_associe_aux_journaux(): void
+    {
+        $this->post(route('compta.journaux'), ['code' => 'BQ2', 'libelle' => 'Banque BIAT', 'compte' => '5322'])->assertSessionHas('ok');
+        $this->post(route('compta.journaux'), ['comptes' => ['BQ' => '532', 'CAI' => '541', 'OD' => '', 'BQ2' => '5322', 'XX' => '1']])->assertSessionHas('ok');
+        $this->assertSame(['BQ' => '532', 'CAI' => '541', 'BQ2' => '5322'], Ecriture::comptesJournaux($this->client->id));   // journal inconnu ignoré
+        $this->post(route('compta.journaux'), ['comptes' => ['BQ' => '53A']])->assertSessionHasErrors('comptes.BQ');
+
+        $this->get(route('compta.index', ['tab' => 'jnl', 'annee' => 2026]))->assertOk()->assertSee('Compte associé')
+            ->assertSee('name="comptes[BQ2]" value="5322"', false)->assertSee('comptesJ: '.\Illuminate\Support\Js::from((object) Ecriture::comptesJournaux($this->client->id)), false);
+
+        // Retirer le journal retire son compte associé
+        $this->post(route('compta.journaux'), ['retirer' => 'BQ2'])->assertSessionHas('ok');
+        $this->assertSame(['BQ' => '532', 'CAI' => '541'], Ecriture::comptesJournaux($this->client->id));
+        $this->assertSame([], Ecriture::comptesJournaux(Client::factory()->create()->id));
+    }
+
     public function test_collaborateur_ne_gere_pas_les_journaux(): void
     {
         $collab = User::factory()->create(['cabinet_id' => $this->chef->cabinet_id, 'role' => 'collaborateur', 'status' => 'active']);

@@ -64,8 +64,10 @@ class ComptaController extends Controller
             $data['resultats'] = ['n' => (clone $q)->count()];
             $data['ecritures'] = $q->orderByDesc('date')->orderByDesc('id')->paginate(30)->withQueryString();
         } elseif ($tab === 'bal') {
-            $data['B'] = Compta::balance($client->id, $annee);
-            $data['T'] = Compta::totaux($data['B']);
+            // Balance générale, auxiliaire (tiers), centralisée (comptes regroupés) ou comparative (N / N-1)
+            $data['vue'] = \App\Services\Balances::vue($r->input('vue'));
+            $data['niveau'] = \App\Services\Balances::niveau($r->input('niveau'));
+            $data += \App\Services\Balances::donnees($client->id, $annee, $data['vue'], $data['niveau']);
         } elseif ($tab === 'gl') {
             // Compte exact (double-clic sur une ligne de la balance) ou racine (« 6 », « 401 »…)
             $cpt = $r->input('compte');
@@ -231,25 +233,38 @@ class ComptaController extends Controller
         return back()->with('ok', 'Paie comptabilisée au journal de paie.');
     }
 
-    /** Journal et écritures → Journaux : ajout d'un journal au dossier (code et libellé), ou retrait d'un journal ajouté qui n'a pas d'écriture. */
+    /**
+     * Journal et écritures → Journaux : comptes associés aux journaux, ajout d'un journal au dossier (code, libellé, compte associé),
+     * ou retrait d'un journal ajouté qui n'a pas d'écriture.
+     */
     public function journaux(Request $r)
     {
         $client = $this->dossier($r);
         abort_unless($client, 404);
         $J = Ecriture::journauxAjoutes($client->id);
+        $comptes = Ecriture::comptesJournaux($client->id);
+        if ($r->has('comptes')) {
+            $d = $r->validate(['comptes' => 'array', 'comptes.*' => 'nullable|regex:/^\d{1,10}$/'], ['comptes.*.regex' => 'Un compte associé ne comporte que des chiffres (10 au plus).']);
+            Ecriture::enregistrerComptesJournaux($client->id, array_intersect_key((array) $d['comptes'], Ecriture::journaux($client->id)));
+            $this->log('Comptes associés aux journaux', $client->id);
+            return back()->with('ok', 'Comptes associés aux journaux enregistrés.');
+        }
         if ($r->filled('retirer')) {
             $code = (string) $r->input('retirer');
             if (Ecriture::withTrashed()->where('client_id', $client->id)->where('journal', $code)->exists())
                 return back()->with('err', 'Le journal '.$code.' contient des écritures (y compris supprimées) : il ne peut pas être retiré.');
             Ecriture::enregistrerJournaux($client->id, array_filter($J, fn ($x) => $x['code'] !== $code));
+            unset($comptes[$code]);
+            Ecriture::enregistrerComptesJournaux($client->id, $comptes);
             $this->log('Retrait du journal '.$code, $client->id);
             return back()->with('ok', 'Journal '.$code.' retiré.');
         }
         $r->merge(['code' => mb_strtoupper(trim((string) $r->input('code')))]);
-        $d = $r->validate(['code' => ['required', 'regex:/^[A-Z0-9]{1,10}$/', \Illuminate\Validation\Rule::notIn(array_keys(Ecriture::journaux($client->id)))], 'libelle' => 'required|max:60'],
-            ['code.regex' => 'Le code du journal ne comporte que des lettres et des chiffres (10 au plus).', 'code.not_in' => 'Ce code de journal existe déjà.']);
+        $d = $r->validate(['code' => ['required', 'regex:/^[A-Z0-9]{1,10}$/', \Illuminate\Validation\Rule::notIn(array_keys(Ecriture::journaux($client->id)))], 'libelle' => 'required|max:60', 'compte' => 'nullable|regex:/^\d{1,10}$/'],
+            ['compte.regex' => 'Le compte associé ne comporte que des chiffres (10 au plus).', 'code.regex' => 'Le code du journal ne comporte que des lettres et des chiffres (10 au plus).', 'code.not_in' => 'Ce code de journal existe déjà.']);
         $J[] = ['code' => $d['code'], 'libelle' => trim($d['libelle'])];
         Ecriture::enregistrerJournaux($client->id, $J);
+        if (! empty($d['compte'])) Ecriture::enregistrerComptesJournaux($client->id, [$d['code'] => $d['compte']] + $comptes);
         $this->log('Ajout du journal '.$d['code'].' — '.$d['libelle'], $client->id);
         return back()->with('ok', 'Journal '.$d['code'].' — '.trim($d['libelle']).' ajouté.');
     }
@@ -281,17 +296,36 @@ class ComptaController extends Controller
     public function balancePrint(Request $r)
     {
         $client = $this->dossier($r); $annee = (int) $r->input('annee', now()->year);
-        $B = Compta::balance($client->id, $annee);
-        return view('compta.balance-print', ['client' => $client, 'annee' => $annee, 'B' => $B, 'T' => Compta::totaux($B)]);
+        $vue = \App\Services\Balances::vue($r->input('vue')); $niveau = \App\Services\Balances::niveau($r->input('niveau'));
+        return view('compta.balance-print', ['client' => $client, 'annee' => $annee, 'vue' => $vue, 'niveau' => $niveau,
+            'titre' => \App\Services\Balances::titre($vue, $annee, $niveau)[0]] + \App\Services\Balances::donnees($client->id, $annee, $vue, $niveau));
     }
 
     public function balanceCsv(Request $r)
     {
         $client = $this->dossier($r); $annee = (int) $r->input('annee', now()->year);
+        $vue = \App\Services\Balances::vue($r->input('vue')); $niveau = \App\Services\Balances::niveau($r->input('niveau'));
+        $D = \App\Services\Balances::donnees($client->id, $annee, $vue, $niveau);
         $n = fn ($v) => number_format((float) $v, 3, ',', '');
-        $out = "\xEF\xBB\xBFCompte;Libellé;RAN débit;RAN crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n";
-        foreach (Compta::balance($client->id, $annee) as $b) $out .= implode(';', [$b['compte'], '"'.$b['libelle'].'"', $n($b['rd']), $n($b['rc']), $n($b['md']), $n($b['mc']), $n($b['sd']), $n($b['sc'])])."\r\n";
-        return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="balance-'.$annee.'-'.\Str::slug($client->nom).'.csv"']);
+        $q = fn ($t) => '"'.str_replace('"', '""', (string) $t).'"';
+        $ligne = fn ($b) => implode(';', [$b['compte'], $q($b['libelle']), $n($b['rd']), $n($b['rc']), $n($b['md']), $n($b['mc']), $n($b['sd']), $n($b['sc'])])."\r\n";
+        $total = fn ($titre, $T) => implode(';', ['', $q($titre), $n($T['rd']), $n($T['rc']), $n($T['md']), $n($T['mc']), $n($T['sd']), $n($T['sc'])])."\r\n";
+        $out = "\xEF\xBB\xBF";
+        if ($vue === 'comparative') {
+            $out .= 'Compte;Libellé;Solde débiteur '.$annee.';Solde créditeur '.$annee.';Solde débiteur '.($annee - 1).';Solde créditeur '.($annee - 1).";Variation;Variation %\r\n";
+            foreach ($D['C'] as $c) $out .= implode(';', [$c['compte'], $q($c['libelle']), $n($c['nd']), $n($c['nc']), $n($c['pd']), $n($c['pc']), $n($c['var']), $c['pct'] === null ? '' : number_format($c['pct'], 1, ',', '')])."\r\n";
+            $out .= implode(';', ['', $q('Totaux'), $n($D['T']['nd']), $n($D['T']['nc']), $n($D['T']['pd']), $n($D['T']['pc']), '', ''])."\r\n";
+        } else {
+            $out .= "Compte;Libellé;RAN débit;RAN crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n";
+            if ($vue === 'auxiliaire') {
+                foreach ($D['sections'] as $s) { $out .= ';'.$q($s['titre'])."\r\n"; foreach ($s['lignes'] as $b) $out .= $ligne($b); $out .= $total('Total '.$s['titre'], $s['T']); }
+            } else {
+                foreach ($D['B'] as $b) $out .= $ligne($b);
+            }
+            $out .= $total('Totaux', $D['T']);
+        }
+        $fichier = \App\Services\Balances::titre($vue, $annee, $niveau)[1].'-'.$annee.'-'.\Str::slug($client->nom).'.csv';
+        return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="'.$fichier.'"']);
     }
 
     /** Lecture d'une facture fournisseur par l'IA (clé ANTHROPIC_API_KEY requise) : proposition à valider. */

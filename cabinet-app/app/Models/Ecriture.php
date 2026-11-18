@@ -35,6 +35,17 @@ class Ecriture extends Model
         Setting::put('journaux.'.$client, array_values($journaux));
     }
 
+    /** Compte associé à chaque journal du dossier (code => compte), ex. BQ => 532, CAI => 541 : proposé à la saisie des écritures du journal. */
+    public static function comptesJournaux(?int $client): array
+    {
+        return $client ? array_filter((array) Setting::get('journaux_comptes.'.$client, []), fn ($c) => (string) $c !== '') : [];
+    }
+
+    public static function enregistrerComptesJournaux(int $client, array $comptes): void
+    {
+        Setting::put('journaux_comptes.'.$client, array_filter(array_map(fn ($c) => trim((string) $c), $comptes), fn ($c) => $c !== ''));
+    }
+
     /** Journaux proposés à la saisie d'une écriture manuelle. */
     public static function journauxSaisie(?int $client): array
     {

@@ -8,7 +8,7 @@
         @forelse($B as $b)
             @if($lien ?? true)
                 {{-- Double-clic : grand livre de ce compte --}}
-                @php $gl = route('compta.index', ['tab' => 'gl', 'annee' => $annee, 'compte' => $b['compte'], 'exact' => 1]); @endphp
+                @php $gl = route('compta.index', ['tab' => 'gl', 'annee' => $annee, 'compte' => $b['compte'], 'exact' => ($exact ?? true) ? 1 : 0]); @endphp
                 <tr class="cursor-pointer hover:bg-brand-50/60 dark:hover:bg-slate-800/40" ondblclick="window.location = {{ \Illuminate\Support\Js::from($gl) }}" title="Double-clic : grand livre du compte {{ $b['compte'] }}"><td class="font-mono text-xs"><a href="{{ $gl }}" class="hover:underline">{{ $b['compte'] }}</a></td><td>{{ $b['libelle'] }}</td>@foreach(['rd','rc','md','mc','sd','sc'] as $k)<td class="num">{{ n3($b[$k]) }}</td>@endforeach</tr>
             @else
                 <tr><td class="font-mono text-xs">{{ $b['compte'] }}</td><td>{{ $b['libelle'] }}</td>@foreach(['rd','rc','md','mc','sd','sc'] as $k)<td class="num">{{ n3($b[$k]) }}</td>@endforeach</tr>

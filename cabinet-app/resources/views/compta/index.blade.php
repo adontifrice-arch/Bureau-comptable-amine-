@@ -136,30 +136,41 @@
         </div>
         <div class="mt-4">{{ $ecritures->links() }}</div>
         <x-modal name="journaux" title="Journaux du dossier">
-            @php $ajoutes = array_column(\App\Models\Ecriture::journauxAjoutes($client->id), 'code'); @endphp
+            @php $ajoutes = array_column(\App\Models\Ecriture::journauxAjoutes($client->id), 'code'); $comptesJ = \App\Models\Ecriture::comptesJournaux($client->id); @endphp
+            <datalist id="cpts-jn" data-plan>@foreach($plan as $n => $lib)<option value="{{ $n }}">{{ $lib }}</option>@endforeach</datalist>
+            <form id="jn-comptes" method="POST" action="{{ route('compta.journaux') }}">@csrf</form>
+            @foreach($ajoutes as $k)<form id="jn-retirer-{{ $k }}" method="POST" action="{{ route('compta.journaux') }}" onsubmit="return confirm('Retirer le journal {{ $k }} ?')">@csrf<input type="hidden" name="retirer" value="{{ $k }}"></form>@endforeach
             <table class="w-full text-sm">
-                <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700"><th class="py-2">Code</th><th>Libellé</th><th></th></tr></thead>
+                <thead><tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700"><th class="py-2">Code</th><th>Libellé</th><th class="w-44">Compte associé</th><th></th></tr></thead>
                 @foreach($journaux as $k => $l)
                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-1.5 font-mono">{{ $k }}</td><td>{{ $l }}</td>
+                        <td class="py-1">@if($chef)<input form="jn-comptes" name="comptes[{{ $k }}]" value="{{ $comptesJ[$k] ?? '' }}" list="cpts-jn" class="input !py-1 font-mono" placeholder="—" data-compte autocomplete="off" aria-label="Compte associé au journal {{ $k }}">
+                            @else<span class="font-mono">{{ $comptesJ[$k] ?? '—' }}</span>@endif
+                            @if(isset($comptesJ[$k]))<p class="truncate text-xs text-slate-400" data-compte-libelle>{{ \App\Services\Compta::libelle((string) $comptesJ[$k]) }}</p>@endif</td>
                         <td class="text-right">@if(in_array((string) $k, $ajoutes, true))
-                            @if($chef)<form method="POST" action="{{ route('compta.journaux') }}" onsubmit="return confirm('Retirer le journal {{ $k }} ?')">@csrf<input type="hidden" name="retirer" value="{{ $k }}"><button class="btn-ghost btn-sm !text-rose-600">Retirer</button></form>@else<span class="badge-gray">Ajouté</span>@endif
+                            @if($chef)<button form="jn-retirer-{{ $k }}" class="btn-ghost btn-sm !text-rose-600">Retirer</button>@else<span class="badge-gray">Ajouté</span>@endif
                         @else <span class="text-xs text-slate-400">Standard</span> @endif</td></tr>
                 @endforeach
             </table>
             @if($chef)
-                <form method="POST" action="{{ route('compta.journaux') }}" class="mt-4 grid grid-cols-12 items-end gap-2">@csrf
-                    <div class="col-span-3"><label class="label" for="jn-code">Code</label><input id="jn-code" name="code" class="input font-mono uppercase" maxlength="10" placeholder="BQ2" required></div>
-                    <div class="col-span-6"><label class="label" for="jn-lib">Libellé</label><input id="jn-lib" name="libelle" class="input" maxlength="60" placeholder="Banque BIAT" required></div>
-                    <div class="col-span-3"><button class="btn-primary w-full"><x-icon name="plus" class="h-4 w-4"/> Ajouter</button></div>
+                <div class="mt-3 flex justify-end"><button form="jn-comptes" class="btn-secondary btn-sm"><x-icon name="check" class="h-4 w-4"/> Enregistrer les comptes associés</button></div>
+                <form method="POST" action="{{ route('compta.journaux') }}" class="mt-4 grid grid-cols-12 items-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">@csrf
+                    <div class="col-span-2"><label class="label" for="jn-code">Code</label><input id="jn-code" name="code" class="input font-mono uppercase" maxlength="10" placeholder="BQ2" required></div>
+                    <div class="col-span-5"><label class="label" for="jn-lib">Libellé</label><input id="jn-lib" name="libelle" class="input" maxlength="60" placeholder="Banque BIAT" required></div>
+                    <div class="col-span-3"><label class="label" for="jn-cpt">Compte associé</label><input id="jn-cpt" name="compte" list="cpts-jn" class="input font-mono" placeholder="5322" data-compte autocomplete="off"></div>
+                    <div class="col-span-2"><button class="btn-primary w-full"><x-icon name="plus" class="h-4 w-4"/> Ajouter</button></div>
                 </form>
-                <p class="mt-2 text-xs text-slate-400">Un journal ajouté est proposé à la saisie et à la modification des écritures de ce dossier. Il ne peut être retiré que s’il ne contient aucune écriture.</p>
+                <p class="mt-2 text-xs text-slate-400">Le compte associé (banque, caisse…) est proposé en première ligne des écritures saisies dans le journal. Un journal ajouté ne peut être retiré que s’il ne contient aucune écriture.</p>
             @endif
         </x-modal>
         <x-modal name="od" title="Écriture manuelle" size="max-w-3xl">
-            <form method="POST" action="{{ route('compta.od.store') }}" x-data="{ l: [{compte:'',debit:'',credit:''},{compte:'',debit:'',credit:''}], get d(){return this.l.reduce((s,x)=>s+(+x.debit||0),0)}, get c(){return this.l.reduce((s,x)=>s+(+x.credit||0),0)} }" class="space-y-4">@csrf
+            @php $jSaisie = \App\Models\Ecriture::journauxSaisie($client->id); $jDefaut = isset($jSaisie[request('journal')]) ? (string) request('journal') : (string) array_key_first($jSaisie); @endphp
+            <form method="POST" action="{{ route('compta.od.store') }}" x-data="{ l: [{compte:'',debit:'',credit:''},{compte:'',debit:'',credit:''}], get d(){return this.l.reduce((s,x)=>s+(+x.debit||0),0)}, get c(){return this.l.reduce((s,x)=>s+(+x.credit||0),0)},
+                    j: @js($jDefaut), comptesJ: @js((object) \App\Models\Ecriture::comptesJournaux($client->id)), auto: '',
+                    appliquer() { const c = this.comptesJ[this.j] || ''; if (! this.l[0].compte || this.l[0].compte === this.auto) this.l[0].compte = c; this.auto = c } }" x-init="appliquer()" class="space-y-4">@csrf
                 <div class="grid gap-4 md:grid-cols-4">
                     <div><label class="label">Date</label><input type="date" name="date" class="input" value="{{ now()->format('Y-m-d') }}"></div>
-                    <div><label class="label">Journal</label><select name="journal" class="input">@foreach(\App\Models\Ecriture::journauxSaisie($client->id) as $k => $l)<option value="{{ $k }}" @selected(request('journal') === (string) $k)>{{ $k }} — {{ $l }}</option>@endforeach</select></div>
+                    <div><label class="label">Journal</label><select name="journal" class="input" x-model="j" @change="appliquer()">@foreach($jSaisie as $k => $l)<option value="{{ $k }}">{{ $k }} — {{ $l }}</option>@endforeach</select></div>
                     <div class="md:col-span-2"><label class="label">Libellé</label><input name="libelle" class="input" required></div>
                 </div>
                 <datalist id="cpts" data-plan>@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist>
@@ -178,12 +189,23 @@
         </x-modal>
 
     @elseif($tab === 'bal')
-        <div class="mb-4 flex justify-end gap-2">
-            <a href="{{ route('compta.balance-n1', ['annee' => $annee]) }}" class="btn-secondary" title="Nouveau dossier : soldes de clôture de l’exercice précédent"><x-icon name="upload" class="h-4 w-4"/> Reprendre la balance {{ $annee - 1 }}</a>
-            <a href="{{ route('compta.balance.csv', ['annee' => $annee]) }}" class="btn-secondary"><x-icon name="download" class="h-4 w-4"/> Excel (CSV)</a>
-            <a href="{{ route('compta.balance.print', ['annee' => $annee]) }}" target="_blank" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> Imprimer / PDF</a>
+        @php $pv = ['annee' => $annee, 'vue' => $vue] + ($vue === 'centralisee' ? ['niveau' => $niveau] : []); @endphp
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center gap-1">
+                @foreach(\App\Services\Balances::VUES as $k => $l)<a href="{{ $u('bal', ['vue' => $k]) }}" class="{{ $vue === $k ? 'badge-blue' : 'badge-gray' }} !py-1">Balance {{ mb_strtolower($l) }}</a>@endforeach
+                @if($vue === 'centralisee')
+                    <form class="ml-2 flex items-center gap-2 text-sm"><input type="hidden" name="tab" value="bal"><input type="hidden" name="annee" value="{{ $annee }}"><input type="hidden" name="vue" value="centralisee">
+                        <label for="bal-niv" class="text-slate-500">Regroupement</label>
+                        <select id="bal-niv" name="niveau" class="input !w-auto !py-1" onchange="this.form.submit()">@foreach(\App\Services\Balances::NIVEAUX as $k => $l)<option value="{{ $k }}" @selected($niveau === $k)>{{ $l }}</option>@endforeach</select></form>
+                @endif
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="{{ route('compta.balance-n1', ['annee' => $annee]) }}" class="btn-secondary" title="Nouveau dossier : soldes de clôture de l’exercice précédent"><x-icon name="upload" class="h-4 w-4"/> Reprendre la balance {{ $annee - 1 }}</a>
+                <a href="{{ route('compta.balance.csv', $pv) }}" class="btn-secondary"><x-icon name="download" class="h-4 w-4"/> Excel (CSV)</a>
+                <a href="{{ route('compta.balance.print', $pv) }}" target="_blank" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> Imprimer / PDF</a>
+            </div>
         </div>
-        @include('compta._balance')
+        @include('compta._balance-vue')
 
     @elseif($tab === 'gl')
         <form class="card mb-4 flex flex-wrap items-end gap-3 p-4"><input type="hidden" name="tab" value="gl"><input type="hidden" name="annee" value="{{ $annee }}">
