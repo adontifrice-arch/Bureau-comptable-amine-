@@ -242,7 +242,8 @@
         @include('compta._ventes')
 
     @elseif($tab === 'bq')
-        @include('compta._banque')
+        <div class="mb-4 flex flex-wrap gap-1">@foreach(['releves' => 'Relevés bancaires', 'rapprochement' => 'État de rapprochement'] as $k => $l)<a href="{{ $u('bq', $k === 'rapprochement' ? ['vue' => $k] : []) }}" class="{{ $vueBq === $k ? 'badge-blue' : 'badge-gray' }} !py-1">{{ $l }}</a>@endforeach</div>
+        @if($vueBq === 'rapprochement') @include('compta._rapprochement') @else @include('compta._banque') @endif
 
     @elseif($tab === 'corb')
         @include('compta._supprimees')

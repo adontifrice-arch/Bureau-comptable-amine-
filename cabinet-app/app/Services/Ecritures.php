@@ -80,13 +80,14 @@ class Ecritures
         }
         DB::transaction(function () use ($e, $d, $lignes) {
             $e->update(['date' => $d['date'], 'journal' => $d['journal'], 'libelle' => $d['libelle']]);
-            // Une ligne inchangée (même compte, mêmes montants) garde sa lettre ; une ligne modifiée la perd,
-            // et son lettrage apparaît alors parmi les lettrages invalides.
-            $lettres = $e->lignes()->whereNotNull('lettre')->get()->map(fn ($l) => ['cle' => $l->compte.'|'.r3($l->debit).'|'.r3($l->credit), 'lettre' => $l->lettre, 'le' => $l->lettre_le])->all();
+            // Une ligne inchangée (même compte, mêmes montants) garde sa lettre et son pointage bancaire ; une ligne modifiée les perd
+            // (son lettrage apparaît alors parmi les lettrages invalides, et elle redevient à pointer).
+            $anciennes = $e->lignes()->where(fn ($q) => $q->whereNotNull('lettre')->orWhereNotNull('pointe_le'))->get()
+                ->map(fn ($l) => ['cle' => $l->compte.'|'.r3($l->debit).'|'.r3($l->credit), 'lettre' => $l->lettre, 'lettre_le' => $l->lettre_le, 'pointe_le' => $l->pointe_le])->all();
             $e->lignes()->delete();
             foreach ($lignes as $l) {
-                $i = collect($lettres)->search(fn ($x) => $x['cle'] === $l['compte'].'|'.r3($l['debit']).'|'.r3($l['credit']));
-                if ($i !== false) { $l += ['lettre' => $lettres[$i]['lettre'], 'lettre_le' => $lettres[$i]['le']]; unset($lettres[$i]); }
+                $i = collect($anciennes)->search(fn ($x) => $x['cle'] === $l['compte'].'|'.r3($l['debit']).'|'.r3($l['credit']));
+                if ($i !== false) { $l += array_intersect_key($anciennes[$i], array_flip(['lettre', 'lettre_le', 'pointe_le'])); unset($anciennes[$i]); }
                 $e->lignes()->create($l);
             }
         });

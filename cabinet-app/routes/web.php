@@ -115,6 +115,9 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('comptabilite/lettrage', [C\LettrageController::class, 'lettrer'])->name('compta.lettrage');
     Route::post('comptabilite/lettrage/retirer', [C\LettrageController::class, 'delettrer'])->name('compta.lettrage.retirer');
     Route::post('comptabilite/transfert', [C\LettrageController::class, 'transfert'])->name('compta.transfert');
+    Route::post('comptabilite/rapprochement/solde', [C\RapprochementController::class, 'solde'])->name('compta.rapprochement.solde');
+    Route::post('comptabilite/rapprochement/pointer', [C\RapprochementController::class, 'pointer'])->name('compta.rapprochement.pointer');
+    Route::get('comptabilite/rapprochement/imprimer', [C\RapprochementController::class, 'imprimer'])->name('compta.rapprochement.print');
     Route::get('comptabilite/sauvegarde', [C\SauvegardeComptaController::class, 'telecharger'])->name('compta.sauvegarde');
     Route::post('comptabilite/sauvegarde/restaurer', [C\SauvegardeComptaController::class, 'restaurer'])->middleware('chef')->name('compta.sauvegarde.restaurer');
     Route::get('comptabilite/sauvegarde/base', [C\SauvegardeComptaController::class, 'base'])->middleware('chef')->name('compta.sauvegarde.base');

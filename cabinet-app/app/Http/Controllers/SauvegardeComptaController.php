@@ -21,7 +21,7 @@ use Illuminate\Support\Str;
 class SauvegardeComptaController extends Controller
 {
     public const FORMAT = 'cabinet-compta';
-    private const REGLAGES = ['saisie', 'journaux', 'journaux_comptes'];
+    private const REGLAGES = ['saisie', 'journaux', 'journaux_comptes', 'rapprochement'];
 
     /** Contenu de la sauvegarde d'un dossier. */
     public static function contenu(Client $client): array
@@ -35,7 +35,7 @@ class SauvegardeComptaController extends Controller
                 ->map(fn ($e) => ['date' => $e->date->format('Y-m-d'), 'journal' => $e->journal, 'libelle' => $e->libelle, 'source' => $e->source,
                     'supprimee_le' => $e->deleted_at?->toIso8601String(), 'motif_suppression' => $e->motif_suppression, 'saisie_le' => $e->created_at?->toIso8601String(),
                     'lignes' => $e->lignes->map(fn ($l) => ['compte' => $l->compte, 'debit' => (float) $l->debit, 'credit' => (float) $l->credit,
-                        'lettre' => $l->lettre, 'lettre_le' => $l->lettre_le])->all()])->all(),
+                        'lettre' => $l->lettre, 'lettre_le' => $l->lettre_le, 'pointe_le' => $l->pointe_le])->all()])->all(),
         ];
     }
 
@@ -91,7 +91,8 @@ class SauvegardeComptaController extends Controller
                 $e = Ecriture::create(['client_id' => $client->id, 'date' => $x['date'], 'journal' => Str::limit((string) ($x['journal'] ?? 'OD'), 10, ''),
                     'libelle' => Str::limit((string) ($x['libelle'] ?? ''), 255, '') ?: 'Écriture', 'source' => $source, 'valide_par' => $r->user()->id]);
                 foreach ($L as $l) $e->lignes()->create(['compte' => $l['compte'], 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0),
-                    'lettre' => preg_match('/^[A-Z]{1,6}$/', (string) ($l['lettre'] ?? '')) ? $l['lettre'] : null, 'lettre_le' => $l['lettre_le'] ?? null]);
+                    'lettre' => preg_match('/^[A-Z]{1,6}$/', (string) ($l['lettre'] ?? '')) ? $l['lettre'] : null, 'lettre_le' => $l['lettre_le'] ?? null,
+                    'pointe_le' => $l['pointe_le'] ?? null]);
                 if (! empty($x['supprimee_le'])) {
                     $e->forceFill(['supprime_par' => $r->user()->id, 'motif_suppression' => $x['motif_suppression'] ?? null])->save();
                     $e->delete();

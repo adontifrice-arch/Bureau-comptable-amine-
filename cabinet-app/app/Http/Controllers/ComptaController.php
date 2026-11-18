@@ -43,7 +43,12 @@ class ComptaController extends Controller
             $rech->dates($q, 'date'); $rech->montants($q, ['ht', 'ht + tva + timbre']); $rech->texte($q, ['tiers', 'description', 'reference', 'matricule_fiscal']); $rech->compte($q, 'compte');
             $data['ventes'] = $q->orderByRaw("CASE statut WHEN 'prop' THEN 0 WHEN 'rej' THEN 1 ELSE 2 END")->orderByDesc('date')->get();
             $data['resultats'] = ['n' => $data['ventes']->count(), 'total' => $data['ventes']->sum(fn ($f) => $f->ttc()), 'unite' => 'TTC'];
+        } elseif ($tab === 'bq' && $r->input('vue') === 'rapprochement') {
+            // État de rapprochement bancaire d'un compte de banque à une date d'arrêté
+            $data['vueBq'] = 'rapprochement';
+            $data += RapprochementController::parametres($r, $client->id);
         } elseif ($tab === 'bq') {
+            $data['vueBq'] = 'releves';
             $data['releves'] = Releve::withCount(['lignes', 'lignes as a_traiter' => fn ($q) => $q->where('statut', 'att')])->with('importePar')->where('client_id', $client->id)->latest()->get();
             $data['releve'] = $r->filled('releve') ? $data['releves']->firstWhere('id', (int) $r->input('releve')) : null;
             $data['filtre'] = $r->input('statut', $rech->active() ? 'tout' : 'att');      // une recherche porte sur toutes les lignes

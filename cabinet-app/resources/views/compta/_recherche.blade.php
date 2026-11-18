@@ -29,7 +29,7 @@
     </form>
 </div>
 
-@if($rech->active())
+@if($rech->active() && isset($resultats))
     <div class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
         <x-icon name="search" class="h-4 w-4"/>
         <span><b>{{ $resultats['n'] }}</b> résultat(s) — {{ implode(' · ', $rech->resume()) }}</span>
