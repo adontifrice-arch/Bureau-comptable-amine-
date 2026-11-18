@@ -83,6 +83,40 @@ class Lettrage
     }
 
     /**
+     * État des comptes non lettrés à une date : pour chaque compte de tiers (sections de Balances::AUXILIAIRES, ou les comptes
+     * commençant par $compte), les lignes non lettrées à cette date (une ligne lettrée après la date compte comme non lettrée),
+     * avec les totaux et le solde non lettré par compte, par section et pour l'ensemble.
+     */
+    public static function nonLettres(int $client, string $date, ?string $section = null, ?string $compte = null): array
+    {
+        $racines = array_map('strval', array_keys(Balances::AUXILIAIRES));
+        if ($section !== null && in_array($section, $racines, true)) $racines = [$section];
+        $L = self::lignes($client)->whereDate('ecritures.date', '<=', $date)
+            ->where(fn ($q) => $q->whereNull('ecriture_lignes.lettre')->orWhereDate('ecriture_lignes.lettre_le', '>', $date))
+            ->where(fn ($q) => collect($racines)->each(fn ($rc) => $q->orWhere('ecriture_lignes.compte', 'like', $rc.'%')))
+            ->when($compte, fn ($q, $c) => $q->where('ecriture_lignes.compte', 'like', $c.'%'))
+            ->orderBy('ecriture_lignes.compte')->orderBy('ecritures.date')->orderBy('ecritures.id')
+            ->get(['ecriture_lignes.compte', 'ecriture_lignes.debit', 'ecriture_lignes.credit', 'ecritures.id as ecriture_id', 'ecritures.date', 'ecritures.journal', 'ecritures.libelle']);
+
+        $sections = []; $T = ['debit' => 0.0, 'credit' => 0.0];
+        foreach ($racines as $rc) {
+            $comptes = $L->filter(fn ($l) => str_starts_with((string) $l->compte, $rc))->groupBy(fn ($l) => (string) $l->compte)
+                ->map(fn ($G, $c) => ['compte' => (string) $c, 'libelle' => Compta::libelle((string) $c), 'debit' => r3($G->sum('debit')), 'credit' => r3($G->sum('credit')),
+                    'solde' => r3($G->sum('debit') - $G->sum('credit')),
+                    'lignes' => $G->map(fn ($l) => ['ecriture_id' => $l->ecriture_id, 'date' => substr((string) $l->date, 0, 10), 'journal' => $l->journal,
+                        'libelle' => $l->libelle, 'debit' => (float) $l->debit, 'credit' => (float) $l->credit])->values()->all()])
+                ->values()->all();
+            if (! $comptes) continue;
+            $S = ['debit' => r3(array_sum(array_column($comptes, 'debit'))), 'credit' => r3(array_sum(array_column($comptes, 'credit')))];
+            $S['solde'] = r3($S['debit'] - $S['credit']);
+            $sections[$rc] = ['titre' => $rc.' — '.Balances::AUXILIAIRES[$rc], 'comptes' => $comptes, 'T' => $S];
+            $T['debit'] += $S['debit']; $T['credit'] += $S['credit'];
+        }
+        $T = array_map('r3', $T) + ['solde' => r3($T['debit'] - $T['credit'])];
+        return ['sections' => $sections, 'T' => $T];
+    }
+
+    /**
      * Transfert de compte à compte : les lignes du compte source (période, journal facultatif) passent sur le compte destination.
      * Elles perdent leur lettre (le lettrage qu'elles laissent sur le compte source, s'il reste incomplet, apparaît en lettrage invalide).
      * @return array{lignes: int, debit: float, credit: float, destination: string}

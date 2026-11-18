@@ -2,7 +2,7 @@
 @php $peutModifier = \App\Services\Ecritures::autorise(auth()->user()); @endphp
 <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
     <div class="flex flex-wrap gap-1">
-        @foreach(['general' => 'Grand livre général', 'auxiliaire' => 'Grand livre auxiliaire', 'invalides' => 'Lettrage invalide'] as $k => $l)
+        @foreach(['general' => 'Grand livre général', 'auxiliaire' => 'Grand livre auxiliaire', 'invalides' => 'Lettrage invalide', 'nonlettres' => 'Comptes non lettrés'] as $k => $l)
             <a href="{{ $u('gl', $k === 'general' ? [] : ['vue' => $k]) }}" class="{{ $vueGl === $k ? 'badge-blue' : 'badge-gray' }} !py-1">{{ $l }}@if($k === 'invalides' && $invalides->count()) <span class="badge-red !py-0">{{ $invalides->count() }}</span>@endif</a>
         @endforeach
     </div>
@@ -23,6 +23,22 @@
         </div>
     </form>
     @include('compta._grand-livre-aux')
+
+@elseif($vueGl === 'nonlettres')
+    @php $pn = array_filter(['annee' => $annee, 'date' => $dateNL, 'section' => $section, 'compte' => $compte]); @endphp
+    <form class="card mb-4 flex flex-wrap items-end gap-3 p-4"><input type="hidden" name="tab" value="gl"><input type="hidden" name="vue" value="nonlettres"><input type="hidden" name="annee" value="{{ $annee }}">
+        <div><label class="label" for="nl-d">Arrêté au</label><input id="nl-d" type="date" name="date" value="{{ $dateNL }}" class="input"></div>
+        <div><label class="label" for="nl-s">Tiers</label><select id="nl-s" name="section" class="input">
+            <option value="">Tous (40, 41, 42)</option>@foreach(\App\Services\Balances::AUXILIAIRES as $k => $l)<option value="{{ $k }}" @selected((string) $section === (string) $k)>{{ $k }} — {{ $l }}</option>@endforeach</select></div>
+        <div class="w-64"><label class="label" for="nl-c">Compte (ou début, ex. 411)</label><input id="nl-c" name="compte" value="{{ $compte }}" class="input font-mono" list="cpts-nl" autocomplete="off">
+            <datalist id="cpts-nl" data-plan>@foreach($plan as $n => $l)@if(preg_match('/^4[012]/', (string) $n))<option value="{{ $n }}">{{ $l }}</option>@endif @endforeach</datalist></div>
+        <button class="btn-primary">Afficher</button>
+        <div class="ml-auto flex gap-2">
+            <a href="{{ route('compta.non-lettres.csv', $pn) }}" class="btn-secondary"><x-icon name="download" class="h-4 w-4"/> Excel (CSV)</a>
+            <a href="{{ route('compta.non-lettres.print', $pn) }}" target="_blank" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> Imprimer / PDF</a>
+        </div>
+    </form>
+    @include('compta._non-lettres')
 
 @elseif($vueGl === 'invalides')
     <div class="card overflow-x-auto">

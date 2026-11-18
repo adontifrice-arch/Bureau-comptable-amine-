@@ -38,6 +38,44 @@ class LettrageController extends Controller
         return back()->with('ok', 'Lettre « '.$d['lettre'].' » du compte '.$d['compte'].' retirée ('.$n.' ligne(s)).');
     }
 
+    /** État des comptes non lettrés : date d'arrêté (31/12 de l'exercice par défaut), tiers et compte facultatifs. */
+    public static function parametresNonLettres(Request $r, int $client, int $annee): array
+    {
+        $date = $r->filled('date') && strtotime((string) $r->input('date')) ? date('Y-m-d', strtotime((string) $r->input('date'))) : $annee.'-12-31';
+        $section = $r->filled('section') ? (string) $r->input('section') : null;
+        $compte = $r->filled('compte') ? (string) $r->input('compte') : null;
+        return ['dateNL' => $date, 'section' => $section, 'compte' => $compte, 'NL' => Lettrage::nonLettres($client, $date, $section, $compte)];
+    }
+
+    public function nonLettresPrint(Request $r)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        return view('compta.non-lettres-print', ['client' => $client] + self::parametresNonLettres($r, $client->id, (int) $r->input('annee', now()->year)));
+    }
+
+    public function nonLettresCsv(Request $r)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        $P = self::parametresNonLettres($r, $client->id, (int) $r->input('annee', now()->year));
+        $n = fn ($v) => number_format((float) $v, 3, ',', '');
+        $q = fn ($t) => '"'.str_replace('"', '""', (string) $t).'"';
+        $row = fn (array $c) => implode(';', $c)."\r\n";
+        $out = "\xEF\xBB\xBF".$row(['Compte', 'Date', 'Journal', 'Libellé', 'Débit', 'Crédit', 'Solde non lettré']);
+        foreach ($P['NL']['sections'] as $s) {
+            $out .= $row(['', '', '', $q($s['titre']), '', '', '']);
+            foreach ($s['comptes'] as $c) {
+                foreach ($c['lignes'] as $l) $out .= $row([$c['compte'], dfr($l['date']), $l['journal'], $q($l['libelle']), $n($l['debit']), $n($l['credit']), '']);
+                $out .= $row([$c['compte'], '', '', $q('Total '.$c['compte'].' '.$c['libelle']), $n($c['debit']), $n($c['credit']), $n($c['solde'])]);
+            }
+            $out .= $row(['', '', '', $q('Total '.$s['titre']), $n($s['T']['debit']), $n($s['T']['credit']), $n($s['T']['solde'])]);
+        }
+        $out .= $row(['', '', '', $q('Total général'), $n($P['NL']['T']['debit']), $n($P['NL']['T']['credit']), $n($P['NL']['T']['solde'])]);
+        return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="comptes-non-lettres-'.$P['dateNL'].'-'.\Illuminate\Support\Str::slug($client->nom).'.csv"']);
+    }
+
     public function transfert(Request $r)
     {
         $client = $this->dossier($r);

@@ -114,6 +114,8 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::get('comptabilite/grand-livre/imprimer', [C\ComptaController::class, 'grandLivrePrint'])->name('compta.grand-livre.print');
     Route::post('comptabilite/lettrage', [C\LettrageController::class, 'lettrer'])->name('compta.lettrage');
     Route::post('comptabilite/lettrage/retirer', [C\LettrageController::class, 'delettrer'])->name('compta.lettrage.retirer');
+    Route::get('comptabilite/non-lettres/imprimer', [C\LettrageController::class, 'nonLettresPrint'])->name('compta.non-lettres.print');
+    Route::get('comptabilite/non-lettres/export', [C\LettrageController::class, 'nonLettresCsv'])->name('compta.non-lettres.csv');
     Route::post('comptabilite/transfert', [C\LettrageController::class, 'transfert'])->name('compta.transfert');
     Route::post('comptabilite/rapprochement/solde', [C\RapprochementController::class, 'solde'])->name('compta.rapprochement.solde');
     Route::post('comptabilite/rapprochement/pointer', [C\RapprochementController::class, 'pointer'])->name('compta.rapprochement.pointer');

@@ -85,6 +85,36 @@ class LettrageSauvegardeTest extends TestCase
         $this->assertStringContainsString('écriture supprimée', implode(' ', Lettrage::invalides($this->client->id)->first()['motifs']));
     }
 
+    public function test_etat_des_comptes_non_lettres(): void
+    {
+        Compta::passer($this->client->id, '2026-04-05', 'VTE', 'Facture client C1', [['compte' => '411001', 'debit' => 300], ['compte' => '706', 'credit' => 300]]);
+        $N = Lettrage::nonLettres($this->client->id, '2026-12-31');
+        $this->assertSame(['40', '41'], array_map('strval', array_keys($N['sections'])));
+        $c = $N['sections']['40']['comptes'][0];
+        $this->assertSame(['401001', 3], [$c['compte'], count($c['lignes'])]);
+        $this->assertEquals([500, 700, -200], [$c['debit'], $c['credit'], $c['solde']]);
+
+        // F1 et son règlement lettrés le 18/11/2026 : seule F2 reste non lettrée ; au 30/06, ils figurent encore (lettrés après cette date)
+        \Illuminate\Support\Carbon::setTestNow('2026-11-18');
+        Lettrage::lettrer($this->client->id, [$this->ligne($this->facture, '401001')->id, $this->ligne($this->reglement, '401001')->id]);
+        \Illuminate\Support\Carbon::setTestNow();
+        $c = Lettrage::nonLettres($this->client->id, '2026-12-31')['sections']['40']['comptes'][0];
+        $this->assertSame(['Facture F2'], array_column($c['lignes'], 'libelle'));
+        $this->assertEquals(-200, $c['solde']);
+        $this->assertCount(3, Lettrage::nonLettres($this->client->id, '2026-06-30')['sections']['40']['comptes'][0]['lignes']);
+        $this->assertCount(1, Lettrage::nonLettres($this->client->id, '2026-01-31')['sections']['40']['comptes'][0]['lignes']);   // F1 seule à fin janvier
+        $this->assertSame(['41'], array_map('strval', array_keys(Lettrage::nonLettres($this->client->id, '2026-12-31', '41')['sections'])));
+        $this->assertEquals(['debit' => 300, 'credit' => 200, 'solde' => 100], Lettrage::nonLettres($this->client->id, '2026-12-31')['T']);
+
+        $this->get(route('compta.index', ['tab' => 'gl', 'annee' => 2026, 'vue' => 'nonlettres']))->assertOk()
+            ->assertSee('Comptes non lettrés')->assertSee('Facture F2')->assertDontSee('Règlement F1')->assertSee('Total 401001');
+        $this->get(route('compta.non-lettres.print', ['annee' => 2026, 'section' => '41']))->assertOk()
+            ->assertSee('ÉTAT DES COMPTES NON LETTRÉS AU 31/12/2026')->assertSee('Facture client C1')->assertDontSee('Facture F2');
+        $csv = $this->get(route('compta.non-lettres.csv', ['annee' => 2026, 'date' => '2026-12-31']))->assertOk()->getContent();
+        $this->assertStringContainsString('401001;10/03/2026;ACH;"Facture F2";0,000;200,000;', $csv);
+        $this->assertStringContainsString('"Total général";300,000;200,000;100,000', $csv);
+    }
+
     public function test_transfert_de_compte_a_compte(): void
     {
         $f = $this->ligne($this->facture, '401001'); $r = $this->ligne($this->reglement, '401001');
