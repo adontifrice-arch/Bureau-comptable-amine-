@@ -32,18 +32,23 @@ class BalancesVuesTest extends TestCase
         $p('2026-02-10', 'Règlement', [['compte' => '532', 'debit' => 1000], ['compte' => '411001', 'credit' => 1000]]);
         $p('2026-03-15', 'Vente 2026', [['compte' => '411003', 'debit' => 2000], ['compte' => '706', 'credit' => 2000]]);
         $p('2026-04-20', 'Achat 2026', [['compte' => '6061', 'debit' => 400], ['compte' => '401002', 'credit' => 400]]);
+        // 2026 : salaires du mois, net à payer au personnel 425001
+        $p('2026-04-30', 'Paie avril', [['compte' => '640', 'debit' => 900], ['compte' => '425001', 'credit' => 900]]);
     }
 
     public function test_balance_auxiliaire(): void
     {
         $S = Balances::auxiliaire($this->client->id, 2026);
-        $this->assertSame(['40', '41'], array_map('strval', array_keys($S)));
+        $this->assertSame(['40', '41', '42'], array_map('strval', array_keys($S)));
+        $this->assertSame(['425001'], array_column($S['42']['lignes'], 'compte'));
+        $this->assertEquals(900, $S['42']['T']['sc']);
+        $this->assertEquals(700 + 900, Balances::donnees($this->client->id, 2026, 'auxiliaire')['T']['sc']);
         $this->assertSame(['401001', '401002'], array_column($S['40']['lignes'], 'compte'));
         $this->assertSame(['411001', '411002', '411003'], array_column($S['41']['lignes'], 'compte'));
         $this->assertEquals([1500, 2500, 1000], [$S['41']['T']['rd'], $S['41']['T']['sd'], $S['41']['T']['mc']]);
         $this->assertEquals(700, $S['40']['T']['sc']);
         $this->get(route('compta.index', ['tab' => 'bal', 'annee' => 2026, 'vue' => 'auxiliaire']))->assertOk()
-            ->assertSee('41 — Clients et comptes rattachés')->assertSee('Total 41 — clients et comptes rattachés')->assertDontSee('>706<', false);
+            ->assertSee('41 — Clients et comptes rattachés')->assertSee('Total 41 — clients et comptes rattachés')->assertSee('42 — Personnel et comptes rattachés')->assertDontSee('>706<', false);
     }
 
     public function test_balance_centralisee(): void

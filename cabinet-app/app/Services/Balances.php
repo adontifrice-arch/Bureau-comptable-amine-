@@ -5,7 +5,7 @@ namespace App\Services;
 /**
  * Variantes de la balance générale (onglet Balance générale) :
  * - générale : tous les comptes mouvementés (Compta::balance) ;
- * - auxiliaire : comptes de tiers fournisseurs (40) et clients (41), par section avec sous-totaux ;
+ * - auxiliaire : comptes de tiers fournisseurs (40), clients (41) et personnel (42), par section avec sous-totaux ;
  * - centralisée : comptes regroupés sur leurs premiers chiffres (401001, 401002 → 401) ;
  * - comparative : soldes de l'exercice et de l'exercice précédent, avec la variation.
  */
@@ -14,7 +14,7 @@ class Balances
     public const VUES = ['generale' => 'Générale', 'auxiliaire' => 'Auxiliaire', 'centralisee' => 'Centralisée', 'comparative' => 'Comparative'];
 
     /** Sections de la balance auxiliaire : racine => intitulé. */
-    public const AUXILIAIRES = ['40' => 'Fournisseurs et comptes rattachés', '41' => 'Clients et comptes rattachés'];
+    public const AUXILIAIRES = ['40' => 'Fournisseurs et comptes rattachés', '41' => 'Clients et comptes rattachés', '42' => 'Personnel et comptes rattachés'];
 
     /** Niveaux de centralisation proposés (nombre de chiffres du compte). */
     public const NIVEAUX = [2 => '2 chiffres (40, 41…)', 3 => '3 chiffres (401, 411…)', 4 => '4 chiffres (4011…)'];

@@ -29,7 +29,7 @@
                     <tr class="border-t border-slate-300 font-semibold"><td></td><td>Total {{ mb_strtolower($s['titre']) }}</td>@foreach(['rd','rc','md','mc','sd','sc'] as $k)<td class="num">{{ tnd($s['T'][$k], false) }}</td>@endforeach</tr>
                 </tbody>
             @empty
-                <tbody><tr><td colspan="8"><x-empty icon="users" title="Aucun compte de tiers (40, 41) mouvementé sur {{ $annee }}"/></td></tr></tbody>
+                <tbody><tr><td colspan="8"><x-empty icon="users" title="Aucun compte de tiers (40, 41, 42) mouvementé sur {{ $annee }}"/></td></tr></tbody>
             @endforelse
             @if($sections)
                 <tfoot class="border-t-2 border-slate-300"><tr><td colspan="2">Totaux des comptes de tiers</td>@foreach(['rd','rc','md','mc','sd','sc'] as $k)<td class="num">{{ tnd($T[$k], false) }}</td>@endforeach</tr></tfoot>
