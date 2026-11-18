@@ -2,7 +2,7 @@
 @php $peutModifier = \App\Services\Ecritures::autorise(auth()->user()); @endphp
 <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
     <div class="flex flex-wrap gap-1">
-        @foreach(['general' => 'Grand livre général', 'auxiliaire' => 'Grand livre auxiliaire', 'invalides' => 'Lettrage invalide', 'nonlettres' => 'Comptes non lettrés'] as $k => $l)
+        @foreach(['general' => 'Grand livre général', 'auxiliaire' => 'Grand livre auxiliaire', 'invalides' => 'Lettrage invalide', 'nonlettres' => 'Comptes non lettrés', 'echeancier' => 'Échéancier clients / fournisseurs'] as $k => $l)
             <a href="{{ $u('gl', $k === 'general' ? [] : ['vue' => $k]) }}" class="{{ $vueGl === $k ? 'badge-blue' : 'badge-gray' }} !py-1">{{ $l }}@if($k === 'invalides' && $invalides->count()) <span class="badge-red !py-0">{{ $invalides->count() }}</span>@endif</a>
         @endforeach
     </div>
@@ -23,6 +23,9 @@
         </div>
     </form>
     @include('compta._grand-livre-aux')
+
+@elseif($vueGl === 'echeancier')
+    @include('compta._echeancier-ecran')
 
 @elseif($vueGl === 'nonlettres')
     @php $pn = array_filter(['annee' => $annee, 'date' => $dateNL, 'section' => $section, 'compte' => $compte]); @endphp

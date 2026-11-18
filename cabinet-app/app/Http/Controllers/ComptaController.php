@@ -79,11 +79,13 @@ class ComptaController extends Controller
             $data += \App\Services\Balances::donnees($client->id, $annee, $data['vue'], $data['niveau']);
         } elseif ($tab === 'gl') {
             // Grand livre général (avec lettrage du compte affiché), auxiliaire (tiers 40, 41, 42) ou lettrages invalides
-            $data['vueGl'] = in_array($r->input('vue'), ['auxiliaire', 'invalides', 'nonlettres'], true) ? $r->input('vue') : 'general';
+            $data['vueGl'] = in_array($r->input('vue'), ['auxiliaire', 'invalides', 'nonlettres', 'echeancier'], true) ? $r->input('vue') : 'general';
             $data['section'] = $r->input('section');
             $data['compte'] = $cpt = $r->input('compte');
             $data['invalides'] = \App\Services\Lettrage::invalides($client->id);
-            if ($data['vueGl'] === 'nonlettres') {
+            if ($data['vueGl'] === 'echeancier') {
+                $data += EcheancierController::parametres($r, $client->id, $annee);
+            } elseif ($data['vueGl'] === 'nonlettres') {
                 $data += \App\Http\Controllers\LettrageController::parametresNonLettres($r, $client->id, $annee);
             } elseif ($data['vueGl'] === 'auxiliaire') {
                 $data['GLA'] = \App\Services\GrandLivre::auxiliaire($client->id, $annee, $data['section'], $cpt);
