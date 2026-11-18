@@ -72,6 +72,35 @@ class BalancesVuesTest extends TestCase
         $this->get(route('compta.index', ['tab' => 'bal', 'annee' => 2026, 'vue' => 'comparative']))->assertOk()->assertSee('Solde 2025')->assertSee('-100,0 %');
     }
 
+    public function test_grand_livre_auxiliaire(): void
+    {
+        $G = \App\Services\GrandLivre::auxiliaire($this->client->id, 2026);
+        $this->assertSame(['40', '41', '42'], array_map('strval', array_keys($G['sections'])));
+        $c = collect($G['sections']['41']['comptes'])->keyBy('compte');
+        $this->assertSame(['411001', '411002', '411003'], $c->keys()->map(fn ($k) => (string) $k)->all());
+        // 411001 : report 1 000 débiteur, réglé en février → soldé ; 411002 : report seul, sans mouvement en 2026
+        $this->assertEquals([1000, 0, 1000, 0], [$c['411001']['report'], $c['411001']['debit'], $c['411001']['credit'], $c['411001']['solde']]);
+        $this->assertEquals([0.0], array_column($c['411001']['mouvements'], 'solde'));
+        $this->assertEquals([500, [], 500], [$c['411002']['report'], $c['411002']['mouvements'], $c['411002']['solde']]);
+        $this->assertEquals(['report' => 1500, 'debit' => 2000, 'credit' => 1000, 'solde' => 2500], $G['sections']['41']['T']);
+        $this->assertEquals(-700, $G['sections']['40']['T']['solde']);
+        $this->assertEquals(2500 - 700 - 900, $G['T']['solde']);
+
+        // Filtres : section, puis compte
+        $this->assertSame(['42'], array_map('strval', array_keys(\App\Services\GrandLivre::auxiliaire($this->client->id, 2026, '42')['sections'])));
+        $f = \App\Services\GrandLivre::auxiliaire($this->client->id, 2026, null, '411003')['sections'];
+        $this->assertSame(['411003'], array_column($f['41']['comptes'], 'compte'));
+        $this->assertSame(['41'], array_map('strval', array_keys($f)));
+
+        $this->get(route('compta.index', ['tab' => 'gl', 'annee' => 2026, 'vue' => 'auxiliaire']))->assertOk()
+            ->assertSee('Grand livre auxiliaire')->assertSee('Report à nouveau')->assertSee('Total 411001')->assertSee('1 000,000 D', false);
+        $this->get(route('compta.index', ['tab' => 'gl', 'annee' => 2026, 'compte' => '6061', 'exact' => 1]))->assertOk()->assertSee('Achat 2026');
+        $this->get(route('compta.grand-livre.print', ['annee' => 2026, 'section' => '41']))->assertOk()->assertSee('GRAND LIVRE AUXILIAIRE 2026')->assertDontSee('425001');
+        $csv = $this->get(route('compta.grand-livre.csv', ['annee' => 2026]))->assertOk()->getContent();
+        $this->assertStringContainsString('411001;10/02/2026;OD;"Règlement";0,000;1000,000;0,000', $csv);
+        $this->assertStringContainsString('"Total général";2000,000;2300,000;900,000', $csv);
+    }
+
     public function test_impression_et_export_selon_la_vue(): void
     {
         $this->get(route('compta.balance.print', ['annee' => 2026, 'vue' => 'comparative']))->assertOk()->assertSee('BALANCE COMPARATIVE 2026 / 2025');

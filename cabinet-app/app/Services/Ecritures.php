@@ -80,8 +80,15 @@ class Ecritures
         }
         DB::transaction(function () use ($e, $d, $lignes) {
             $e->update(['date' => $d['date'], 'journal' => $d['journal'], 'libelle' => $d['libelle']]);
+            // Une ligne inchangée (même compte, mêmes montants) garde sa lettre ; une ligne modifiée la perd,
+            // et son lettrage apparaît alors parmi les lettrages invalides.
+            $lettres = $e->lignes()->whereNotNull('lettre')->get()->map(fn ($l) => ['cle' => $l->compte.'|'.r3($l->debit).'|'.r3($l->credit), 'lettre' => $l->lettre, 'le' => $l->lettre_le])->all();
             $e->lignes()->delete();
-            foreach ($lignes as $l) $e->lignes()->create($l);
+            foreach ($lignes as $l) {
+                $i = collect($lettres)->search(fn ($x) => $x['cle'] === $l['compte'].'|'.r3($l['debit']).'|'.r3($l['credit']));
+                if ($i !== false) { $l += ['lettre' => $lettres[$i]['lettre'], 'lettre_le' => $lettres[$i]['le']]; unset($lettres[$i]); }
+                $e->lignes()->create($l);
+            }
         });
     }
 }

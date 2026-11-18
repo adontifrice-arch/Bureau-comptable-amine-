@@ -8,6 +8,7 @@
         <form><input type="hidden" name="tab" value="{{ $tab }}"><input type="number" name="annee" value="{{ $annee }}" class="input w-24" onchange="this.form.submit()"></form>
         @if(in_array($tab, ['ach', 'vte', 'bq', 'jnl'], true))<button class="btn-secondary" x-data @click="$dispatch('recherche')" title="Recherche par date, montant, libellé ou compte"><x-icon name="search" class="h-4 w-4"/> Rechercher @if($rech->active())<span class="badge-blue !py-0">{{ $rech->nombre() }}</span>@endif</button>@endif
         <a href="{{ $u('param') }}" class="btn-secondary"><x-icon name="settings" class="h-4 w-4"/> Paramétrage</a>
+        <button class="btn-secondary" x-data @click="$dispatch('open-modal', 'sauvegarde')"><x-icon name="download" class="h-4 w-4"/> Sauvegarde</button>
         <button class="btn-primary" x-data @click="$dispatch('open-modal', 'releve')"><x-icon name="upload" class="h-4 w-4"/> Importer un relevé bancaire</button>
     </x-page-header>
     @unless($chef)<div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"><x-icon name="lock" class="h-4 w-4"/> Vous saisissez en tant que collaborateur : seule la validation du chef comptable comptabilise les pièces.</div>@endunless
@@ -113,8 +114,22 @@
         </div>
 
     @elseif($tab === 'jnl')
+        @php $journaux = \App\Models\Ecriture::journaux($client->id); @endphp
+        <div class="mb-3 flex flex-wrap gap-1">@foreach(\App\Services\Journaux::VUES as $k => $l)<a href="{{ $u('jnl', $k === 'ecritures' ? [] : ['vue' => $k]) }}" class="{{ $vueJ === $k ? 'badge-blue' : 'badge-gray' }} !py-1">{{ $l }}</a>@endforeach</div>
+    @if($vueJ !== 'ecritures')
+        @php $pj = array_filter(['annee' => $annee, 'vue' => $vueJ, 'mois' => $moisJ, 'journal' => $journalJ]); @endphp
+        <form class="card mb-4 flex flex-wrap items-end gap-3 p-4"><input type="hidden" name="tab" value="jnl"><input type="hidden" name="vue" value="{{ $vueJ }}"><input type="hidden" name="annee" value="{{ $annee }}">
+            <div><label class="label" for="ej-m">Période</label><select id="ej-m" name="mois" class="input"><option value="">Exercice {{ $annee }}</option>@for($m = 1; $m <= 12; $m++)<option value="{{ $m }}" @selected($moisJ === $m)>{{ mois_fr(sprintf('%04d-%02d', $annee, $m)) }}</option>@endfor</select></div>
+            <div><label class="label" for="ej-j">Journal</label><select id="ej-j" name="journal" class="input"><option value="">Tous les journaux</option>@foreach($journaux as $k => $l)<option value="{{ $k }}" @selected($journalJ === (string) $k)>{{ $k }} — {{ $l }}</option>@endforeach</select></div>
+            <button class="btn-primary">Afficher</button>
+            <div class="ml-auto flex gap-2">
+                <a href="{{ route('compta.journaux.csv', $pj) }}" class="btn-secondary"><x-icon name="download" class="h-4 w-4"/> Excel (CSV)</a>
+                <a href="{{ route('compta.journaux.print', $pj) }}" target="_blank" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> Imprimer / PDF</a>
+            </div>
+        </form>
+        @include('compta._journaux-edition')
+    @else
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            @php $journaux = \App\Models\Ecriture::journaux($client->id); @endphp
             <div class="flex flex-wrap gap-1">@foreach(['' => 'Tous'] + $journaux as $k => $l)<a href="{{ $u('jnl', ['journal' => $k] + $rech->parametres()) }}" class="{{ request('journal', '') === (string) $k ? 'badge-blue' : 'badge-gray' }} !py-1" title="{{ $k }}">{{ $l }}</a>@endforeach</div>
             <div class="flex gap-2">
                 <button class="btn-secondary" x-data @click="$dispatch('open-modal', 'journaux')"><x-icon name="book" class="h-4 w-4"/> Journaux</button>
@@ -135,6 +150,7 @@
             @empty <div class="card"><x-empty icon="book" title="Aucune écriture sur {{ $annee }}"/></div> @endforelse
         </div>
         <div class="mt-4">{{ $ecritures->links() }}</div>
+    @endif
         <x-modal name="journaux" title="Journaux du dossier">
             @php $ajoutes = array_column(\App\Models\Ecriture::journauxAjoutes($client->id), 'code'); $comptesJ = \App\Models\Ecriture::comptesJournaux($client->id); @endphp
             <datalist id="cpts-jn" data-plan>@foreach($plan as $n => $lib)<option value="{{ $n }}">{{ $lib }}</option>@endforeach</datalist>
@@ -208,22 +224,7 @@
         @include('compta._balance-vue')
 
     @elseif($tab === 'gl')
-        <form class="card mb-4 flex flex-wrap items-end gap-3 p-4"><input type="hidden" name="tab" value="gl"><input type="hidden" name="annee" value="{{ $annee }}">
-            <div class="w-72"><label class="label">Compte (ou racine, ex. 6)</label><input name="compte" value="{{ $compte }}" class="input" list="cpts2"><datalist id="cpts2" data-plan>@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist></div>
-            <button class="btn-primary">Afficher</button>
-            @if($compte)<p class="text-xs text-slate-500">{{ $exact ? 'Compte '.$compte.' seul' : 'Comptes commençant par '.$compte }} · double-cliquez sur une ligne pour ouvrir l’écriture (consulter, modifier, supprimer).@if($exact) <a href="{{ $u('gl', ['compte' => $compte]) }}" class="underline">Voir aussi ses sous-comptes</a>@endif</p>@endif
-        </form>
-        @if($compte)
-            @php $s = 0; @endphp
-            <div class="card overflow-x-auto"><table class="tbl"><thead><tr><th>Date</th><th>Jnl</th><th>Compte</th><th>Libellé</th><th class="text-right">Débit</th><th class="text-right">Crédit</th><th class="text-right">Solde</th></tr></thead><tbody>
-                @forelse($mouvements as $m) @php $s += $m->debit - $m->credit; @endphp
-                    @php $fiche = route('compta.ecritures.show', [$m->ecriture_id, 'retour' => request()->fullUrl()]); @endphp
-                    <tr class="cursor-pointer hover:bg-brand-50/60 dark:hover:bg-slate-800/40" ondblclick="window.location = {{ \Illuminate\Support\Js::from($fiche) }}" title="Double-clic : ouvrir l’écriture"><td>{{ dfr($m->date) }}</td><td>{{ $m->journal }}</td><td class="font-mono text-xs">{{ $m->compte }}</td><td><a href="{{ $fiche }}" class="hover:underline">{{ $m->libelle }}</a></td><td class="num">{{ n3($m->debit) }}</td><td class="num">{{ n3($m->credit) }}</td><td class="num">{{ tnd($s, false) }}</td></tr>
-                @empty <tr><td colspan="7"><x-empty title="Aucun mouvement"/></td></tr> @endforelse
-            </tbody>
-            @if($mouvements->count())<tfoot><tr><td colspan="4">Totaux</td><td class="num">{{ tnd($mouvements->sum('debit'), false) }}</td><td class="num">{{ tnd($mouvements->sum('credit'), false) }}</td><td class="num">{{ tnd($s, false) }}</td></tr></tfoot>@endif
-            </table></div>
-        @endif
+        @include('compta._grand-livre')
 
     @elseif($tab === 'plan')
         <div class="grid gap-6 lg:grid-cols-3">
@@ -251,4 +252,29 @@
     @endif
 
     @include('compta._import-releve')
+
+    <x-modal name="sauvegarde" title="Sauvegarde de la comptabilité">
+        <div class="space-y-5 text-sm">
+            <div>
+                <h3 class="font-semibold">Dossier {{ $client->nom }}</h3>
+                <p class="mt-1 text-xs text-slate-500">Écritures et lignes (avec leur lettrage, pièces supprimées comprises), paramétrage de la saisie, journaux ajoutés et leurs comptes associés, comptes ajoutés au plan comptable.</p>
+                <a href="{{ route('compta.sauvegarde') }}" class="btn-primary mt-2"><x-icon name="download" class="h-4 w-4"/> Télécharger la sauvegarde du dossier</a>
+            </div>
+            @if($chef)
+                <form method="POST" action="{{ route('compta.sauvegarde.restaurer') }}" enctype="multipart/form-data" class="space-y-2 border-t border-slate-100 pt-4 dark:border-slate-800"
+                      onsubmit="return ! this.remplacer.checked || confirm('Remplacer toute la comptabilité de {{ addslashes($client->nom) }} par la sauvegarde ? La comptabilité actuelle sera d’abord sauvegardée sur le serveur.')">@csrf
+                    <h3 class="font-semibold">Restaurer une sauvegarde dans ce dossier</h3>
+                    <input type="file" name="fichier" accept=".json,application/json" class="input" required aria-label="Fichier de sauvegarde">
+                    <label class="flex items-center gap-2"><input type="checkbox" name="remplacer" value="1" class="rounded border-slate-300 text-brand-600"> Remplacer la comptabilité actuelle du dossier</label>
+                    <p class="text-xs text-slate-500">Un dossier qui a déjà des écritures n’est remplacé que si la case est cochée ; sa comptabilité actuelle est alors sauvegardée sur le serveur avant la restauration.</p>
+                    <button class="btn-secondary"><x-icon name="upload" class="h-4 w-4"/> Restaurer</button>
+                </form>
+                <div class="border-t border-slate-100 pt-4 dark:border-slate-800">
+                    <h3 class="font-semibold">Toute la base</h3>
+                    <p class="mt-1 text-xs text-slate-500">Copie complète de la base de données de l’application (tous les dossiers : comptabilité, paie, clients…), à conserver en lieu sûr.</p>
+                    <a href="{{ route('compta.sauvegarde.base') }}" class="btn-secondary mt-2"><x-icon name="shield" class="h-4 w-4"/> Télécharger la copie de la base</a>
+                </div>
+            @endif
+        </div>
+    </x-modal>
 </x-layouts.app>

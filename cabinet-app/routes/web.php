@@ -111,6 +111,16 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('comptabilite/comptes', [C\ComptaController::class, 'compteStore'])->name('compta.comptes.store');
     Route::get('comptabilite/balance/imprimer', [C\ComptaController::class, 'balancePrint'])->name('compta.balance.print');
     Route::get('comptabilite/balance/export', [C\ComptaController::class, 'balanceCsv'])->name('compta.balance.csv');
+    Route::get('comptabilite/grand-livre/imprimer', [C\ComptaController::class, 'grandLivrePrint'])->name('compta.grand-livre.print');
+    Route::post('comptabilite/lettrage', [C\LettrageController::class, 'lettrer'])->name('compta.lettrage');
+    Route::post('comptabilite/lettrage/retirer', [C\LettrageController::class, 'delettrer'])->name('compta.lettrage.retirer');
+    Route::post('comptabilite/transfert', [C\LettrageController::class, 'transfert'])->name('compta.transfert');
+    Route::get('comptabilite/sauvegarde', [C\SauvegardeComptaController::class, 'telecharger'])->name('compta.sauvegarde');
+    Route::post('comptabilite/sauvegarde/restaurer', [C\SauvegardeComptaController::class, 'restaurer'])->middleware('chef')->name('compta.sauvegarde.restaurer');
+    Route::get('comptabilite/sauvegarde/base', [C\SauvegardeComptaController::class, 'base'])->middleware('chef')->name('compta.sauvegarde.base');
+    Route::get('comptabilite/journaux/imprimer', [C\ComptaController::class, 'journauxPrint'])->name('compta.journaux.print');
+    Route::get('comptabilite/journaux/export', [C\ComptaController::class, 'journauxCsv'])->name('compta.journaux.csv');
+    Route::get('comptabilite/grand-livre/export', [C\ComptaController::class, 'grandLivreCsv'])->name('compta.grand-livre.csv');
 
     // ---------- Saisie rapide : paramétrage, modèles, factures de vente ----------
     Route::post('comptabilite/parametres', [C\SaisieController::class, 'parametres'])->middleware('chef')->name('compta.parametres');

@@ -54,7 +54,11 @@ class ComptaController extends Controller
             $data['lignes'] = $q->orderBy('date')->orderBy('id')->paginate(100)->withQueryString();
         } elseif ($tab === 'pai') {
             $data['paies'] = Paie::where('client_id', $client->id)->whereIn('statut', ['transmise', 'val'])->orderByDesc('mois')->get();
+        } elseif ($tab === 'jnl' && ($vueJ = \App\Services\Journaux::vue($r->input('vue'))) !== 'ecritures') {
+            // Éditions des journaux : auxiliaire, centralisé, par lot, centralisation globale
+            $data += self::editionJournaux($r, $client, $annee) + ['vueJ' => $vueJ];
         } elseif ($tab === 'jnl') {
+            $data['vueJ'] = 'ecritures';
             // Une période recherchée remplace l'exercice affiché
             $q = Ecriture::with(['lignes', 'validePar'])->where('client_id', $client->id)->when(! $rech->du && ! $rech->au, fn ($q) => $q->whereYear('date', $annee))
                 ->when($r->input('journal'), fn ($q, $j) => $q->where('journal', $j));
@@ -69,15 +73,25 @@ class ComptaController extends Controller
             $data['niveau'] = \App\Services\Balances::niveau($r->input('niveau'));
             $data += \App\Services\Balances::donnees($client->id, $annee, $data['vue'], $data['niveau']);
         } elseif ($tab === 'gl') {
-            // Compte exact (double-clic sur une ligne de la balance) ou racine (« 6 », « 401 »…)
-            $cpt = $r->input('compte');
-            $data['compte'] = $cpt;
-            $data['exact'] = $r->boolean('exact');
-            $data['mouvements'] = $cpt ? DB::table('ecriture_lignes')->join('ecritures', 'ecritures.id', '=', 'ecriture_lignes.ecriture_id')
-                ->whereNull('ecritures.deleted_at')->where('ecritures.client_id', $client->id)->whereYear('ecritures.date', $annee)
-                ->when($data['exact'], fn ($q) => $q->where('ecriture_lignes.compte', $cpt), fn ($q) => $q->where('ecriture_lignes.compte', 'like', $cpt.'%'))
-                ->orderBy('ecritures.date')->orderBy('ecritures.id')
-                ->select('ecritures.id as ecriture_id', 'ecritures.date', 'ecritures.journal', 'ecritures.libelle', 'ecriture_lignes.compte', 'debit', 'credit')->get() : collect();
+            // Grand livre général (avec lettrage du compte affiché), auxiliaire (tiers 40, 41, 42) ou lettrages invalides
+            $data['vueGl'] = in_array($r->input('vue'), ['auxiliaire', 'invalides'], true) ? $r->input('vue') : 'general';
+            $data['section'] = $r->input('section');
+            $data['compte'] = $cpt = $r->input('compte');
+            $data['invalides'] = \App\Services\Lettrage::invalides($client->id);
+            if ($data['vueGl'] === 'auxiliaire') {
+                $data['GLA'] = \App\Services\GrandLivre::auxiliaire($client->id, $annee, $data['section'], $cpt);
+            } elseif ($data['vueGl'] === 'general') {
+                // Compte exact (double-clic sur une ligne de la balance) ou racine (« 6 », « 401 »…) ; lignes lettrées ou non
+                $data['exact'] = $r->boolean('exact');
+                $data['filtreLettrage'] = in_array($r->input('lettrage'), ['non', 'oui'], true) ? $r->input('lettrage') : 'tous';
+                $data['mouvements'] = $cpt ? DB::table('ecriture_lignes')->join('ecritures', 'ecritures.id', '=', 'ecriture_lignes.ecriture_id')
+                    ->whereNull('ecritures.deleted_at')->where('ecritures.client_id', $client->id)->whereYear('ecritures.date', $annee)
+                    ->when($data['exact'], fn ($q) => $q->where('ecriture_lignes.compte', $cpt), fn ($q) => $q->where('ecriture_lignes.compte', 'like', $cpt.'%'))
+                    ->when($data['filtreLettrage'] === 'non', fn ($q) => $q->whereNull('ecriture_lignes.lettre'))
+                    ->when($data['filtreLettrage'] === 'oui', fn ($q) => $q->whereNotNull('ecriture_lignes.lettre'))
+                    ->orderBy('ecritures.date')->orderBy('ecritures.id')
+                    ->select('ecriture_lignes.id', 'ecritures.id as ecriture_id', 'ecritures.date', 'ecritures.journal', 'ecritures.libelle', 'ecriture_lignes.compte', 'debit', 'credit', 'ecriture_lignes.lettre')->get() : collect();
+            }
         } elseif ($tab === 'corb') {
             // Pièces supprimées : écritures restaurables
             $data['supprimees'] = Ecriture::onlyTrashed()->with(['lignes', 'supprimePar'])->where('client_id', $client->id)->orderByDesc('deleted_at')->paginate(30)->withQueryString();
@@ -299,6 +313,94 @@ class ComptaController extends Controller
         $vue = \App\Services\Balances::vue($r->input('vue')); $niveau = \App\Services\Balances::niveau($r->input('niveau'));
         return view('compta.balance-print', ['client' => $client, 'annee' => $annee, 'vue' => $vue, 'niveau' => $niveau,
             'titre' => \App\Services\Balances::titre($vue, $annee, $niveau)[0]] + \App\Services\Balances::donnees($client->id, $annee, $vue, $niveau));
+    }
+
+    /** Données d'une édition des journaux : période (exercice ou mois), journal facultatif. */
+    private static function editionJournaux(Request $r, Client $client, int $annee): array
+    {
+        $vue = \App\Services\Journaux::vue($r->input('vue'));
+        $mois = $r->filled('mois') ? (int) $r->input('mois') : null;
+        $journal = $r->filled('journal') && isset(Ecriture::journaux($client->id)[$r->input('journal')]) ? (string) $r->input('journal') : null;
+        return ['vueJ' => $vue, 'moisJ' => $mois, 'journalJ' => $journal, 'periodeJ' => \App\Services\Journaux::periode($annee, $mois)[2],
+            'EJ' => \App\Services\Journaux::{$vue === 'ecritures' ? 'auxiliaire' : $vue}($client->id, $annee, $mois, $journal)];
+    }
+
+    /** Éditions des journaux : impression / PDF. */
+    public function journauxPrint(Request $r)
+    {
+        $client = $this->dossier($r); $annee = (int) $r->input('annee', now()->year);
+        return view('compta.journaux-print', ['client' => $client, 'annee' => $annee] + self::editionJournaux($r, $client, $annee));
+    }
+
+    /** Éditions des journaux : export Excel (CSV). */
+    public function journauxCsv(Request $r)
+    {
+        $client = $this->dossier($r); $annee = (int) $r->input('annee', now()->year);
+        $D = self::editionJournaux($r, $client, $annee);
+        $E = $D['EJ'];
+        $n = fn ($v) => number_format((float) $v, 3, ',', '');
+        $q = fn ($t) => '"'.str_replace('"', '""', (string) $t).'"';
+        $row = fn (array $c) => implode(';', $c)."\r\n";
+        $out = "\xEF\xBB\xBF";
+        switch ($D['vueJ']) {
+            case 'centralise':
+                $out .= $row(['Journal', 'Mois', 'Compte', 'Libellé', 'Débit', 'Crédit']);
+                foreach ($E['journaux'] as $j) {
+                    foreach ($j['mois'] as $m) {
+                        foreach ($m['comptes'] as $c) $out .= $row([$j['code'], $q(mois_fr($m['mois'])), $c['compte'], $q($c['libelle']), $n($c['debit']), $n($c['credit'])]);
+                        $out .= $row([$j['code'], $q(mois_fr($m['mois'])), '', $q('Total du mois'), $n($m['T']['debit']), $n($m['T']['credit'])]);
+                    }
+                    $out .= $row([$j['code'], '', '', $q('Total '.$j['libelle']), $n($j['T']['debit']), $n($j['T']['credit'])]);
+                }
+                break;
+            case 'global':
+                $out .= $row(['Mois', 'Journal', 'Libellé', 'Débit', 'Crédit', 'Cumul débit', 'Cumul crédit']);
+                foreach ($E['mois'] as $m) {
+                    foreach ($m['journaux'] as $code => $t) $out .= $row([$q(mois_fr($m['mois'])), $code, $q($E['noms'][$code] ?? $code), $n($t['debit']), $n($t['credit']), '', '']);
+                    $out .= $row([$q(mois_fr($m['mois'])), '', $q('Total du mois'), $n($m['T']['debit']), $n($m['T']['credit']), $n($m['cumul']['debit']), $n($m['cumul']['credit'])]);
+                }
+                break;
+            default:                                           // auxiliaire et par lot : écritures détaillées
+                $out .= $row([$D['vueJ'] === 'lots' ? 'Lot' : 'Journal', 'Date', 'Journal', 'Libellé', 'Compte', 'Débit', 'Crédit']);
+                $groupes = $D['vueJ'] === 'lots' ? array_map(fn ($l) => ['titre' => 'Lot '.$l['numero'].' — '.$l['titre'], 'ecritures' => $l['ecritures'], 'T' => $l['T']], $E['lots'])
+                    : array_map(fn ($j) => ['titre' => $j['code'].' — '.$j['libelle'], 'ecritures' => $j['ecritures'], 'T' => $j['T']], $E['journaux']);
+                foreach ($groupes as $g) {
+                    foreach ($g['ecritures'] as $e) foreach ($e->lignes as $l) $out .= $row([$q($g['titre']), dfr($e->date), $e->journal, $q($e->libelle), $l->compte, $n($l->debit), $n($l->credit)]);
+                    $out .= $row([$q($g['titre']), '', '', $q('Total'), '', $n($g['T']['debit']), $n($g['T']['credit'])]);
+                }
+        }
+        $out .= $row(['', '', '', $q('Total général'), '', $n($E['T']['debit']), $n($E['T']['credit'])]);
+        $nom = \Illuminate\Support\Str::slug(\App\Services\Journaux::VUES[$D['vueJ']]).'-'.$annee.($D['moisJ'] ? '-'.sprintf('%02d', $D['moisJ']) : '').'-'.\Illuminate\Support\Str::slug($client->nom).'.csv';
+        return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="'.$nom.'"']);
+    }
+
+    /** Grand livre auxiliaire : impression / PDF. */
+    public function grandLivrePrint(Request $r)
+    {
+        $client = $this->dossier($r); $annee = (int) $r->input('annee', now()->year);
+        return view('compta.grand-livre-print', ['client' => $client, 'annee' => $annee, 'section' => $r->input('section'), 'compte' => $r->input('compte'),
+            'GLA' => \App\Services\GrandLivre::auxiliaire($client->id, $annee, $r->input('section'), $r->input('compte'))]);
+    }
+
+    /** Grand livre auxiliaire : export Excel (CSV). */
+    public function grandLivreCsv(Request $r)
+    {
+        $client = $this->dossier($r); $annee = (int) $r->input('annee', now()->year);
+        $G = \App\Services\GrandLivre::auxiliaire($client->id, $annee, $r->input('section'), $r->input('compte'));
+        $n = fn ($v) => number_format((float) $v, 3, ',', '');
+        $q = fn ($t) => '"'.str_replace('"', '""', (string) $t).'"';
+        $out = "\xEF\xBB\xBFCompte;Date;Journal;Libellé;Débit;Crédit;Solde\r\n";
+        foreach ($G['sections'] as $s) {
+            $out .= ';;;'.$q($s['titre'])."\r\n";
+            foreach ($s['comptes'] as $c) {
+                $out .= implode(';', [$c['compte'], '', '', $q($c['libelle'].' — report au 01/01/'.$annee), '', '', $n($c['report'])])."\r\n";
+                foreach ($c['mouvements'] as $m) $out .= implode(';', [$c['compte'], dfr($m['date']), $m['journal'], $q($m['libelle']), $n($m['debit']), $n($m['credit']), $n($m['solde'])])."\r\n";
+                $out .= implode(';', [$c['compte'], '', '', $q('Total '.$c['compte']), $n($c['debit']), $n($c['credit']), $n($c['solde'])])."\r\n";
+            }
+            $out .= implode(';', ['', '', '', $q('Total '.$s['titre']), $n($s['T']['debit']), $n($s['T']['credit']), $n($s['T']['solde'])])."\r\n";
+        }
+        $out .= implode(';', ['', '', '', $q('Total général'), $n($G['T']['debit']), $n($G['T']['credit']), $n($G['T']['solde'])])."\r\n";
+        return response($out, 200, ['Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="grand-livre-auxiliaire-'.$annee.'-'.\Str::slug($client->nom).'.csv"']);
     }
 
     public function balanceCsv(Request $r)
