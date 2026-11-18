@@ -211,6 +211,7 @@
             'modal' => 'paie-ouvrir-stc', 'ouverte' => 'STC ouvert', 'sans' => 'Ouvrez d’abord un solde de tout compte saisi (Ouvrir STC Saisi)', 'enveloppe' => 'Enveloppe STC', 'recap' => 'Récapitulation STC',
             'extra' => fn ($po, $sans) => [['l' => 'Quittance de Solde de tout Compte', 'i' => 'file-text', 'sub' => [
                 ['l' => 'Reçu pour solde de tout compte', 'i' => 'settings'] + ($po ? ['href' => route('paie.stc.quittance', $po), 'blank' => true] : ['off' => $sans]),
+                ['l' => 'Quittance relative à un contrat de travail', 'i' => 'settings'] + ($po ? ['href' => route('paie.stc.quittance', [$po, 'modele' => 'contrat']), 'blank' => true] : ['off' => $sans]),
             ]]]])],
         'Congé' => ['calendar', [
             ['l' => 'Saisie congé antérieur', 'i' => 'users', 'href' => $lien('conges-ant')],

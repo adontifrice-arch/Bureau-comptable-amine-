@@ -289,6 +289,11 @@ class PaieMenuPaieTest extends TestCase
         foreach (['journal', 'bordereau', 'recap'] as $e) $this->get(route('paie.edition', [$e, 'imprimer', 'mois' => '2026-10', 'paie' => $p->id]))->assertOk()->assertSee('STC — Amel');
         $this->get(route('paie.bulletins', ['paie' => $p->id, 'format' => 'a4']))->assertOk()->assertSee('Indemnité de préavis');
         $this->get(route('paie.stc.quittance', $p))->assertOk()->assertSee('REÇU POUR SOLDE DE TOUT COMPTE')->assertSee(tnd($x['net']))->assertSee('démission');
+        $this->get(route('paie.index', ['mois' => '2026-10']))->assertSee('Quittance relative à un contrat de travail');
+        $this->get(route('paie.stc.quittance', [$p, 'modele' => 'contrat']))->assertOk()->assertSee('RELATIVE A UN CONTRAT DE TRAVAIL')
+            ->assertSee(number_format($x['net'], 3, ',', ' '))->assertSee('départ daté au <b>20/10/2026</b>', false)->assertSee(mb_strtoupper($this->client->nom));
+        $pdf = $this->get(route('paie.stc.quittance', [$p, 'modele' => 'contrat', 'format' => 'pdf']))->assertOk()->assertHeader('Content-Type', 'application/pdf')->getContent();
+        $this->assertSame(1, preg_match_all('/\/Type\s*\/Page[^s]/', $pdf));   // une seule page
         // Clôture : la part soumise (salaire du mois compris) entre dans la déclaration CNSS d'octobre.
         $this->post(route('paie.cloturer'), ['paie_id' => $p->id])->assertSessionHas('ok');
         $this->assertEqualsWithDelta(1000 + $x['base_cnss'], end(EtatsPaie::dcnss($this->client, '2026-10')->lignes)['cellules'][4], 0.001);

@@ -83,7 +83,14 @@ class PaieController extends Controller
         abort_unless($client && $paie->client_id === $client->id && $paie->estStc(), 404);
         $x = PaieCalc::moisSpecial($client, $paie)[0] ?? null;
         abort_unless($x, 404);
-        return view('paie.quittance', ['client' => $client, 'paie' => $paie, 'x' => $x, 's' => Salarie::find($x['salarie_id']), 'langue' => $r->input('langue', 'fr')]);
+        $V = ['client' => $client, 'paie' => $paie, 'x' => $x, 's' => Salarie::find($x['salarie_id'])];
+        if ($r->input('modele') !== 'contrat') return view('paie.quittance', $V + ['langue' => $r->input('langue', 'fr')]);
+        // Modèle « Quittance de solde de tout compte relative à un contrat de travail » : aperçu retouchable ou PDF.
+        if ($r->input('format') !== 'pdf') return view('paie.quittance-contrat', $V + ['impression' => true]);
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('paie.quittance-contrat', $V + ['impression' => false])->setPaper('a4', 'portrait')
+            ->setOption(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Serif']);
+        $nom = \Illuminate\Support\Str::slug('quittance stc '.$x['nom']).'.pdf';
+        return response($pdf->output(), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="'.$nom.'"']);
     }
 
     /**
