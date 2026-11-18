@@ -420,7 +420,23 @@ class PaieController extends Controller
         $client = $this->dossier($r);
         abort_unless($client && isset((EtatsPaie::EDITIONS + EtatsPaie::EXPORTS + EtatsPaie::CONGES + EtatsPaie::ACOMPTES + EtatsPaie::PRETS)[$etat]) && in_array($format, ['imprimer', 'pdf', 'xlsx', 'docx'], true), 404);
         $mois = $r->validate(['mois' => 'nullable|date_format:Y-m'])['mois'] ?? now()->format('Y-m');
+        if (isset(self::MODELES_CNSS[$etat]) && in_array($format, ['imprimer', 'pdf'], true)) return $this->modeleCnss($client, $mois, $etat, $format);
         return EtatsPaie::etat($etat, $client, $mois, $r->only('mode', 'modele', 'groupe', 'banque', 'paie', 'type'))->reponse($format);
+    }
+
+    /** Éditions au modèle CNSS : vue et orientation du papier. */
+    private const MODELES_CNSS = ['dcnss' => ['paie.cnss.declaration', 'landscape'], 'recap-cnss' => ['paie.cnss.recap', 'portrait']];
+
+    /** Déclaration trimestrielle des salaires et état récapitulatif au modèle CNSS (impression ou PDF). */
+    private function modeleCnss(Client $client, string $mois, string $etat, string $format)
+    {
+        [$vue, $orientation] = self::MODELES_CNSS[$etat];
+        $D = EtatsPaie::modeleCnss($client, $mois);
+        if ($format === 'imprimer') return view($vue, $D + ['impression' => true, 'mois' => $mois, 'etat' => $etat]);
+        $nom = \Illuminate\Support\Str::slug(($etat === 'dcnss' ? 'declaration cnss' : 'recap cnss').' '.$client->nom.' T'.$D['trimestre'].' '.$D['annee']).'.pdf';
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView($vue, $D + ['impression' => false])->setPaper('a4', $orientation)
+            ->setOption(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Sans']);
+        return response($pdf->output(), 200, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="'.$nom.'"']);
     }
 
     /**

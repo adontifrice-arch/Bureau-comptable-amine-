@@ -8,7 +8,7 @@
     $statuts = \App\Http\Controllers\PaieDossierController::STATUTS;
     if ($client->forme && ! isset($statuts[$client->forme])) $statuts = [$client->forme => $client->forme] + $statuts;
     $onglets = [
-        'r' => ['nom', 'adresse', 'ville', 'code_postal', 'telephone', 'fax', 'email', 'cnss_mat', 'cnss_cle', 'paie_activite', 'site_web', 'nb_employes', 'heures_semaine'],
+        'r' => ['nom', 'adresse', 'ville', 'code_postal', 'telephone', 'fax', 'email', 'cnss_mat', 'cnss_cle', 'cnss_bureau', 'paie_activite', 'site_web', 'nb_employes', 'heures_semaine'],
         'g' => ['responsable_nom', 'responsable_qualification', 'forme', 'rne', 'matricule_fiscal', 'paie_banque', 'agence', 'paie_rib', 'cabinet_paie'],
         'l' => ['logo'],
     ];
@@ -43,10 +43,11 @@
             <x-field label="Téléphone" name="telephone" :value="$client->telephone" span="md:col-span-2"/>
             <x-field label="Fax" name="fax" :value="$k['fax'] ?? null" span="md:col-span-2"/>
             <x-field label="E-mail" name="email" type="email" :value="$client->email" span="md:col-span-2"/>
-            <div class="md:col-span-3"><label class="label">N° employeur (matricule – clé) {!! $req !!}</label>
+            <div class="md:col-span-2"><label class="label">N° employeur (matricule – clé) {!! $req !!}</label>
                 <div class="flex items-center gap-2"><input name="cnss_mat" value="{{ old('cnss_mat', $cnssMat) }}" class="input flex-1"><span class="text-slate-400">–</span><input name="cnss_cle" value="{{ old('cnss_cle', $cnssCle) }}" class="input w-20" maxlength="4"></div>
                 @error('cnss_mat')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror @error('cnss_cle')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
             </div>
+            <x-field label="Bureau CNSS (BR)" name="cnss_bureau" :value="$client->cnss_bureau" maxlength="10"/>
             <x-field :label="new \Illuminate\Support\HtmlString('Activité '.$req)" name="paie_activite" :value="$client->paie_activite" span="md:col-span-3"/>
             <x-field label="Site web" name="site_web" :value="$k['site_web'] ?? null" span="md:col-span-3"/>
             <x-field label="Nombre d’employés" name="nb_employes" type="number" min="0" :value="$k['nb_employes'] ?? null" :placeholder="$salaries->count()" span="md:col-span-2"/>

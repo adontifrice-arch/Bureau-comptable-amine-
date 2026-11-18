@@ -113,7 +113,7 @@ class PaieProfilsTest extends TestCase
         $this->post(route('paie.cloturer'), ['mois' => '2026-11'])->assertSessionHas('ok');
 
         $this->get(route('paie.edition', ['dcnss', 'imprimer', 'mois' => '2026-11']))->assertOk()
-            ->assertSee('Olfa Ordinaire')->assertDontSee('Ghazi Gerant')->assertDontSee('Chiraz Civp');
+            ->assertSee('OLFA ORDINAIRE')->assertDontSee('GHAZI GERANT')->assertDontSee('CHIRAZ CIVP');
         $this->get(route('paie.edition', ['demp', 'imprimer', 'mois' => '2026-11']))->assertOk()
             ->assertSee('Olfa Ordinaire')->assertSee('Ghazi Gerant')->assertDontSee('Chiraz Civp');
         $this->get(route('paie.edition', ['journal', 'imprimer', 'mois' => '2026-11']))->assertOk()

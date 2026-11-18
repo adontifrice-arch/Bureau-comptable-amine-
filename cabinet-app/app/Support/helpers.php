@@ -13,6 +13,19 @@ if (! function_exists('tnd')) {
 if (! function_exists('n3')) {
     function n3($v): string { return (float) $v == 0.0 ? '' : number_format((float) $v, 3, ',', ' '); }
 }
+if (! function_exists('montant_lettres')) {
+    /** Montant en toutes lettres, en majuscules : « VINGT-SIX MILLE … DINARS CENT QUARANTE-TROIS MILLIMES ». */
+    function montant_lettres($v): string
+    {
+        $millimes = (int) round(abs((float) $v) * 1000);
+        [$dt, $mm] = [intdiv($millimes, 1000), $millimes % 1000];
+        if (! class_exists(\NumberFormatter::class)) return number_format($millimes / 1000, 3, ',', ' ').' DINARS';
+        $f = new \NumberFormatter('fr', \NumberFormatter::SPELLOUT);
+        $s = $f->format($dt).' dinar'.($dt > 1 ? 's' : '');
+        if ($mm) $s .= ' '.$f->format($mm).' millime'.($mm > 1 ? 's' : '');
+        return mb_strtoupper($s);
+    }
+}
 if (! function_exists('r3')) {
     function r3($v): float { return round((float) $v, 3); }
 }

@@ -41,7 +41,7 @@ class PaieEmployeurTest extends TestCase
     {
         return array_merge([
             'nom' => 'SOCIETE EXCELLIA CREANCE', 'adresse' => '14 avenue des Lumières', 'ville' => 'Ariana', 'code_postal' => '2080',
-            'cnss_mat' => '537997', 'cnss_cle' => '35', 'paie_activite' => 'Recouvrement', 'nb_employes' => 3, 'heures_semaine' => 48,
+            'cnss_mat' => '537997', 'cnss_cle' => '35', 'cnss_bureau' => '17', 'paie_activite' => 'Recouvrement', 'nb_employes' => 3, 'heures_semaine' => 48,
             'responsable_nom' => 'Sami Ben Ali', 'responsable_qualification' => 'Gérant', 'forme' => 'SARL', 'rne' => 'B03157682013', 'matricule_fiscal' => '1311620LAM000',
             'paie_banque' => 'BIAT', 'agence' => 'Ariana', 'paie_rib' => '08000000000000000011', 'cabinet_paie' => 'Cabinet Boudaya',
             'fop_actif' => '1', 'fop' => 1, 'tfp_actif' => '1', 'tfp' => 2, 'arrondi' => 3, 'regul_irpp' => '0', 'regul_primes' => 'mois',
@@ -55,6 +55,7 @@ class PaieEmployeurTest extends TestCase
         $this->put(route('paie.employeur'), $this->fiche())->assertSessionHasNoErrors();
         $c = $this->client->fresh();
         $this->assertSame('537997-35', $c->matricule_cnss);
+        $this->assertSame('17', $c->cnss_bureau);
         $this->assertSame('SARL', $c->forme);
         $this->assertSame('Ariana', $c->paie_config['ville']);
         $this->assertSame('Gérant', $c->paie_config['responsable_qualification']);

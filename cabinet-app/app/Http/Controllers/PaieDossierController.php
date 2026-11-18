@@ -45,7 +45,7 @@ class PaieDossierController extends Controller
             // Renseignements
             'nom' => 'required|max:255', 'adresse' => 'required|max:255', 'ville' => 'required|max:100', 'code_postal' => 'nullable|max:10',
             'telephone' => 'nullable|max:30', 'fax' => 'nullable|max:30', 'email' => 'nullable|email|max:255',
-            'cnss_mat' => 'required|max:20', 'cnss_cle' => 'required|max:4', 'paie_activite' => 'required|max:255', 'site_web' => 'nullable|max:255',
+            'cnss_mat' => 'required|max:20', 'cnss_cle' => 'required|max:4', 'cnss_bureau' => 'nullable|max:10', 'paie_activite' => 'required|max:255', 'site_web' => 'nullable|max:255',
             'nb_employes' => 'nullable|integer|min:0', 'heures_semaine' => 'nullable|numeric|min:0|max:80',
             // Informations générales
             'responsable_nom' => 'required|max:255', 'responsable_qualification' => 'required|max:100', 'forme' => 'required|max:50',
@@ -81,7 +81,7 @@ class PaieDossierController extends Controller
 
         $client->update([
             'nom' => $d['nom'], 'adresse' => $d['adresse'], 'telephone' => $d['telephone'] ?? null, 'email' => $d['email'] ?? null, 'forme' => $d['forme'],
-            'matricule_cnss' => trim($d['cnss_mat']).'-'.trim($d['cnss_cle']), 'paie_activite' => $d['paie_activite'], 'matricule_fiscal' => $d['matricule_fiscal'],
+            'matricule_cnss' => trim($d['cnss_mat']).'-'.trim($d['cnss_cle']), 'cnss_bureau' => isset($d['cnss_bureau']) ? trim($d['cnss_bureau']) : null, 'paie_activite' => $d['paie_activite'], 'matricule_fiscal' => $d['matricule_fiscal'],
             'paie_banque' => $d['paie_banque'] ?? null, 'paie_rib' => $d['paie_rib'] ?? null, 'paie_config' => $k,
         ]);
         $this->log('Paie : renseignements employeur mis à jour', $client->id);

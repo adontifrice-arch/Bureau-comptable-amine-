@@ -485,6 +485,64 @@ class EtatsPaie
         return $e;
     }
 
+    /** Lignes par page de la déclaration trimestrielle au modèle CNSS. */
+    public const CNSS_LIGNES_PAGE = 10;
+
+    /**
+     * Données des modèles CNSS du trimestre de $mois : déclaration trimestrielle des salariés et des salaires
+     * (brut 1, 2, 3 et total par assuré, paginée) et état récapitulatif des salaires et appointements
+     * (sécurité sociale, accident du travail, total à payer, montants en lettres).
+     */
+    public static function modeleCnss(Client $client, string $mois): array
+    {
+        $mm = self::trimestre($mois);
+        $d = Carbon::parse($mois.'-01');
+        $P = PaieCalc::parametres($client);
+        $k = $client->paie_config ?? [];
+        $lignes = [];
+        $tot = [0.0, 0.0, 0.0, 0.0];
+        // Permanents : CDI ou contrat non renseigné ; occasionnels : tout autre contrat (CDD, SIVP, Karama, stage…).
+        $contrats = \App\Models\Salarie::where('client_id', $client->id)->pluck('type_contrat', 'id');
+        $permanents = 0;
+        foreach (self::parSalarie($client, $mm, 'base_cnss', 'decl_cnss') as $id => $p) {
+            $v = array_map(fn ($m) => (float) ($p['mois'][$m] ?? 0.0), $mm);
+            $v[] = r3(array_sum($v));
+            if ($v[3] == 0.0) continue;
+            if (in_array($contrats[$id] ?? null, [null, '', 'CDI'], true)) $permanents++;
+            $lignes[] = ['ordre' => count($lignes) + 1, 'assure' => self::numeroCnss($p['cnss']), 'nom' => mb_strtoupper($p['nom']), 'matricule' => $p['matricule'] ?? null, 'brut' => $v];
+            foreach ($v as $i => $x) $tot[$i] = r3($tot[$i] + $x);
+        }
+        $pages = array_map(function ($bloc) {
+            $t = [0.0, 0.0, 0.0, 0.0];
+            foreach ($bloc as $l) foreach ($l['brut'] as $i => $x) $t[$i] = r3($t[$i] + $x);
+            return ['lignes' => $bloc, 'total' => $t];
+        }, array_chunk($lignes, self::CNSS_LIGNES_PAGE) ?: [[]]);
+
+        // Sécurité sociale : parts salariale et patronale hors accident du travail, déclaré sur sa propre ligne.
+        $tauxAt = (float) ($P['at'] ?? 0);
+        $tauxSs = r3((float) $P['cnssS'] + (float) $P['cnssP'] - $tauxAt);
+        $base = $tot[3];
+        $ss = r3($base * $tauxSs / 100);
+        $at = r3($base * $tauxAt / 100);
+        $total = r3($ss + $at);
+        return [
+            'client' => $client, 'trimestre' => $d->quarter, 'libelle_trimestre' => $d->quarter.($d->quarter === 1 ? 'er' : 'ème').' Trimestre', 'annee' => $d->year,
+            'employeur' => self::numeroCnss($client->matricule_cnss), 'bureau' => $client->cnss_bureau, 'matricule_fiscal' => $client->matricule_fiscal,
+            'activite' => $client->paie_activite, 'adresse' => $client->adresse, 'code_postal' => $k['code_postal'] ?? null, 'ville' => $k['ville'] ?? null,
+            'pages' => $pages, 'totaux' => $tot, 'effectif' => count($lignes),
+            'permanents' => $permanents, 'occasionnels' => count($lignes) - $permanents,
+            'base' => $base, 'taux_ss' => $tauxSs, 'ss' => $ss, 'taux_at' => $tauxAt, 'at' => $at, 'total' => $total,
+            'lettres_salaires' => montant_lettres($base), 'lettres_total' => montant_lettres($total), 'date' => now()->format('d/m/Y'),
+        ];
+    }
+
+    /** N° CNSS au format des modèles : « 17059880 - 02 ». */
+    private static function numeroCnss(?string $n): string
+    {
+        $n = trim((string) $n);
+        return preg_match('/^(\d+)\s*[-\/ ]\s*(\d+)$/', $n, $m) ? $m[1].' - '.$m[2] : $n;
+    }
+
     /** Récapitulatif des cotisations CNSS du trimestre (mois par mois). */
     public static function recapCnss(Client $client, string $mois): Etat
     {
@@ -670,7 +728,7 @@ class EtatsPaie
         $par = [];
         foreach ($mois as $m) {
             foreach (self::declares(PaieCalc::moisDeclares($client, $m), $decl) as $x) {
-                $par[$x['salarie_id']] ??= ['nom' => $x['nom'], 'cin' => $x['cin'] ?? null, 'cnss' => $x['cnss'] ?? null, 'mois' => []];
+                $par[$x['salarie_id']] ??= ['nom' => $x['nom'], 'cin' => $x['cin'] ?? null, 'cnss' => $x['cnss'] ?? null, 'matricule' => $x['matricule'] ?? null, 'mois' => []];
                 $par[$x['salarie_id']]['mois'][$m] = r3(($par[$x['salarie_id']]['mois'][$m] ?? 0) + ($x[$cle] ?? $x['brut']));
             }
         }
