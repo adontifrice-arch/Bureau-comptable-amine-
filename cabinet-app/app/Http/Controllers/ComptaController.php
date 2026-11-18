@@ -185,7 +185,7 @@ class ComptaController extends Controller
     {
         if (! \App\Services\Ecritures::autorise($r->user())) return back()->with('err', self::REFUS);
         if ($ecriture->trashed()) return back()->with('err', 'Restaurez l’écriture avant de la modifier.');
-        $d = $r->validate(['date' => 'required|date', 'journal' => 'required|in:'.implode(',', array_keys(Ecriture::JOURNAUX)), 'libelle' => 'required|max:255',
+        $d = $r->validate(['date' => 'required|date', 'journal' => ['required', \Illuminate\Validation\Rule::in(array_keys(Ecriture::journaux($ecriture->client_id)))], 'libelle' => 'required|max:255',
             'lignes' => 'required|array', 'lignes.*.compte' => 'nullable|regex:/^\d{1,10}$/', 'lignes.*.debit' => 'nullable|numeric|min:0', 'lignes.*.credit' => 'nullable|numeric|min:0'],
             ['lignes.*.compte.regex' => 'Un compte ne comporte que des chiffres.']);
         try {
@@ -231,10 +231,33 @@ class ComptaController extends Controller
         return back()->with('ok', 'Paie comptabilisée au journal de paie.');
     }
 
+    /** Journal et écritures → Journaux : ajout d'un journal au dossier (code et libellé), ou retrait d'un journal ajouté qui n'a pas d'écriture. */
+    public function journaux(Request $r)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        $J = Ecriture::journauxAjoutes($client->id);
+        if ($r->filled('retirer')) {
+            $code = (string) $r->input('retirer');
+            if (Ecriture::withTrashed()->where('client_id', $client->id)->where('journal', $code)->exists())
+                return back()->with('err', 'Le journal '.$code.' contient des écritures (y compris supprimées) : il ne peut pas être retiré.');
+            Ecriture::enregistrerJournaux($client->id, array_filter($J, fn ($x) => $x['code'] !== $code));
+            $this->log('Retrait du journal '.$code, $client->id);
+            return back()->with('ok', 'Journal '.$code.' retiré.');
+        }
+        $r->merge(['code' => mb_strtoupper(trim((string) $r->input('code')))]);
+        $d = $r->validate(['code' => ['required', 'regex:/^[A-Z0-9]{1,10}$/', \Illuminate\Validation\Rule::notIn(array_keys(Ecriture::journaux($client->id)))], 'libelle' => 'required|max:60'],
+            ['code.regex' => 'Le code du journal ne comporte que des lettres et des chiffres (10 au plus).', 'code.not_in' => 'Ce code de journal existe déjà.']);
+        $J[] = ['code' => $d['code'], 'libelle' => trim($d['libelle'])];
+        Ecriture::enregistrerJournaux($client->id, $J);
+        $this->log('Ajout du journal '.$d['code'].' — '.$d['libelle'], $client->id);
+        return back()->with('ok', 'Journal '.$d['code'].' — '.trim($d['libelle']).' ajouté.');
+    }
+
     public function odStore(Request $r)
     {
         $client = $this->dossier($r);
-        $d = $r->validate(['date' => 'required|date', 'journal' => 'required|in:OD,VTE,ACH,BQ,CAI,PAI,AN', 'libelle' => 'required|max:255', 'lignes' => 'required|array']);
+        $d = $r->validate(['date' => 'required|date', 'journal' => ['required', \Illuminate\Validation\Rule::in(array_keys(Ecriture::journauxSaisie($client->id)))], 'libelle' => 'required|max:255', 'lignes' => 'required|array']);
         $L = collect($d['lignes'])->filter(fn ($l) => ! empty($l['compte']) && ((float) ($l['debit'] ?? 0) || (float) ($l['credit'] ?? 0)))
             ->map(fn ($l) => ['compte' => trim($l['compte']), 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0)])->values();
         if ($L->count() < 2) return back()->withInput()->with('err', 'Saisissez au moins deux lignes.');

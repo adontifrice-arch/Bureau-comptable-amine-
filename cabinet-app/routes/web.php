@@ -103,6 +103,11 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('comptabilite/factures/{fr}/rejeter', [C\ComptaController::class, 'rejeter'])->middleware('chef')->name('compta.factures.rejeter');
     Route::post('comptabilite/paies/{paie}/valider', [C\ComptaController::class, 'validerPaie'])->middleware('chef')->name('compta.paies.valider');
     Route::post('comptabilite/od', [C\ComptaController::class, 'odStore'])->middleware('chef')->name('compta.od.store');
+    Route::post('comptabilite/journaux', [C\ComptaController::class, 'journaux'])->middleware('chef')->name('compta.journaux');
+    Route::get('comptabilite/balance-n1', [C\BalanceN1Controller::class, 'index'])->name('compta.balance-n1');
+    Route::post('comptabilite/balance-n1/lire', [C\BalanceN1Controller::class, 'lire'])->name('compta.balance-n1.lire');
+    Route::post('comptabilite/balance-n1/abandonner', [C\BalanceN1Controller::class, 'abandonner'])->name('compta.balance-n1.abandonner');
+    Route::post('comptabilite/balance-n1', [C\BalanceN1Controller::class, 'enregistrer'])->middleware('chef')->name('compta.balance-n1.enregistrer');
     Route::post('comptabilite/comptes', [C\ComptaController::class, 'compteStore'])->name('compta.comptes.store');
     Route::get('comptabilite/balance/imprimer', [C\ComptaController::class, 'balancePrint'])->name('compta.balance.print');
     Route::get('comptabilite/balance/export', [C\ComptaController::class, 'balanceCsv'])->name('compta.balance.csv');

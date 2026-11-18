@@ -29,6 +29,9 @@ class ClientController extends Controller
 
     public function store(ClientRequest $r)
     {
+        // Reprise : balance N-1 facultative, lue après la création puis présentée pour contrôle dans la comptabilité du dossier
+        $r->validate(['balance_n1' => 'nullable|'.str_replace('required|', '', BalanceN1Controller::FICHIER), 'exercice' => 'nullable|integer|min:2000|max:2100'],
+            collect(BalanceN1Controller::messages())->mapWithKeys(fn ($m, $k) => [str_replace('fichier', 'balance_n1', $k) => $m])->all());
         $client = DB::transaction(function () use ($r) {
             $c = Client::create($r->client());
             $this->syncAssocies($c, $r->associes());
@@ -36,6 +39,14 @@ class ClientController extends Controller
             return $c;
         });
         $this->log('Création du client '.$client->nom, $client->id);
+        if ($r->hasFile('balance_n1')) {
+            session(['dossier' => $client->id]);
+            $annee = (int) ($r->input('exercice') ?: now()->year);
+            if ($err = BalanceN1Controller::lireFichier($r, $client, $r->file('balance_n1'), $annee)) {
+                return redirect()->route('compta.balance-n1', ['annee' => $annee])->with('err', 'Client créé. '.$err);
+            }
+            return redirect()->route('compta.balance-n1')->with('ok', 'Client créé. Contrôlez la balance '.($annee - 1).' lue avant de l’enregistrer.');
+        }
         return redirect()->route('clients.show', $client)->with('ok', 'Client créé. Les acomptes provisionnels ont été ajoutés aux échéances.');
     }
 

@@ -13,6 +13,34 @@ class Ecriture extends Model
 
     public const JOURNAUX = ['OD' => 'Opérations diverses', 'VTE' => 'Ventes', 'ACH' => 'Achats', 'BQ' => 'Banque', 'CAI' => 'Caisse', 'PAI' => 'Paie', 'AMO' => 'Amortissements', 'AN' => 'À-nouveaux'];
 
+    /** Journaux passés par l'application seulement (paie, amortissements) : pas proposés à la saisie manuelle. */
+    public const AUTOMATIQUES = ['PAI', 'AMO'];
+
+    /** Journaux du dossier : journaux standard, puis ceux ajoutés au dossier (code => libellé). */
+    public static function journaux(?int $client): array
+    {
+        $j = self::JOURNAUX;
+        foreach (self::journauxAjoutes($client) as $x) $j[$x['code']] ??= $x['libelle'];
+        return $j;
+    }
+
+    /** Journaux ajoutés au dossier : [['code' => 'BQ2', 'libelle' => 'Banque BIAT'], …]. */
+    public static function journauxAjoutes(?int $client): array
+    {
+        return $client ? array_values((array) Setting::get('journaux.'.$client, [])) : [];
+    }
+
+    public static function enregistrerJournaux(int $client, array $journaux): void
+    {
+        Setting::put('journaux.'.$client, array_values($journaux));
+    }
+
+    /** Journaux proposés à la saisie d'une écriture manuelle. */
+    public static function journauxSaisie(?int $client): array
+    {
+        return array_diff_key(self::journaux($client), array_flip(self::AUTOMATIQUES));
+    }
+
     protected $table = 'ecritures';
     protected $guarded = [];
     protected $casts = ['date'=>'date'];
@@ -35,6 +63,7 @@ class Ecriture extends Model
             'rb' => 'Relevé bancaire'.(($l = ReleveLigne::find($id)) ? ' — '.$l->libelle : ''),
             'immo' => 'Acquisition d’immobilisation'.(($i = Immobilisation::find($id)) ? ' — '.$i->designation : ''),
             'amo' => 'Dotations aux amortissements '.$id,
+            'bal' => 'Reprise de la balance '.$id,
             'pret' => 'Versement d’un prêt au personnel'.(($p = Pret::with('salarie')->find($id)) ? ' — '.$p->salarie?->nomComplet() : ''),
             default => $this->source,
         };

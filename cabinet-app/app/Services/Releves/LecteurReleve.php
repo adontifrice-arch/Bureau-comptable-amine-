@@ -88,7 +88,7 @@ class LecteurReleve
         return self::texte(implode("\n", $texte));
     }
 
-    private static function texteWord($el): string
+    public static function texteWord($el): string
     {
         if ($el instanceof TextBreak) return "\n";
         if ($el instanceof Text) return (string) $el->getText();

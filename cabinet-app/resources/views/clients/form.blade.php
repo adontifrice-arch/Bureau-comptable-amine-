@@ -2,7 +2,7 @@
 <x-layouts.app :title="$edit ? 'Modifier '.$client->nom : 'Nouveau client'">
     <x-page-header :title="$edit ? $client->nom : 'Nouveau client'" :subtitle="$edit ? 'Modifier la fiche du client' : 'Créer un dossier client'" :back="$edit ? route('clients.show', $client) : route('clients.index')"/>
 
-    <form method="POST" action="{{ $edit ? route('clients.update', $client) : route('clients.store') }}" class="space-y-6"
+    <form method="POST" action="{{ $edit ? route('clients.update', $client) : route('clients.store') }}" class="space-y-6" @unless($edit) enctype="multipart/form-data" @endunless
           x-data="{ associes: @js(collect(old('associes', $associes))->values()), gas: @js((string) old('gerant_associe', $client->gerant_associe === null ? '' : ($client->gerant_associe ? '1' : '0'))),
                     np: @js((string) old('nb_parts', $client->nb_parts)), gp: @js((string) old('gerant_parts', $client->gerant_parts)), vn: @js((string) old('valeur_nominale', $client->valeur_nominale)), cap: @js((string) old('capital', $client->capital > 0 ? $client->capital : '')),
                     addA() { this.associes.push({nom:'',cin:'',parts:'',apport:'numeraire'}) },
@@ -100,6 +100,21 @@
                 <p x-show="+np > 0" class="text-xs" :class="totalParts() > +np ? 'text-rose-600' : 'text-slate-500'">Parts attribuées : <span x-text="totalParts()"></span> / <span x-text="np"></span></p>
             </div>
         </div>
+
+        @unless($edit)
+            <div class="card">
+                <div class="card-h"><h2 class="card-t">Reprise de la comptabilité</h2><span class="text-xs text-slate-400">facultatif</span></div>
+                <div class="card-b grid gap-4 md:grid-cols-3">
+                    <div class="md:col-span-2"><label class="label" for="c-bn">Balance de l’exercice précédent (PDF, Excel ou Word)</label>
+                        <input id="c-bn" type="file" name="balance_n1" accept=".pdf,.xlsx,.xls,.ods,.csv,.txt,.docx,.doc,.rtf" class="input">
+                        @error('balance_n1')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
+                    <div><label class="label" for="c-ex">Comptabilité tenue à partir de</label>
+                        <input id="c-ex" type="number" name="exercice" value="{{ old('exercice', now()->year) }}" min="2000" max="2100" class="input">
+                        <p class="mt-1 text-xs text-slate-400">La balance importée est celle de l’année précédente.</p></div>
+                    <p class="text-xs text-slate-500 md:col-span-3">Après l’enregistrement du client, les comptes lus vous sont présentés pour contrôle, puis passés en à-nouveaux.</p>
+                </div>
+            </div>
+        @endunless
 
         <div class="flex justify-end gap-2">
             <a href="{{ $edit ? route('clients.show', $client) : route('clients.index') }}" class="btn-secondary">Annuler</a>

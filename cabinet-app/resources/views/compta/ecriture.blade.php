@@ -5,7 +5,7 @@
 @endphp
 <x-layouts.app title="Écriture {{ $e->journal }} du {{ dfr($e->date) }}">
     <script>window.PLAN = @js((object) $plan); window.URL_COMPTES = @js(route('compta.comptes.store'));</script>
-    <x-page-header :title="'Écriture — '.$e->libelle" :subtitle="$e->client->nom.' · journal '.(\App\Models\Ecriture::JOURNAUX[$e->journal] ?? $e->journal).' · '.dfr($e->date)">
+    <x-page-header :title="'Écriture — '.$e->libelle" :subtitle="$e->client->nom.' · journal '.(\App\Models\Ecriture::journaux($e->client_id)[$e->journal] ?? $e->journal).' · '.dfr($e->date)">
         <a href="{{ $retour }}" class="btn-secondary"><x-icon name="arrow-left" class="h-4 w-4"/> Retour</a>
     </x-page-header>
 
@@ -57,7 +57,7 @@
             <h2 class="card-t">Modifier l’écriture</h2>
             <div class="grid gap-4 md:grid-cols-4">
                 <div><label class="label" for="e-date">Date</label><input id="e-date" type="date" name="date" class="input" value="{{ old('date', $e->date->format('Y-m-d')) }}" required></div>
-                <div><label class="label" for="e-jnl">Journal</label><select id="e-jnl" name="journal" class="input">@foreach(\App\Models\Ecriture::JOURNAUX as $k => $j)<option value="{{ $k }}" @selected(old('journal', $e->journal) === $k)>{{ $j }}</option>@endforeach</select></div>
+                <div><label class="label" for="e-jnl">Journal</label><select id="e-jnl" name="journal" class="input">@foreach(\App\Models\Ecriture::journaux($e->client_id) as $k => $j)<option value="{{ $k }}" @selected(old('journal', $e->journal) === $k)>{{ $j }}</option>@endforeach</select></div>
                 <div class="md:col-span-2"><label class="label" for="e-lib">Libellé</label><input id="e-lib" name="libelle" class="input" value="{{ old('libelle', $e->libelle) }}" required maxlength="255"></div>
             </div>
             <datalist id="cpts-ecr" data-plan>@foreach($plan as $n => $lib)<option value="{{ $n }}">{{ $lib }}</option>@endforeach</datalist>
