@@ -145,8 +145,22 @@
             </form>
             <div class="card card-b space-y-2 self-start text-sm">
                 <h3 class="card-t mb-2">Résultat</h3>
-                <div class="flex justify-between"><span>Résultat fiscal (avant provisions)</span><span class="font-mono">{{ tnd($fisc['rf']) }}</span></div>
-                <div class="flex justify-between"><span>Résultat imposable</span><b class="font-mono">{{ tnd($fisc['imposable']) }}</b></div>
+                @if($ir = $fisc['ir'])
+                    @php $ligne = fn ($lib, $m, $signe = '−') => '<div class="flex justify-between gap-3"><span>'.e($lib).'</span><span class="font-mono whitespace-nowrap">'.($m != 0 ? $signe.' ' : '').tnd($m).'</span></div>'; @endphp
+                    <div class="flex justify-between gap-3"><span>Résultat fiscal de l’activité (avant déduction des bénéfices d’exploitation)</span><span class="font-mono whitespace-nowrap">{{ tnd($ir['activite']) }}</span></div>
+                    @if($ir['autres'] != 0){!! $ligne('Autres revenus de la déclaration IR', $ir['autres'], '+') !!}@endif
+                    {!! $ligne('Pertes des années antérieures non encore déduites', $ir['pertes']) !!}
+                    {!! $ligne('Déductions au titre des revenus et bénéfices d’activité', $ir['ded_act']) !!}
+                    {!! $ligne('Déductions des revenus réinvestis', $ir['reinv']) !!}
+                    {!! $ligne('Déductions communes', $ir['ded_communes']) !!}
+                    <div class="pl-3 text-xs text-slate-500">dont chef de famille {{ tnd($ir['ded_chef'], false) }}, enfants {{ tnd($ir['ded_enf'], false) }}, parents {{ tnd($ir['ded_parents'], false) }}</div>
+                    <div class="flex justify-between gap-3 border-t border-slate-200 pt-2"><span>Résultat imposable</span><span class="font-mono">{{ tnd($ir['rni']) }}</span></div>
+                    <div class="flex justify-between gap-3"><span>Résultat imposable arrondi au dinar supérieur</span><b class="font-mono">{{ tnd($ir['rni_arrondi']) }}</b></div>
+                    <p class="text-xs text-slate-400">Pertes, déductions et autres revenus : ceux de la déclaration annuelle IR de l’exercice ; situation familiale de la fiche client.</p>
+                @else
+                    <div class="flex justify-between"><span>Résultat fiscal (avant provisions)</span><span class="font-mono">{{ tnd($fisc['rf']) }}</span></div>
+                    <div class="flex justify-between"><span>Résultat imposable</span><b class="font-mono">{{ tnd($fisc['imposable']) }}</b></div>
+                @endif
                 <div class="flex justify-between"><span>Impôt théorique {{ $client->estPhysique() ? '(barème IRPP)' : '' }}</span><span class="font-mono">{{ tnd($fisc['th']) }}</span></div>
                 <div class="flex justify-between"><span>Impôt dû</span><b class="font-mono">{{ tnd($fisc['du']) }}</b></div>
                 <div class="flex justify-between border-t border-slate-200 pt-2 text-base"><span>{{ $fisc['sol'] >= 0 ? 'Solde à payer' : 'Crédit d’impôt' }}</span><b class="font-mono {{ $fisc['sol'] >= 0 ? 'text-rose-600' : 'text-emerald-600' }}">{{ tnd(abs($fisc['sol'])) }}</b></div>

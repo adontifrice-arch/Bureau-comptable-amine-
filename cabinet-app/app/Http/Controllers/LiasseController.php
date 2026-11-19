@@ -7,14 +7,14 @@ use App\Models\Liasse;
 use App\Services\LiasseFiscale;
 use App\Models\PassageFiscal;
 use App\Services\Compta;
-use App\Services\PaieCalc;
+use App\Services\DeclarationAnnuelle;
 use App\Services\TableauPassage;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 
 class LiasseController extends Controller
 {
-    public static function fiscal(Client $c, array $P, ?array $L): array
+    public static function fiscal(Client $c, array $P, ?array $L, ?int $annee = null): array
     {
         $L = array_merge(['rei' => 0, 'ded' => 0, 'taux' => 15, 'min' => 0, 'acp' => 0, 'rs' => 0], $L ?? []);
         // Résultat fiscal (II) = résultat comptable après impôt + impôt sur les bénéfices comptabilisé (69 : IS, IRPP, CSS)
@@ -22,10 +22,27 @@ class LiasseController extends Controller
         // jusqu'au résultat imposable, base de l'impôt.
         $rf = r3($P['rav'] + $L['rei'] - $L['ded']);
         $calc = TableauPassage::calcul(TableauPassage::annexe($c), $P['res'], $P['is'], $L);
-        $base = max(0, $calc['imposable']);
-        $th = $c->estPhysique() ? r3(PaieCalc::bareme(\App\Services\DeclarationAnnuelle::arrondiImposable($base), Setting::paie()['bar'])) : r3($base * $L['taux'] / 100);
+        $ir = null;
+        if ($c->estPhysique()) {
+            // Personne physique : suite du calcul de la déclaration IR de l'exercice (sans l'enregistrer) à partir du résultat fiscal
+            // de l'activité (ligne 80) : pertes des années antérieures, déductions au titre de l'activité, revenus réinvestis,
+            // déductions communes, puis résultat imposable arrondi au dinar supérieur et barème de l'IRPP.
+            $f = $annee ? (array) (\App\Models\Declaration::where(['client_id' => $c->id, 'type' => 'ann', 'periode' => (string) $annee])->first()?->champs ?? []) : [];
+            $f['modele'] = 'ir';
+            DeclarationAnnuelle::appliquerPassageIr($f, $c, $calc['F']);
+            $C = DeclarationAnnuelle::calculIr($f);
+            $activite = (float) $f[DeclarationAnnuelle::prefixeIr($c).'res_fiscal'];
+            $ir = ['activite' => $activite, 'autres' => r3($C['rng'] - $activite), 'rng' => $C['rng'], 'pertes' => $C['pertes_imput'], 'ded_act' => $C['ded_act'],
+                'reinv' => $C['reinv'], 'ded_communes' => $C['ded_communes'], 'ded_chef' => $C['ded_chef'], 'ded_enf' => $C['ded_enf'], 'ded_parents' => $C['ded_parents'],
+                'rni' => $C['rni'], 'rni_arrondi' => $C['rni_arrondi']];
+            $imposable = $C['rni_arrondi'];
+            $th = r3($C['impot_bareme']);
+        } else {
+            $imposable = $calc['imposable'];
+            $th = r3(max(0, $imposable) * $L['taux'] / 100);
+        }
         $du = r3(max($th, $L['min']));
-        return $L + ['res' => $P['res'], 'impots' => $P['is'], 'rf' => $rf, 'calc' => $calc, 'imposable' => $calc['imposable'], 'th' => $th, 'du' => $du, 'sol' => r3($du - $L['acp'] - $L['rs'])];
+        return $L + ['res' => $P['res'], 'impots' => $P['is'], 'rf' => $rf, 'calc' => $calc, 'ir' => $ir, 'imposable' => $imposable, 'th' => $th, 'du' => $du, 'sol' => r3($du - $L['acp'] - $L['rs'])];
     }
 
     private function data(Request $r): array
@@ -35,7 +52,7 @@ class LiasseController extends Controller
         $F = Compta::etats($client->id, $annee);
         $Fp = Compta::etats($client->id, $annee - 1);
         $L = PassageFiscal::where('client_id', $client->id)->where('annee', $annee)->first()?->donnees;
-        return compact('client', 'annee', 'F', 'Fp') + ['fisc' => static::fiscal($client, $F['P'], $L), 'saved' => (bool) $L,
+        return compact('client', 'annee', 'F', 'Fp') + ['fisc' => static::fiscal($client, $F['P'], $L, $annee), 'saved' => (bool) $L,
             'annexe' => TableauPassage::annexe($client), 'passage' => TableauPassage::pourAffichage($L)];
     }
 

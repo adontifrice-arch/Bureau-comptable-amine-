@@ -600,18 +600,22 @@ class DeclarationAnnuelle
      * @param array $V tableau F6005 calculé (liasse fiscale ou tableau de passage) : résultat fiscal (80, ou déficit reportable 107),
      *                 bénéfices déduits au titre de l'exploitation (93 à 96) vers les déductions au titre de l'activité, revenus réinvestis (99).
      */
-    public static function preremplirIr(array &$f, Client $c, int $y, array $P, float $tvac, float $rf, array $L, array $V = []): void
+    /** Préfixe de la catégorie de revenus de l'activité dans la déclaration IR : bnc_ (professions non commerciales) ou bic_. */
+    public static function prefixeIr(Client $c): string
+    {
+        return preg_match('/lib[ée]ral|bnc|m[ée]decin|avocat|architecte|expert|conseil|ing[ée]nieur/iu', (string) $c->forme.' '.$c->paie_activite) ? 'bnc_' : 'bic_';
+    }
+
+    /**
+     * Report du tableau de passage (F6005 calculé) dans les rubriques de la déclaration IR : situation familiale de la fiche client,
+     * résultat fiscal (ligne 80, ou déficit reportable 107 ; les déficits reportés 65 y sont déjà déduits, ils ne vont pas dans les pertes
+     * des années antérieures), bénéfices déduits au titre de l'exploitation (93 à 96) et revenus réinvestis (99). Les lignes reprises sont
+     * remplacées à chaque report, les lignes saisies à la main conservées.
+     */
+    public static function appliquerPassageIr(array &$f, Client $c, array $V): void
     {
         foreach (self::famille($c) as $k => $v) $f[$k] = $v;
-        $bnc = (bool) preg_match('/lib[ée]ral|bnc|m[ée]decin|avocat|architecte|expert|conseil|ing[ée]nieur/iu', (string) $c->forme.' '.$c->paie_activite);
-        $p = $bnc ? 'bnc_' : 'bic_';
-        $f[$p.'ca_loc'] = r3($P['ca']);
-        $f[$p.'ca_ttc'] = r3($P['ca'] + $tvac);
-        // Résultat fiscal aligné sur la liasse (F6005 ligne 80 ; déficit reportable 107 en cas de déficit). Les déficits reportés (65)
-        // y sont déjà déduits : ils ne vont pas dans les pertes des années antérieures de la déclaration.
-        $f[$p.'res_fiscal'] = self::resultatFiscalIr($V);
-        // Bénéfices déduits au titre de l'exploitation et revenus réinvestis : lignes reprises remplacées à chaque pré-remplissage,
-        // lignes saisies à la main conservées
+        $f[self::prefixeIr($c).'res_fiscal'] = self::resultatFiscalIr($V);
         $auto = [self::CADRE_PASSAGE, ...array_column(self::IR_DEPUIS_F6005, 1)];
         $garde = fn ($t) => array_values(array_filter((array) ($f[$t] ?? []), fn ($l) => ! in_array($l['cadre'] ?? null, $auto, true)));
         $f['ded_act'] = $garde('ded_act');
@@ -621,6 +625,15 @@ class DeclarationAnnuelle
             if ($m == 0) continue;
             $f[$table][] = $table === 'reinv' ? ['code' => '', 'cadre' => $lib, 'investi' => '', 'mf' => '', 'nom' => '', 'deduit' => $m] : ['code' => '', 'cadre' => $lib, 'montant' => $m];
         }
+    }
+
+    public static function preremplirIr(array &$f, Client $c, int $y, array $P, float $tvac, float $rf, array $L, array $V = []): void
+    {
+        $p = self::prefixeIr($c);
+        $bnc = $p === 'bnc_';
+        $f[$p.'ca_loc'] = r3($P['ca']);
+        $f[$p.'ca_ttc'] = r3($P['ca'] + $tvac);
+        self::appliquerPassageIr($f, $c, $V);
         if (! $bnc) { $f['bic_achats'] = r3($P['ach']); }
         $f['min_loc_02'] = r3($P['ca'] + $tvac);
         if (! empty($L['rs'])) $f['ded_rs'] = (float) $L['rs'];

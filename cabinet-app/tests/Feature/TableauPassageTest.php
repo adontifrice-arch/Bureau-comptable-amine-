@@ -117,6 +117,32 @@ class TableauPassageTest extends TestCase
         $this->assertCount(2, \App\Models\Declaration::where('client_id', $c->id)->sole()->champs['reinv']);
     }
 
+    public function test_resultat_imposable_irpp_dans_le_passage(): void
+    {
+        $c = $this->dossier(['nom' => 'Ben Ali Sami', 'type_personne' => 'physique', 'forme' => 'Commerçant (BIC)', 'paie_activite' => 'Négoce',
+            'chef_famille' => true, 'enfants_charge' => [['prenom' => 'Sami', 'type' => 'moins_20']], 'parents_charge' => 1]);
+        // Pertes antérieures saisies dans la déclaration IR de l'exercice
+        \App\Models\Declaration::create(['client_id' => $c->id, 'type' => 'ann', 'periode' => '2025', 'statut' => 'brouillon', 'annexes' => [],
+            'champs' => ['modele' => 'ir', 'pertes' => [['annee' => '2023', 'montant' => 1000]]]]);
+        $this->post(route('liasse.passage'), ['annee' => 2025, 'rei_l' => ['r1_14' => '0.4'], 'suite' => ['e5' => '3000', 'e3' => '500']])->assertSessionHasNoErrors();
+
+        // 40 000,4 − 1 000 (pertes) − 3 000 (activité) − 500 (réinvestis) − 850 (communes : 300 + 100 + parent 450 au plus) = 34 650,4 → 34 651
+        $fisc = \App\Http\Controllers\LiasseController::fiscal($c, \App\Services\Compta::etats($c->id, 2025)['P'], PassageFiscal::sole()->donnees, 2025);
+        $ir = $fisc['ir'];
+        $this->assertSame([40000.4, 1000.0, 3000.0, 500.0, 300.0, 100.0, 450.0, 850.0, 34650.4, 34651.0],
+            [$ir['activite'], $ir['pertes'], $ir['ded_act'], $ir['reinv'], $ir['ded_chef'], $ir['ded_enf'], $ir['ded_parents'], $ir['ded_communes'], $ir['rni'], $ir['rni_arrondi']]);
+        $this->assertSame([34651.0, r3(\App\Services\DeclarationAnnuelle::bareme(34651))], [$fisc['imposable'], $fisc['th']]);
+
+        $this->get(route('liasse.index', ['tab' => 'fis', 'annee' => 2025]))->assertOk()
+            ->assertSee('Pertes des années antérieures non encore déduites')->assertSee('Déductions au titre des revenus et bénéfices d’activité', false)
+            ->assertSee('Déductions des revenus réinvestis')->assertSee('Déductions communes')->assertSee('Résultat imposable arrondi au dinar supérieur')
+            ->assertSee('34 650,400')->assertSee('34 651,000');
+
+        // Rien n'est enregistré dans la déclaration par l'affichage du passage
+        $this->assertSame([['annee' => '2023', 'montant' => 1000]], \App\Models\Declaration::sole()->champs['pertes']);
+        $this->assertArrayNotHasKey('bic_res_fiscal', \App\Models\Declaration::sole()->champs);
+    }
+
     public function test_declaration_ir_reprend_les_avantages_et_les_deficits(): void
     {
         $c = $this->dossier(['nom' => 'Ben Ali Sami', 'type_personne' => 'physique', 'forme' => 'Commerçant (BIC)', 'paie_activite' => 'Négoce']);
