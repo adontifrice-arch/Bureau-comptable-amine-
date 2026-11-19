@@ -600,9 +600,37 @@ class DeclarationAnnuelle
      * @param array $V tableau F6005 calculé (liasse fiscale ou tableau de passage) : résultat fiscal (80, ou déficit reportable 107),
      *                 bénéfices déduits au titre de l'exploitation (93 à 96) vers les déductions au titre de l'activité, revenus réinvestis (99).
      */
-    /** Préfixe de la catégorie de revenus de l'activité dans la déclaration IR : bnc_ (professions non commerciales) ou bic_. */
+    /** Section de la déclaration IR propre à chaque catégorie de revenus de la fiche client. */
+    public const SECTIONS_CATEGORIES = ['bic' => 'bic', 'bnc' => 'bnc', 'agricole' => 'agr', 'fonciers' => 'fon', 'salaires' => 'sal',
+        'capitaux_mobiliers' => 'rcm', 'autres' => 'aut', 'exoneres' => 'exo', 'non_soumis' => 'exo'];
+
+    /**
+     * Sections de la déclaration IR à afficher : celles des catégories de revenus cochées sur la fiche client, plus les sections communes
+     * (impôt, déductions, calcul, liquidation, contributions). Une section d'une catégorie non cochée reste affichée si elle contient
+     * des montants, pour ne rien masquer. Sans catégorie cochée sur la fiche, toutes les sections sont affichées.
+     */
+    public static function sectionsIr(Client $c, array $f): array
+    {
+        $toutes = array_keys(self::IR);
+        $cats = (array) ($c->categories_revenus ?? []);
+        if (! $cats) return $toutes;
+        $propres = array_unique(array_values(self::SECTIONS_CATEGORIES));
+        $cochees = array_unique(array_map(fn ($k) => self::SECTIONS_CATEGORIES[$k] ?? null, $cats));
+        $remplie = fn ($s) => (bool) array_filter(array_keys(self::IR[$s][2]), fn ($k) => ! empty($f[$k]) && (float) $f[$k] != 0)
+            || (bool) array_filter(self::PLACE['ir'], fn ($sec, $t) => $sec === $s && ! empty(array_filter((array) ($f[$t] ?? []), fn ($l) => array_filter((array) $l))), ARRAY_FILTER_USE_BOTH);
+        return array_values(array_filter($toutes, fn ($s) => ! in_array($s, $propres, true) || in_array($s, $cochees, true) || $remplie($s)));
+    }
+
+    /**
+     * Préfixe de la catégorie de revenus de l'activité dans la déclaration IR : celle cochée sur la fiche client (BNC, sinon BIC, sinon
+     * activité agricole), à défaut d'après la forme et l'activité : bnc_ (professions non commerciales) ou bic_.
+     */
     public static function prefixeIr(Client $c): string
     {
+        $cats = (array) ($c->categories_revenus ?? []);
+        if (in_array('bic', $cats, true)) return 'bic_';
+        if (in_array('bnc', $cats, true)) return 'bnc_';
+        if (in_array('agricole', $cats, true)) return 'agr_';
         return preg_match('/lib[ée]ral|bnc|m[ée]decin|avocat|architecte|expert|conseil|ing[ée]nieur/iu', (string) $c->forme.' '.$c->paie_activite) ? 'bnc_' : 'bic_';
     }
 
@@ -630,11 +658,15 @@ class DeclarationAnnuelle
     public static function preremplirIr(array &$f, Client $c, int $y, array $P, float $tvac, float $rf, array $L, array $V = []): void
     {
         $p = self::prefixeIr($c);
-        $bnc = $p === 'bnc_';
+        // Rubriques pré-remplies d'une autre catégorie d'activité (catégorie changée sur la fiche) : vidées, pour ne pas compter deux fois
+        foreach (['bic_', 'bnc_', 'agr_'] as $autre) {
+            if ($autre !== $p) foreach (['ca_loc', 'ca_ttc', 'ca_tot', 'achats', 'res_compta', 'res_fiscal'] as $k) unset($f[$autre.$k]);
+        }
         $f[$p.'ca_loc'] = r3($P['ca']);
-        $f[$p.'ca_ttc'] = r3($P['ca'] + $tvac);
+        if ($p === 'agr_') $f['agr_ca_tot'] = r3($P['ca']);
+        else $f[$p.'ca_ttc'] = r3($P['ca'] + $tvac);
         self::appliquerPassageIr($f, $c, $V);
-        if (! $bnc) { $f['bic_achats'] = r3($P['ach']); }
+        if ($p === 'bic_') { $f['bic_achats'] = r3($P['ach']); }
         $f['min_loc_02'] = r3($P['ca'] + $tvac);
         if (! empty($L['rs'])) $f['ded_rs'] = (float) $L['rs'];
         if (! empty($L['acp']) && empty($f['acomptes'])) $f['acomptes'] = [['montant' => (float) $L['acp']]];

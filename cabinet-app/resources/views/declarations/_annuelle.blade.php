@@ -4,6 +4,8 @@
     $mod = $A::modele($client); $f = $A::champs($d->champs ?? [], $client, (int) $periode);
     $is = $mod === 'is';
     $DEF = $is ? $A::IS : $A::IR; $TAB = $is ? $A::TABLEAUX_IS : $A::TABLEAUX_IR; $IMP = $is ? $A::IMPOTS_IS : $A::IMPOTS_IR;
+    // Personne physique : seules les catégories de revenus cochées sur la fiche client
+    if (! $is) $DEF = array_intersect_key($DEF, array_flip($A::sectionsIr($client, $f)));
     $C = $is ? $A::calculIs($f) : $A::calculIr($f); $coches = $is ? $A::impotsIs($f) : $A::impotsIr($f);
     $calcules = ['ded_acp' => $C['acomptes'] ?? 0];
 @endphp

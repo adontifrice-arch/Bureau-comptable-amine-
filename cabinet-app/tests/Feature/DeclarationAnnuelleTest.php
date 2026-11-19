@@ -142,6 +142,39 @@ class DeclarationAnnuelleTest extends TestCase
         $this->assertSame(r3($avant - $C['ded_parents']), $C['rni']);
     }
 
+    public function test_seules_les_categories_de_revenus_de_la_fiche_client_sont_affichees(): void
+    {
+        $c = Client::create(['nom' => 'Ben Salah Karim', 'type_personne' => 'physique', 'forme' => 'Commerçant (BIC)', 'paie_activite' => 'Négoce',
+            'categories_revenus' => ['bnc', 'fonciers']]);
+        session(['dossier' => $c->id]);
+        $this->assertSame('bnc_', A::prefixeIr($c));   // catégorie cochée, et non la forme « Commerçant »
+        $voir = fn () => $this->get(route('declarations.index', $this->q()))->assertOk();
+
+        $voir()->assertSee('Bénéfices des professions non commerciales')->assertSee('Revenus fonciers')
+            ->assertDontSee('Bénéfices industriels et commerciaux')->assertDontSee('Traitements, salaires, pensions et rentes viagères')
+            ->assertDontSee('Bénéfices des activités agricoles ou de pêche')->assertDontSee('Revenus exonérés (pour information)')
+            ->assertSee('Déductions communes')->assertSee('Liquidation de l’impôt', false);
+
+        // Revenus exonérés ou non soumis à l'impôt cochés : section « Revenus exonérés »
+        $c->update(['categories_revenus' => ['bnc', 'non_soumis']]);
+        $voir()->assertSee('Revenus exonérés (pour information)')->assertDontSee('Revenus fonciers');
+
+        // Une section non cochée qui contient des montants reste affichée
+        Declaration::create(['client_id' => $c->id, 'type' => 'ann', 'periode' => '2025', 'statut' => 'brouillon', 'annexes' => [], 'champs' => ['modele' => 'ir', 'sal_brut' => 12000]]);
+        $this->assertContains('sal', A::sectionsIr($c, ['sal_brut' => 12000]));
+        $this->assertNotContains('sal', A::sectionsIr($c, ['sal_brut' => '']));
+
+        // Sans catégorie cochée : toutes les sections
+        $this->assertSame(array_keys(A::IR), A::sectionsIr(new Client(['type_personne' => 'physique']), []));
+
+        // Catégorie d'activité changée : le pré-remplissage vide les rubriques de l'ancienne catégorie (pas de double compte)
+        Declaration::where('client_id', $c->id)->update(['champs' => ['modele' => 'ir', 'bic_res_fiscal' => 5000, 'bic_ca_loc' => 9000]]);
+        $this->post(route('declarations.prefill'), $this->q())->assertSessionHas('ok');
+        $f = Declaration::where('client_id', $c->id)->sole()->champs;
+        $this->assertArrayNotHasKey('bic_res_fiscal', $f);
+        $this->assertArrayHasKey('bnc_res_fiscal', $f);
+    }
+
     public function test_declaration_des_personnes_physiques(): void
     {
         $c = Client::create(['nom' => 'Ben Salah Karim', 'type_personne' => 'physique', 'forme' => 'Libéral (BNC)', 'matricule_fiscal' => '1234567/R/A/P/000', 'adresse' => '5 rue de Rome 1000 Tunis', 'paie_activite' => 'Avocat']);
