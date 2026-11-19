@@ -17,7 +17,7 @@ class LiasseController extends Controller
     {
         $L = array_merge(['rei' => 0, 'ded' => 0, 'taux' => 15, 'min' => 0, 'acp' => 0, 'rs' => 0], $L ?? []);
         $rf = r3($P['rav'] + $L['rei'] - $L['ded']);
-        $th = $c->estPhysique() ? r3(PaieCalc::bareme(max(0, $rf), Setting::paie()['bar'])) : r3(max(0, $rf) * $L['taux'] / 100);
+        $th = $c->estPhysique() ? r3(PaieCalc::bareme(\App\Services\DeclarationAnnuelle::arrondiImposable($rf), Setting::paie()['bar'])) : r3(max(0, $rf) * $L['taux'] / 100);
         $du = r3(max($th, $L['min']));
         return $L + ['rf' => $rf, 'th' => $th, 'du' => $du, 'sol' => r3($du - $L['acp'] - $L['rs'])];
     }

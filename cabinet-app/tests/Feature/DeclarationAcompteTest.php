@@ -34,6 +34,9 @@ class DeclarationAcompteTest extends TestCase
         $this->assertSame([2380.0, 714.0, -286.0, 286.0, 0.0], [$C['impot_th'], $C['I'], $C['III'], $C['excedent'], $C['tot']]);
         // Personne physique : barème ; montant saisi prioritaire
         $this->assertSame(1875.0, P::calcul(['regime' => 'ir', 'base' => 30000])['I']);
+        // IRPP : la fraction de dinar du bénéfice imposable compte pour un dinar entier.
+        $this->assertSame(1875.0, P::calcul(['regime' => 'ir', 'base' => 29999.001])['I']);
+        $this->assertSame([30000.0, 30000.0, 0.0], array_map([\App\Services\DeclarationAnnuelle::class, 'arrondiImposable'], [29999.001, 30000, -12.5]));
         $this->assertSame(300.0, P::calcul(['regime' => 'ir', 'base' => 30000, 'impot_th' => 1000])['I']);
         $this->assertSame(['2026', '2e acompte provisionnel 2026'], [(string) P::periode('2026-A2')[0], P::libelle('2026-A2')]);
     }

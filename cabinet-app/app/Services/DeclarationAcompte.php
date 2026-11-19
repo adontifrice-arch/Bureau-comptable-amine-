@@ -69,7 +69,7 @@ class DeclarationAcompte
         $b = max(0, $o['base_th']);
         $o['impot_calc'] = match ($f['regime'] ?? null) {
             'is' => r3(max($b * (float) ($f['taux'] ?? 15) / 100, $n('min'))),
-            'ir' => r3(max(DeclarationAnnuelle::bareme(floor($b)), $n('min'))),
+            'ir' => r3(max(DeclarationAnnuelle::bareme(DeclarationAnnuelle::arrondiImposable($b)), $n('min'))),
             default => 0.0,
         };
         $o['impot_th'] = isset($f['impot_th']) && $f['impot_th'] !== '' ? r3($n('impot_th')) : $o['impot_calc'];

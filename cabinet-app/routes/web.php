@@ -269,6 +269,7 @@ Route::middleware(['auth', 'actif'])->group(function () {
     // ---------- Paramètres ----------
     Route::get('parametres', [C\ParametreController::class, 'index'])->name('parametres.index');
     Route::post('parametres/cabinet', [C\ParametreController::class, 'cabinet'])->middleware('chef')->name('parametres.cabinet');
+    Route::post('parametres/fiscal', [C\ParametreController::class, 'fiscal'])->middleware('chef')->name('parametres.fiscal');
     Route::post('parametres/mot-de-passe', [C\ParametreController::class, 'password'])->name('parametres.password');
     Route::patch('parametres/utilisateurs/{user}', [C\ParametreController::class, 'user'])->middleware('chef')->name('parametres.user');
     Route::delete('parametres/utilisateurs/{user}', [C\ParametreController::class, 'userDestroy'])->middleware('chef')->name('parametres.user.destroy');

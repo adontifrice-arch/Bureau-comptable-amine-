@@ -34,6 +34,15 @@ class ParametreController extends Controller
         return back()->with('ok', 'Paramètres du cabinet enregistrés.');
     }
 
+    /** Paramètres fiscaux : taux de la contribution sociale de solidarité (CSS) des personnes physiques. */
+    public function fiscal(Request $r)
+    {
+        $d = $r->validate(['css' => 'required|numeric|min:0|max:100'], ['css.required' => 'Indiquez le taux de la CSS.'], ['css' => 'taux de la CSS']);
+        Setting::put('fiscal', ['css' => +$d['css']] + Setting::fiscal());
+        $this->log('Taux de la CSS fixé à '.+$d['css'].' %');
+        return redirect()->route('parametres.index', ['tab' => 'fiscal'])->with('ok', 'Taux de la CSS enregistré : '.str_replace('.', ',', (string) +$d['css']).' %.');
+    }
+
     /** Nouveau lien d'invitation : l'ancien cesse de fonctionner. */
     public function invitation(Request $r)
     {

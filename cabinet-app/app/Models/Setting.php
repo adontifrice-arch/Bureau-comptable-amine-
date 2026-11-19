@@ -43,6 +43,12 @@ class Setting extends Model
         ], static::get('cabinet', []));
     }
 
+    /** Paramètres fiscaux du cabinet : taux (en %) de la contribution sociale de solidarité des personnes physiques. */
+    public static function fiscal(): array
+    {
+        return array_merge(['css' => 0.5], static::get('fiscal', []));
+    }
+
     public static function paie(): array
     {
         return array_merge(config('cabinet.PP0'), static::get('paie', []));

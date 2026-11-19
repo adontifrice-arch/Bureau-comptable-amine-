@@ -1,7 +1,7 @@
 @php $chef = auth()->user()->estChef(); @endphp
 <x-layouts.app title="Paramètres">
     <x-page-header title="Paramètres"/>
-    <x-tabs :active="$tab" :items="array_filter(['cabinet' => $chef ? ['Cabinet', '?tab=cabinet'] : null, 'users' => $chef ? ['Utilisateurs ('.$users->where('status', 'pending')->count().' en attente)', '?tab=users'] : null, 'compte' => ['Mon compte', '?tab=compte']])"/>
+    <x-tabs :active="$tab" :items="array_filter(['cabinet' => $chef ? ['Cabinet', '?tab=cabinet'] : null, 'fiscal' => $chef ? ['Fiscalité', '?tab=fiscal'] : null, 'users' => $chef ? ['Utilisateurs ('.$users->where('status', 'pending')->count().' en attente)', '?tab=users'] : null, 'compte' => ['Mon compte', '?tab=compte']])"/>
     @if($tab === 'cabinet' && $chef)
         <form method="POST" action="{{ route('parametres.cabinet') }}" enctype="multipart/form-data" class="grid gap-6 lg:grid-cols-3">@csrf
             <div class="card lg:col-span-2"><div class="card-h"><h2 class="card-t">Coordonnées (en-tête des factures et documents)</h2></div>
@@ -25,6 +25,18 @@
                     <input type="file" name="logo" accept="image/*" class="input">
                 </div>
                 <button class="btn-primary w-full">Enregistrer</button>
+            </div>
+        </form>
+    @elseif($tab === 'fiscal' && $chef)
+        @php $fisc = \App\Models\Setting::fiscal(); @endphp
+        <form method="POST" action="{{ route('parametres.fiscal') }}" class="card max-w-xl">@csrf
+            <div class="card-h"><h2 class="card-t">Contribution sociale de solidarité (CSS)</h2></div>
+            <div class="card-b space-y-4">
+                <div><label class="label" for="f-css">Taux de la CSS des personnes physiques (%)</label>
+                    <input id="f-css" type="number" name="css" step="0.01" min="0" max="100" value="{{ old('css', $fisc['css']) }}" class="input max-w-[10rem]" required>
+                    <p class="mt-1 text-xs text-slate-400">CSS = bénéfice net imposable × ce taux (déclaration annuelle de l’impôt sur le revenu).</p>
+                    @error('css')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
+                <button class="btn-primary">Enregistrer</button>
             </div>
         </form>
     @elseif($tab === 'users' && $chef)

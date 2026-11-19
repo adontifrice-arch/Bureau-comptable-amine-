@@ -78,6 +78,35 @@ class DeclarationAnnuelleTest extends TestCase
         $this->assertSame([8000.0, 5900.0], [$C['bnc'], $C['fon']]);
     }
 
+    public function test_resultat_comptable_d_une_personne_physique_apres_irpp_et_css(): void
+    {
+        $c = Client::create(['nom' => 'Trabelsi Mounir', 'type_personne' => 'physique', 'forme' => 'Commerçant (BIC)', 'matricule_fiscal' => '1234567/R/A/P/000', 'paie_activite' => 'Négoce']);
+        session(['dossier' => $c->id]);
+        Compta::passer($c->id, '2025-06-30', 'VTE', 'Ventes', [['compte' => '411', 'debit' => 119000, 'credit' => 0], ['compte' => '7061', 'debit' => 0, 'credit' => 100000], ['compte' => '4367', 'debit' => 0, 'credit' => 19000]]);
+        Compta::passer($c->id, '2025-07-31', 'ACH', 'Achats', [['compte' => '6061', 'debit' => 60000, 'credit' => 0], ['compte' => '401', 'debit' => 0, 'credit' => 60000]]);
+        Compta::passer($c->id, '2025-12-31', 'OD', 'IRPP et CSS de l’exercice', [['compte' => '691', 'debit' => 8000, 'credit' => 0], ['compte' => '695', 'debit' => 200, 'credit' => 0], ['compte' => '434', 'debit' => 0, 'credit' => 8200]]);
+
+        $this->post(route('declarations.prefill'), $this->q())->assertSessionHas('ok');
+        $f = Declaration::where(['client_id' => $c->id, 'type' => 'ann'])->sole()->champs;
+
+        // Résultat comptable = résultat de la balance (classe 7 − classe 6), soit avant impôt − IRPP − CSS comptabilisés
+        $this->assertSame(31800.0, (float) $f['bic_res_compta']);
+        $this->assertSame(40000.0, (float) $f['bic_res_fiscal']);                       // résultat fiscal : à partir du résultat avant impôt
+        $this->get(route('compta.index', ['tab' => 'bal', 'annee' => 2025]))->assertOk()->assertSee('31 800,000');
+
+        // CSS = bénéfice net imposable (arrondi au dinar supérieur, comme pour l'IRPP) × 0,5 %
+        $C = A::calculIr(['modele' => 'ir', 'bic_res_fiscal' => '30000.400']);
+        $this->assertSame([30000.4, 30001.0, 30001.0, 150.005], [$C['rni'], $C['rni_arrondi'], $C['css_base'], $C['css_du']]);
+
+        // Taux de la CSS fixé au paramétrage (Paramètres › Fiscalité)
+        $this->get(route('parametres.index', ['tab' => 'fiscal']))->assertOk()->assertSee('Taux de la CSS des personnes physiques (%)')->assertSee('value="0.5"', false);
+        $this->post(route('parametres.fiscal'), ['css' => ''])->assertSessionHasErrors(['css' => 'Indiquez le taux de la CSS.']);
+        $this->post(route('parametres.fiscal'), ['css' => '1'])->assertSessionHas('ok', 'Taux de la CSS enregistré : 1 %.');
+        $C = A::calculIr(['modele' => 'ir', 'bic_res_fiscal' => '30000.400']);
+        $this->assertSame([1.0, 300.01], [$C['css_taux'], $C['css_du']]);
+        $this->get(route('declarations.index', $this->q()))->assertOk()->assertSee('Contribution sociale de solidarité (1 %)');
+    }
+
     public function test_declaration_des_personnes_physiques(): void
     {
         $c = Client::create(['nom' => 'Ben Salah Karim', 'type_personne' => 'physique', 'forme' => 'Libéral (BNC)', 'matricule_fiscal' => '1234567/R/A/P/000', 'adresse' => '5 rue de Rome 1000 Tunis', 'paie_activite' => 'Avocat']);

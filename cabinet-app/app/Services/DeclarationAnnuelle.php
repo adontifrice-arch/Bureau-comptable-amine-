@@ -464,6 +464,15 @@ class DeclarationAnnuelle
         return $o;
     }
 
+    /**
+     * Bénéfice (revenu) net imposable arrondi pour l'impôt sur le revenu : la fraction de dinar compte pour un dinar entier
+     * (arrondi au dinar supérieur), comme sur la déclaration annuelle.
+     */
+    public static function arrondiImposable(float $montant): float
+    {
+        return (float) ceil(round(max(0, $montant), 3));
+    }
+
     /** Impôt selon le barème progressif. */
     public static function bareme(float $revenu): float
     {
@@ -503,9 +512,9 @@ class DeclarationAnnuelle
         $o['ded_parents'] = r3(min($avant * 0.05, 450) * min(2, (int) ($f['parents'] ?? 0)));
         $o['ded_communes'] = r3($ep + $ob + $verts + $n('ded_rentes') + $o['ded_chef'] + $enf + $o['ded_parents'] + $n('ded_univ') + $n('ded_coti') + $n('ded_logement'));
 
-        // Revenu net imposable (fraction de dinar négligée) et impôt
+        // Revenu net imposable (fraction de dinar comptée pour un dinar entier) et impôt
         $o['rni'] = r3(max(0, $o['rng_net'] - $o['ded_act'] - $o['reinv'] - $o['ded_communes']));
-        $o['rni_arrondi'] = floor($o['rni']);
+        $o['rni_arrondi'] = self::arrondiImposable($o['rni']);
         $o['impot_bareme'] = self::bareme($o['rni_arrondi']);
 
         // Minimum d'impôt des BIC et BNC : 0,2 % (au moins 300 D) ou 0,1 % (au moins 200 D) du chiffre d'affaires TTC
@@ -521,10 +530,12 @@ class DeclarationAnnuelle
         $o['II'] = r3($n('ded_rs') + $o['acomptes'] + $n('ded_exc') + $n('ded_imp') + $n('ded_qp') + $n('ded_alc') + $n('ded_1pc') + $n('ded_div') + $n('ded_reduc') + $n('ded_aut'));
         $o['solde'] = r3($o['impot'] - $o['II'] + $n('restit'));
 
-        // Contribution sociale de solidarité : 0,5 % du revenu annuel net (sauf salariés et retraités dont le revenu net ne dépasse pas 5 000 D)
+        // Contribution sociale de solidarité : taux du paramétrage (sauf salariés et retraités dont le revenu net ne dépasse pas 5 000 D)
         $salarieSeul = $o['bic'] + $o['bnc'] + $o['agr'] + $o['fon'] + $o['rcm'] + $o['aut'] == 0;
-        $o['css_base'] = $o['rni'];
-        $o['css_du'] = $salarieSeul && $o['rni'] <= 5000 ? 0.0 : r3($o['rni'] * 0.005);
+        // Base : le bénéfice net imposable retenu pour l'IRPP (arrondi au dinar supérieur) × taux du paramétrage (0,5 % par défaut)
+        $o['css_taux'] = (float) \App\Models\Setting::fiscal()['css'];
+        $o['css_base'] = $o['rni_arrondi'];
+        $o['css_du'] = $salarieSeul && $o['rni'] <= 5000 ? 0.0 : r3($o['css_base'] * $o['css_taux'] / 100);
         $o['css_net'] = r3($o['css_du'] - $n('css_rs'));
         $o['fonds'] = r3($n('fonds_base') * 0.07);
         $o['exo_tot'] = r3(array_sum(array_map($n, ['exo_div', 'exo_cea', 'exo_fin_service', 'exo_devises', 'exo_etudes', 'exo_aut'])));
@@ -551,11 +562,13 @@ class DeclarationAnnuelle
         $p = $bnc ? 'bnc_' : 'bic_';
         $f[$p.'ca_loc'] = r3($P['ca']);
         $f[$p.'ca_ttc'] = r3($P['ca'] + $tvac);
-        $f[$p.'res_compta'] = r3($P['rav']);
         $f[$p.'res_fiscal'] = $rf;
         if (! $bnc) { $f['bic_achats'] = r3($P['ach']); }
         $f['min_loc_02'] = r3($P['ca'] + $tvac);
         if (! empty($L['rs'])) $f['ded_rs'] = (float) $L['rs'];
         if (! empty($L['acp']) && empty($f['acomptes'])) $f['acomptes'] = [['montant' => (float) $L['acp']]];
+        // Résultat comptable : celui de la balance (produits de la classe 7 − charges de la classe 6), donc après l'IRPP et la CSS
+        // comptabilisés en 69 ; le résultat fiscal part du résultat avant impôt (IRPP et CSS, non déductibles, réintégrés).
+        $f[$p.'res_compta'] = r3($P['res']);
     }
 }

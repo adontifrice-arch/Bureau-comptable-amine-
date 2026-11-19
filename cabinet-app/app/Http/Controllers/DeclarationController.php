@@ -97,7 +97,7 @@ class DeclarationController extends Controller
             return DeclarationMensuelle::calcul($f);
         } elseif ($type === 'ann') {
             $o['rf'] = r3($n('rc') + $n('rei') - $n('ded'));
-            $o['ist'] = $c->estPhysique() ? r3(PaieCalc::bareme(max(0, $o['rf']), Setting::paie()['bar'])) : r3(max(0, $o['rf']) * $n('taux') / 100);
+            $o['ist'] = $c->estPhysique() ? r3(PaieCalc::bareme(\App\Services\DeclarationAnnuelle::arrondiImposable($o['rf']), Setting::paie()['bar'])) : r3(max(0, $o['rf']) * $n('taux') / 100);
             $o['isd'] = r3(max($o['ist'], $n('min')));
             $o['sol'] = r3($o['isd'] - $n('acp') - $n('rsub') - $n('crep'));
         }
@@ -639,7 +639,7 @@ class DeclarationController extends Controller
         $set = function (array $x) use (&$f) { foreach ($x as $k => $v) $f[$k] = $v; };
         if ($mod === 'is') {
             $set(['stk_deb' => r3($F0['g']['stk']), 'stk_fin' => r3($F['g']['stk']), 'achats' => r3($P['ach']), 'ca_loc' => r3($P['ca']), 'ca_ttc' => r3($P['ca'] + $tvac),
-                'res_compta' => r3($P['rav']), 'res_fiscal' => $rf, 'benef_av' => $imposable, 'benef_net' => $imposable, 'ca_min_ttc' => r3($P['ca'] + $tvac), 'ca_min' => r3($P['ca'] + $tvac)]);
+                'res_compta' => r3($P['res']), 'res_fiscal' => $rf, 'benef_av' => $imposable, 'benef_net' => $imposable, 'ca_min_ttc' => r3($P['ca'] + $tvac), 'ca_min' => r3($P['ca'] + $tvac)]);
             if (isset($L['taux'])) $f['taux'] = (float) $L['taux'];
             if (! empty($L['rs'])) $f['ded_rs'] = (float) $L['rs'];
             if (! empty($L['acp']) && empty($f['acomptes'])) $f['acomptes'] = [['montant' => (float) $L['acp']]];

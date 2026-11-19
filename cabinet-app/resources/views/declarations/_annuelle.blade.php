@@ -92,7 +92,7 @@
                 <div class="flex justify-between border-t pt-1 font-semibold"><span>Revenu net imposable</span><span class="font-mono">{{ tnd($C['rni_arrondi'], false) }}</span></div>
                 <div class="flex justify-between"><span>Impôt selon le barème</span><span class="font-mono">{{ tnd($C['impot_bareme'], false) }}</span></div>
                 <div class="flex justify-between"><span>Minimum d’impôt</span><span class="font-mono">{{ tnd($C['min'], false) }}</span></div>
-                <div class="flex justify-between"><span>Contribution sociale de solidarité (0,5 %)</span><span class="font-mono">{{ tnd($C['css_net'], false) }}</span></div>
+                <div class="flex justify-between"><span>Contribution sociale de solidarité ({{ str_replace('.', ',', (string) +($C['css_taux'] ?? 0.5)) }} %)</span><span class="font-mono">{{ tnd($C['css_net'], false) }}</span></div>
             </div>
         @endif
         <div class="card overflow-hidden"><div class="card-h"><h2 class="card-t">Synthèse</h2></div>
