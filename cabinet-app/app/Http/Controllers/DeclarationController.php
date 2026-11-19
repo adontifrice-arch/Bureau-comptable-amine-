@@ -619,6 +619,10 @@ class DeclarationController extends Controller
      * Déclaration annuelle : états financiers de l'exercice (et stock de l'exercice précédent), TVA collectée,
      * résultat fiscal de la liasse (F6005) ou du tableau de passage, acomptes et retenues du tableau de passage.
      */
+    /** Bénéfices déduits au titre de l'exploitation et du réinvestissement : ligne F6005 => libellé de la ligne reprise dans la déclaration. */
+    public const AVANTAGES_F6005 = [93 => 'Bénéfices au titre de l’exportation', 94 => 'Bénéfices au titre du développement régional',
+        95 => 'Bénéfices au titre du développement agricole', 96 => 'Autres déductions au titre de l’exploitation', 99 => 'Revenus réinvestis'];
+
     private function fillAnn(Client $c, int $y, Declaration $d): string
     {
         $mod = DeclarationAnnuelle::modele($c);
@@ -627,24 +631,33 @@ class DeclarationController extends Controller
         $F0 = Compta::etats($c->id, $y - 1);
         $L = PassageFiscal::where('client_id', $c->id)->where('annee', $y)->first()?->donnees ?? [];
         $tvac = r3(Compta::somme($c->id, "$y-01-01", "$y-12-31", '4367', 'credit') - Compta::somme($c->id, "$y-01-01", "$y-12-31", '4367', 'debit'));
-        $rf = isset($L['rei']) || isset($L['ded']) ? r3($P['rav'] + (float) ($L['rei'] ?? 0) - (float) ($L['ded'] ?? 0)) : $P['rav'];
-        $imposable = max(0, $rf);
+        // Tableau F6005 (cahier des charges de la liasse) : celui de la liasse fiscale (saisies comprises), à défaut celui du tableau de passage
+        $V = \App\Services\TableauPassage::calcul(\App\Services\TableauPassage::annexe($c), $P['res'], $P['is'], $L)['F'];
         $source = $L ? 'tableau de passage' : 'résultat comptable';
         try {
-            $V = \App\Services\LiasseFiscale::calculer($c, $y)['docs']['F6005']['n'] ?? [];
-            if (! empty($V[55]) || ! empty($V[101])) { $rf = r3((float) $V[55]); $imposable = max(0, r3((float) ($V[101] ?? 0))); $source = 'liasse fiscale (F6005)'; }
+            $Vl = \App\Services\LiasseFiscale::calculer($c, $y)['docs']['F6005']['n'] ?? [];
+            if (! empty($Vl[55]) || ! empty($Vl[101])) { $V = $Vl; $source = 'liasse fiscale (F6005)'; }
         } catch (\Throwable) {
         }
+        $rf = r3((float) $V[55]);                         // résultat fiscal avant déduction des provisions
+        $imposable = max(0, r3((float) $V[101]));         // résultat imposable
+        $avantAvantages = max(0, r3((float) $V[80]));     // avant déduction des bénéfices d'exploitation et du réinvestissement
+        // Bénéfices déduits au titre de l'exploitation (F6005 93 à 96) et du réinvestissement (99)
+        $avantages = array_filter(array_map(fn ($lib, $l) => ['cadre' => $lib, 'deduit' => r3((float) ($V[$l] ?? 0))], self::AVANTAGES_F6005, array_keys(self::AVANTAGES_F6005)),
+            fn ($a) => $a['deduit'] != 0);
+        $sansAuto = fn ($lignes) => array_values(array_filter((array) $lignes, fn ($l) => ! in_array($l['cadre'] ?? null, self::AVANTAGES_F6005, true)));
         $f['modele'] = $mod;
         $set = function (array $x) use (&$f) { foreach ($x as $k => $v) $f[$k] = $v; };
         if ($mod === 'is') {
             $set(['stk_deb' => r3($F0['g']['stk']), 'stk_fin' => r3($F['g']['stk']), 'achats' => r3($P['ach']), 'ca_loc' => r3($P['ca']), 'ca_ttc' => r3($P['ca'] + $tvac),
-                'res_compta' => r3($P['res']), 'res_fiscal' => $rf, 'benef_av' => $imposable, 'benef_net' => $imposable, 'ca_min_ttc' => r3($P['ca'] + $tvac), 'ca_min' => r3($P['ca'] + $tvac)]);
+                'res_compta' => r3($P['res']), 'res_fiscal' => $rf, 'benef_av' => $avantAvantages, 'benef_net' => $imposable, 'ca_min_ttc' => r3($P['ca'] + $tvac), 'ca_min' => r3($P['ca'] + $tvac)]);
+            // Lignes reprises du tableau de passage remplacées à chaque pré-remplissage, lignes saisies conservées
+            $f['reinv'] = [...$sansAuto($f['reinv'] ?? []), ...array_map(fn ($a) => ['code' => '', 'cadre' => $a['cadre'], 'investi' => '', 'mf' => '', 'nom' => '', 'deduit' => $a['deduit']], array_values($avantages))];
             if (isset($L['taux'])) $f['taux'] = (float) $L['taux'];
             if (! empty($L['rs'])) $f['ded_rs'] = (float) $L['rs'];
             if (! empty($L['acp']) && empty($f['acomptes'])) $f['acomptes'] = [['montant' => (float) $L['acp']]];
         } else {
-            DeclarationAnnuelle::preremplirIr($f, $c, $y, $P, $tvac, $rf, $L);
+            DeclarationAnnuelle::preremplirIr($f, $c, $y, $P, $tvac, $rf, $L, $V);
         }
         $d->champs = $f;
         return 'Pré-remplissage depuis les états financiers '.$y.' et le '.$source.'. Vérifiez chaque rubrique avant le dépôt.';

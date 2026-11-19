@@ -94,22 +94,20 @@ class DeclarationAnnuelleTest extends TestCase
         $this->assertSame(40000.0, (float) $f['bic_res_fiscal']);                       // résultat fiscal : à partir du résultat avant impôt
         $this->get(route('compta.index', ['tab' => 'bal', 'annee' => 2025]))->assertOk()->assertSee('31 800,000');
 
-        // Résultat fiscal = résultat comptable + IRPP + CSS + réintégrations du passage au résultat fiscal
+        // Résultat fiscal aligné sur la liasse (F6005 ligne 80) : résultat comptable + IRPP + CSS + réintégrations − déductions
         PassageFiscal::create(['client_id' => $c->id, 'annee' => 2025, 'donnees' => ['rei' => 500, 'ded' => 1000]]);
         $this->post(route('declarations.prefill'), $this->q())->assertSessionHas('ok');
         $f = Declaration::where(['client_id' => $c->id, 'type' => 'ann'])->sole()->champs;
-        $this->assertSame([31800.0, 40500.0], [(float) $f['bic_res_compta'], (float) $f['bic_res_fiscal']]);   // 31 800 + 8 000 + 200 + 500
+        $this->assertSame([31800.0, 39500.0], [(float) $f['bic_res_compta'], (float) $f['bic_res_fiscal']]);   // 31 800 + 8 000 + 200 + 500 − 1 000
+        $this->assertSame([], $f['ded_act']);
+        $this->assertSame([0.0, 39500.0], [A::calculIr($f)['ded_act'], A::calculIr($f)['rni']]);
+        $this->assertSame((float) \App\Services\LiasseFiscale::calculer($c, 2025)['docs']['F6005']['n'][80], (float) $f['bic_res_fiscal']);
 
-        // Déductions du passage : dans les déductions au titre de l'activité (revenu imposable diminué d'autant)
-        $this->assertEquals([['code' => '', 'cadre' => A::CADRE_PASSAGE, 'montant' => 1000]], $f['ded_act']);
-        $this->assertSame([1000.0, 39500.0], [A::calculIr($f)['ded_act'], A::calculIr($f)['rni']]);
-
-        // Nouveau pré-remplissage : la ligne du passage est mise à jour, une ligne saisie à la main est gardée
+        // Nouveau pré-remplissage : l'ancienne ligne « déductions du passage » est retirée, une ligne saisie à la main est gardée
         $d = Declaration::where(['client_id' => $c->id, 'type' => 'ann'])->sole();
-        $d->update(['champs' => array_merge($f, ['ded_act' => array_merge($f['ded_act'], [['code' => '10', 'cadre' => 'Zone de développement régional', 'montant' => 300]])])]);
-        PassageFiscal::where('client_id', $c->id)->update(['donnees' => ['rei' => 500, 'ded' => 1200]]);
+        $d->update(['champs' => array_merge($f, ['ded_act' => [['code' => '', 'cadre' => A::CADRE_PASSAGE, 'montant' => 1000], ['code' => '10', 'cadre' => 'Zone de développement régional', 'montant' => 300]]])]);
         $this->post(route('declarations.prefill'), $this->q())->assertSessionHas('ok');
-        $this->assertSame([300.0, 1200.0], array_map('floatval', array_column($d->fresh()->champs['ded_act'], 'montant')));
+        $this->assertSame([300.0], array_map('floatval', array_column($d->fresh()->champs['ded_act'], 'montant')));
 
         // CSS = bénéfice net imposable (arrondi au dinar supérieur, comme pour l'IRPP) × 0,5 %
         $C = A::calculIr(['modele' => 'ir', 'bic_res_fiscal' => '30000.400']);

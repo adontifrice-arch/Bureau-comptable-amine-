@@ -17,12 +17,15 @@ class LiasseController extends Controller
     public static function fiscal(Client $c, array $P, ?array $L): array
     {
         $L = array_merge(['rei' => 0, 'ded' => 0, 'taux' => 15, 'min' => 0, 'acp' => 0, 'rs' => 0], $L ?? []);
+        // Résultat fiscal (II) = résultat comptable après impôt + impôt sur les bénéfices comptabilisé (69 : IS, IRPP, CSS)
+        // + réintégrations − déductions, soit le résultat avant impôt + réintégrations − déductions ; puis sections III à VII
+        // jusqu'au résultat imposable, base de l'impôt.
         $rf = r3($P['rav'] + $L['rei'] - $L['ded']);
-        $th = $c->estPhysique() ? r3(PaieCalc::bareme(\App\Services\DeclarationAnnuelle::arrondiImposable($rf), Setting::paie()['bar'])) : r3(max(0, $rf) * $L['taux'] / 100);
+        $calc = TableauPassage::calcul(TableauPassage::annexe($c), $P['res'], $P['is'], $L);
+        $base = max(0, $calc['imposable']);
+        $th = $c->estPhysique() ? r3(PaieCalc::bareme(\App\Services\DeclarationAnnuelle::arrondiImposable($base), Setting::paie()['bar'])) : r3($base * $L['taux'] / 100);
         $du = r3(max($th, $L['min']));
-        // Résultat fiscal = résultat comptable après impôt + impôt sur les bénéfices comptabilisé (69 : IS, IRPP, CSS)
-        // + réintégrations − déductions, soit le résultat avant impôt + réintégrations − déductions.
-        return $L + ['res' => $P['res'], 'impots' => $P['is'], 'rf' => $rf, 'th' => $th, 'du' => $du, 'sol' => r3($du - $L['acp'] - $L['rs'])];
+        return $L + ['res' => $P['res'], 'impots' => $P['is'], 'rf' => $rf, 'calc' => $calc, 'imposable' => $calc['imposable'], 'th' => $th, 'du' => $du, 'sol' => r3($du - $L['acp'] - $L['rs'])];
     }
 
     private function data(Request $r): array
@@ -56,10 +59,13 @@ class LiasseController extends Controller
     {
         $client = $this->dossier($r);
         $d = $r->validate(['annee' => 'required|integer', 'taux' => 'nullable|numeric', 'min' => 'nullable|numeric', 'acp' => 'nullable|numeric', 'rs' => 'nullable|numeric',
-            'rei_l' => 'nullable|array', 'rei_l.*' => 'nullable|numeric', 'ded_l' => 'nullable|array', 'ded_l.*' => 'nullable|numeric',
-            'rei_autres' => 'nullable|array|max:'.TableauPassage::AUTRES_LIGNES, 'rei_autres.*.lib' => 'nullable|max:255', 'rei_autres.*.m' => 'nullable|numeric',
-            'ded_autres' => 'nullable|array|max:'.TableauPassage::AUTRES_LIGNES, 'ded_autres.*.lib' => 'nullable|max:255', 'ded_autres.*.m' => 'nullable|numeric'],
-            [], ['rei_l.*' => 'montant de réintégration', 'ded_l.*' => 'montant de déduction', 'rei_autres.*.m' => 'montant', 'ded_autres.*.m' => 'montant']);
+            // Montants positifs : le sens de chaque ligne est fixé par le tableau (lignes « T_NombrePositif15 » du F6005)
+            'rei_l' => 'nullable|array', 'rei_l.*' => 'nullable|numeric|min:0', 'ded_l' => 'nullable|array', 'ded_l.*' => 'nullable|numeric|min:0',
+            'rei_autres' => 'nullable|array|max:'.TableauPassage::AUTRES_LIGNES, 'rei_autres.*.lib' => 'nullable|max:255', 'rei_autres.*.m' => 'nullable|numeric|min:0',
+            'ded_autres' => 'nullable|array|max:'.TableauPassage::AUTRES_LIGNES, 'ded_autres.*.lib' => 'nullable|max:255', 'ded_autres.*.m' => 'nullable|numeric|min:0',
+            'suite' => 'nullable|array', 'suite.*' => 'nullable|numeric|min:0'],
+            [], ['rei_l.*' => 'montant de réintégration', 'ded_l.*' => 'montant de déduction', 'rei_autres.*.m' => 'montant', 'ded_autres.*.m' => 'montant',
+                'suite.*' => 'montant']);
         $donnees = array_map(fn ($v) => (float) $v, array_intersect_key($d, array_flip(['taux', 'min', 'acp', 'rs'])))
             + TableauPassage::donnees(TableauPassage::annexe($client), $d);
         PassageFiscal::updateOrCreate(['client_id' => $client->id, 'annee' => $d['annee']], ['donnees' => $donnees]);

@@ -19,7 +19,7 @@
 @endif
 @if(in_array('fis', $show) && $saved)
 <div class="card mt-6 overflow-hidden"><div class="card-h"><h2 class="card-t">Résultat fiscal et impôt</h2></div><table class="w-full text-sm divide-y divide-slate-100">
-    @foreach([['Résultat comptable après impôt', $fisc['res']], ['Réintégrations (dont impôt sur les bénéfices comptabilisé)', r3($fisc['impots'] + $fisc['rei'])], ['Déductions', -$fisc['ded']], ['Résultat fiscal', $fisc['rf'], 1], ['Impôt théorique', $fisc['th']], ['Minimum d’impôt', $fisc['min']], ['Impôt dû', $fisc['du'], 1], ['Acomptes provisionnels', -$fisc['acp']], ['Retenues à la source subies', -$fisc['rs']], ['Solde à payer (négatif : crédit d’impôt)', $fisc['sol'], 1]] as $x)
+    @foreach([['Résultat comptable après impôt', $fisc['res']], ['Réintégrations (dont impôt sur les bénéfices comptabilisé)', r3($fisc['impots'] + $fisc['rei'])], ['Déductions', -$fisc['ded']], ['Résultat fiscal avant déduction des provisions', $fisc['rf'], 1], ['Résultat imposable', $fisc['imposable'], 1], ['Impôt théorique', $fisc['th']], ['Minimum d’impôt', $fisc['min']], ['Impôt dû', $fisc['du'], 1], ['Acomptes provisionnels', -$fisc['acp']], ['Retenues à la source subies', -$fisc['rs']], ['Solde à payer (négatif : crédit d’impôt)', $fisc['sol'], 1]] as $x)
         {!! $row($x[0], $x[1], null, !empty($x[2])) !!}
     @endforeach</table></div>
 @endif

@@ -129,6 +129,7 @@ class LiasseFiscale
         }
         $v[56] = $v[55];
         $v[61] = round($v[56] - min($somme(57, 60), $v[56] / 2), 3);
+        $v[62] = round(min($v[62], max($v[61], 0) * 0.05), 3);     // dans la limite de 5 % du résultat fiscal après déduction des provisions
         $v[63] = round(max($v[61] - $v[62], 0), 3);
         $x = round($v[63] + $v[64] - $v[65] - $v[66] - $v[67], 3);
         if ($x < 0) {                                           // cas 2 à 4 : déficit après amortissements et déficits reportés
@@ -171,11 +172,13 @@ class LiasseFiscale
         foreach (self::FLUX as $l => $k) $f[$l] = round((float) ($flux[$k] ?? 0), 3);
         $D['F6004']['n'] = self::evaluer('F6004', self::avecSaisies($f, $S['F6004']['n'] ?? null));
 
-        // F6005 : résultat après modifications comptables, avant impôt ; réintégrations / déductions du tableau de passage à défaut de saisie
+        // F6005 : résultat après modifications comptables, avant impôt ; chaque ligne du tableau de passage au résultat fiscal
+        // (réintégrations, déductions, provisions, déficits, bénéfices exceptionnels et d'exploitation) à sa ligne, à défaut de saisie
         $sf = (array) ($S['F6005']['n'] ?? []);
         $passage = PassageFiscal::where('client_id', $client->id)->where('annee', $annee)->first()?->donnees ?? [];
-        if (! isset($sf[44]) || $sf[44] === '') $sf[44] = (float) ($passage['rei'] ?? 0);
-        if (! isset($sf[53]) || $sf[53] === '') $sf[53] = (float) ($passage['ded'] ?? 0);
+        foreach (TableauPassage::vecteurF6005(TableauPassage::annexe($client), $passage) as $l => $m) {
+            if (! isset($sf[$l]) || $sf[$l] === '') $sf[$l] = $m;
+        }
         $sf = array_filter($sf, fn ($x) => $x !== null && $x !== '');
         $D['F6005']['n'] = self::resultatFiscal($D['F6003']['n'][89] + $D['F6003']['n'][77], $sf);
 

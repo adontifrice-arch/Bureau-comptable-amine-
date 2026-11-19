@@ -93,7 +93,8 @@ class LiasseFiscaleTest extends TestCase
         // Réintégrations par défaut : tableau de passage simplifié ; résultat avant impôt (2 050 + IS 200)
         $this->post(route('liasse.passage'), ['annee' => 2024, 'rei_l' => ['r1_17' => 100], 'rei_autres' => [['lib' => 'Autre', 'm' => 50]], 'ded_l' => ['d2' => 50]])->assertSessionHasNoErrors();
         $F = LiasseFiscale::calculer($this->client, 2024)['docs']['F6005']['n'];
-        $this->assertSame([2250.0, 150.0, 50.0, 2350.0, 2350.0], [$F[2], $F[44], $F[54], $F[55], $F[101]]);
+        // Chaque ligne du passage à sa ligne F6005 : amendes et pénalités (23), autres réintégrations (44), reprise sur provisions (47)
+        $this->assertSame([2250.0, 100.0, 50.0, 150.0, 50.0, 50.0, 2350.0, 2350.0], [$F[2], $F[23], $F[44], $F[45], $F[47], $F[54], $F[55], $F[101]]);
     }
 
     public function test_fichiers_xml_et_archive(): void

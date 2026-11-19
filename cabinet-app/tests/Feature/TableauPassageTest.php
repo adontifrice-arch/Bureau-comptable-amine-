@@ -62,6 +62,100 @@ class TableauPassageTest extends TestCase
             ->assertSee('value="300.5"', false)->assertSee('51 000,500')->assertSee('20 500,500');
     }
 
+    public function test_sections_III_a_VII_jusqu_au_resultat_imposable(): void
+    {
+        // Annexe 1 : avant provisions 40 000 ; provisions 25 000 plafonnées à 20 000 (50 %)
+        $c = TableauPassage::calcul(1, 32000, 8000, ['rei_l' => [], 'ded_l' => [], 'suite' => [
+            'p1' => 15000, 'p2' => 10000,                   // provisions (F6005 57, 58)
+            'a1' => 1000, 'a2' => 3000, 'a3' => 500,         // III (64 à 66)
+            'x2' => 1500,                                    // IV : plus-value de cession d'actions cotées (71)
+            'v1' => 2000, 'v4' => 500, 'v7' => 100,          // VI : loyers (82), plus-value immobilière (87), autres revenus accessoires (85)
+            'e1' => 4000, 'e3' => 1000,                      // VII : exportation (93), revenus réinvestis (99)
+        ]]);
+        $this->assertSame([40000.0, 25000.0, 20000.0, 20000.0, 0.0, 20000.0], [$c['avant_prov'], $c['prov_total'], $c['prov_limite'], $c['apres_prov'], $c['mv'], $c['avant_deficits']]);
+        $this->assertSame([17500.0, 16000.0, 13400.0, 12000.0, 11000.0], [$c['apres_deficits'], $c['V'], $c['VI'], $c['apres_exploitation'], $c['imposable']]);
+        $this->assertSame([15000.0, 10000.0, 1500.0, 2000.0, 100.0, 500.0, 4000.0, 1000.0], [$c['F'][57], $c['F'][58], $c['F'][71], $c['F'][82], $c['F'][85], $c['F'][87], $c['F'][93], $c['F'][99]]);
+
+        // Annexe 2 : moins-value de levée d'option limitée à 5 % du résultat après provisions ; réintégration du cinquième (+)
+        $c = TableauPassage::calcul(2, 32000, 8000, ['rei_l' => ['r1_8' => 300, 'r1_17' => 200], 'ded_l' => ['d1' => 500], 'suite' => ['mv' => 5000, 'e4' => 600, 'x1' => 1000]]);
+        $this->assertSame([300.0, 200.0, 500.0, 500.0], [$c['F'][44], $c['F'][23], $c['F'][45], $c['F'][46]]);   // jetons de présence en « autres » (44)
+        $this->assertSame([2000.0, 38000.0, 37000.0, 37600.0], [$c['mv'], $c['avant_deficits'], $c['V'], $c['imposable']]);
+
+        // Cas 1 : déficit fiscal, pas de provisions ; déficit reportable (107)
+        $c = TableauPassage::calcul(2, -5000, 0, ['suite' => ['p1' => 800, 'mv' => 100]]);
+        $this->assertSame([0.0, 0.0, 0.0, true, -5000.0], [$c['prov'], $c['mv'], $c['imposable'], $c['deficitaire'], $c['deficit_reportable']]);
+
+        // Cas 2 : déficits reportés supérieurs au résultat : lignes 66 à 101 à zéro, 107 = 102 + 103 − 104 − 105 − 106
+        $c = TableauPassage::calcul(1, 1000, 0, ['suite' => ['a2' => 3000]]);
+        $this->assertSame([0.0, true, -3000.0], [$c['imposable'], $c['deficitaire'], $c['deficit_reportable']]);
+
+        // Cas 5 : déductions au titre de l'exploitation supérieures au bénéfice : résultat imposable nul
+        $c = TableauPassage::calcul(1, 1000, 0, ['suite' => ['e1' => 5000, 'e3' => 100]]);
+        $this->assertSame([0.0, 0.0, false], [$c['apres_exploitation'], $c['imposable'], $c['deficitaire']]);
+    }
+
+    public function test_la_liasse_et_les_declarations_reprennent_le_tableau_de_passage(): void
+    {
+        $c = $this->dossier(['nom' => 'Alpha SARL', 'type_personne' => 'morale', 'forme' => 'SARL', 'paie_activite' => 'Négoce']);
+        $this->post(route('liasse.passage'), ['annee' => 2025, 'taux' => 15, 'rei_l' => ['r1_17' => '200', 'r1_8' => '300'], 'ded_l' => ['d2' => '100'],
+            'suite' => ['p1' => '1000', 'a2' => '2000', 'x1' => '400', 'e1' => '3000', 'e3' => '500']])->assertSessionHasNoErrors();
+
+        // Liasse : chaque ligne à sa place dans le F6005
+        $F = \App\Services\LiasseFiscale::calculer($c, 2025)['docs']['F6005']['n'];
+        $this->assertSame([40000.0, 200.0, 300.0, 500.0, 100.0, 40400.0], [$F[2], $F[23], $F[44], $F[45], $F[47], $F[55]]);
+        $this->assertSame([1000.0, 39400.0, 2000.0, 37400.0, 400.0, 37000.0, 3000.0, 34000.0, 500.0, 33500.0],
+            [$F[57], $F[61], $F[65], $F[68], $F[69], $F[80], $F[93], $F[98], $F[99], $F[101]]);
+        $this->get(route('liasse.index', ['tab' => 'fis', 'annee' => 2025]))->assertSee('33 500,000')->assertSee('5 025,000');   // IS 15 %
+
+        // Déclaration IS : résultat fiscal (55), bénéfice avant avantages (80), bénéfice imposable (101), bénéfices déduits
+        $q = ['type' => 'ann', 'periode' => '2025'];
+        $this->post(route('declarations.prefill'), $q)->assertSessionHas('ok');
+        $f = \App\Models\Declaration::where('client_id', $c->id)->sole()->champs;
+        $this->assertEquals([40400, 37000, 33500], [$f['res_fiscal'], $f['benef_av'], $f['benef_net']]);
+        $this->assertEquals([['Bénéfices au titre de l’exportation', 3000], ['Revenus réinvestis', 500]], array_map(fn ($l) => [$l['cadre'], $l['deduit']], $f['reinv']));
+        $this->post(route('declarations.prefill'), $q);   // nouveau pré-remplissage : pas de doublon
+        $this->assertCount(2, \App\Models\Declaration::where('client_id', $c->id)->sole()->champs['reinv']);
+    }
+
+    public function test_declaration_ir_reprend_les_avantages_et_les_deficits(): void
+    {
+        $c = $this->dossier(['nom' => 'Ben Ali Sami', 'type_personne' => 'physique', 'forme' => 'Commerçant (BIC)', 'paie_activite' => 'Négoce']);
+        $this->post(route('liasse.passage'), ['annee' => 2025, 'rei_l' => ['r1_14' => '200'], 'ded_l' => ['d1' => '100'],
+            'suite' => ['p1' => '1000', 'a2' => '2000', 'x2' => '400', 'e5' => '3000', 'e3' => '500']])->assertSessionHasNoErrors();
+        $this->post(route('declarations.prefill'), ['type' => 'ann', 'periode' => '2025'])->assertSessionHas('ok');
+        $f = \App\Models\Declaration::where('client_id', $c->id)->sole()->champs;
+
+        // Résultat fiscal = ligne 80 de la liasse : 40 000 + 200 − 100 − 1 000 (provisions) − 2 000 (déficits) − 400 (plus-value exonérée)
+        $this->assertEquals(36700, $f['bic_res_fiscal']);
+        $this->assertSame((float) \App\Services\LiasseFiscale::calculer($c, 2025)['docs']['F6005']['n'][80], (float) $f['bic_res_fiscal']);
+        $this->assertEquals([['Bénéfices au titre du développement régional', 3000]], array_map(fn ($l) => [$l['cadre'], $l['montant']], $f['ded_act']));
+        $this->assertEquals([['Revenus réinvestis', 500]], array_map(fn ($l) => [$l['cadre'], $l['deduit']], $f['reinv']));
+        $this->assertEmpty($f['pertes'] ?? []);                                            // déficits déjà déduits dans la ligne 80
+        $this->assertEquals(36700 - 3000 - 500, \App\Services\DeclarationAnnuelle::calculIr($f)['rni']);   // = résultat imposable de la liasse (101)
+
+        // Déficit : la déclaration reprend le déficit reportable (107)
+        $this->post(route('liasse.passage'), ['annee' => 2025, 'ded_l' => ['d1' => '50000']])->assertSessionHasNoErrors();
+        $this->post(route('declarations.prefill'), ['type' => 'ann', 'periode' => '2025'])->assertSessionHas('ok');
+        $this->assertEquals(-10000, \App\Models\Declaration::where('client_id', $c->id)->sole()->champs['bic_res_fiscal']);
+    }
+
+    public function test_saisie_des_sections_III_a_VII_et_impot_sur_le_resultat_imposable(): void
+    {
+        $this->dossier(['nom' => 'Alpha SARL', 'type_personne' => 'morale', 'forme' => 'SARL']);
+        $this->get(route('liasse.index', ['tab' => 'fis', 'annee' => 2025]))->assertOk()
+            ->assertSee('III- Déduction des amortissements différés et déficits reportés')->assertSee('IV- Déduction des bénéfices ou revenus exceptionnels non imposables')
+            ->assertSee('V- Résultat fiscal avant déduction des bénéfices provenant de l’exploitation', false)->assertSee('VI- Bénéfices servant de base', false)
+            ->assertSee('Résultat imposable')->assertSee('levée de l’option', false)->assertSee('compagnies d’assurance', false)
+            ->assertSee('Dividendes et assimilés distribués par des sociétés établies en Tunisie');
+
+        $this->post(route('liasse.passage'), ['annee' => 2025, 'taux' => 15, 'suite' => ['a2' => '10000', 'inconnu' => '5', 'v1' => '']])->assertSessionHasNoErrors();
+        $this->assertEquals(['a2' => 10000], PassageFiscal::sole()->donnees['suite']);
+
+        // 32 000 + 8 000 − 10 000 de déficits reportés = 30 000 imposables ; IS 15 % = 4 500
+        $this->get(route('liasse.index', ['tab' => 'fis', 'annee' => 2025]))->assertOk()->assertSee('value="10000"', false)->assertSee('30 000,000')->assertSee('4 500,000');
+        $this->post(route('liasse.passage'), ['annee' => 2025, 'suite' => ['a2' => '-5']])->assertSessionHasErrors('suite.a2');
+    }
+
     public function test_societe_annexe_2_et_saisie_anterieure_conservee(): void
     {
         $c = $this->dossier(['nom' => 'Alpha SARL', 'type_personne' => 'morale', 'forme' => 'SARL']);

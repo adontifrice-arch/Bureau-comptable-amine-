@@ -575,32 +575,52 @@ class DeclarationAnnuelle
         return $f;
     }
 
-    /**
-     * Résultat fiscal d'une personne physique : résultat comptable (balance) + IRPP et CSS comptabilisés (comptes 69, non déductibles)
-     * + réintégrations du passage au résultat fiscal.
-     */
-    /** Libellé de la ligne de déduction reprise du passage au résultat fiscal. */
+    /** Libellé de l'ancienne ligne de déduction reprise du passage (retirée au pré-remplissage : les déductions sont dans le résultat fiscal). */
     public const CADRE_PASSAGE = 'Déductions du passage au résultat fiscal';
 
-    public static function resultatFiscalIr(array $P, array $L): float
+    /**
+     * Résultat fiscal d'une personne physique, aligné sur le tableau F6005 de la liasse : résultat fiscal avant déduction des bénéfices
+     * provenant de l'exploitation (ligne 80 : résultat comptable + réintégrations − déductions − provisions − déficits et amortissements
+     * − bénéfices exceptionnels non imposables) ; en cas de déficit, le déficit reportable (ligne 107).
+     */
+    public static function resultatFiscalIr(array $V): float
     {
-        return r3($P['res'] + $P['is'] + (float) ($L['rei'] ?? 0));
+        $deficit = (float) ($V[55] ?? 0) < 0 || (float) ($V[107] ?? 0) < 0;
+        return r3((float) ($deficit ? ($V[107] ?? 0) : ($V[80] ?? 0)));
     }
 
-    public static function preremplirIr(array &$f, Client $c, int $y, array $P, float $tvac, float $rf, array $L): void
+    /** Lignes reprises du tableau F6005 dans la déclaration IR : ligne => [table, libellé]. */
+    public const IR_DEPUIS_F6005 = [
+        93 => ['ded_act', 'Bénéfices au titre de l’exportation'], 94 => ['ded_act', 'Bénéfices au titre du développement régional'],
+        95 => ['ded_act', 'Bénéfices au titre du développement agricole'], 96 => ['ded_act', 'Autres déductions au titre de l’exploitation'],
+        99 => ['reinv', 'Revenus réinvestis'],
+    ];
+
+    /**
+     * @param array $V tableau F6005 calculé (liasse fiscale ou tableau de passage) : résultat fiscal (80, ou déficit reportable 107),
+     *                 bénéfices déduits au titre de l'exploitation (93 à 96) vers les déductions au titre de l'activité, revenus réinvestis (99).
+     */
+    public static function preremplirIr(array &$f, Client $c, int $y, array $P, float $tvac, float $rf, array $L, array $V = []): void
     {
         foreach (self::famille($c) as $k => $v) $f[$k] = $v;
         $bnc = (bool) preg_match('/lib[ée]ral|bnc|m[ée]decin|avocat|architecte|expert|conseil|ing[ée]nieur/iu', (string) $c->forme.' '.$c->paie_activite);
         $p = $bnc ? 'bnc_' : 'bic_';
         $f[$p.'ca_loc'] = r3($P['ca']);
         $f[$p.'ca_ttc'] = r3($P['ca'] + $tvac);
-        // Résultat fiscal = résultat comptable + IRPP + CSS (comptes 69) + réintégrations du passage au résultat fiscal
-        $f[$p.'res_fiscal'] = self::resultatFiscalIr($P, $L);
-        // Les déductions du passage ne diminuent pas le résultat fiscal : elles figurent parmi les déductions au titre de l'activité.
-        // La ligne reprise du passage est remplacée à chaque pré-remplissage ; les lignes saisies à la main sont conservées.
-        $lignes = array_values(array_filter((array) ($f['ded_act'] ?? []), fn ($l) => ($l['cadre'] ?? null) !== self::CADRE_PASSAGE));
-        if ((float) ($L['ded'] ?? 0) != 0) $lignes[] = ['code' => '', 'cadre' => self::CADRE_PASSAGE, 'montant' => r3((float) $L['ded'])];
-        $f['ded_act'] = $lignes;
+        // Résultat fiscal aligné sur la liasse (F6005 ligne 80 ; déficit reportable 107 en cas de déficit). Les déficits reportés (65)
+        // y sont déjà déduits : ils ne vont pas dans les pertes des années antérieures de la déclaration.
+        $f[$p.'res_fiscal'] = self::resultatFiscalIr($V);
+        // Bénéfices déduits au titre de l'exploitation et revenus réinvestis : lignes reprises remplacées à chaque pré-remplissage,
+        // lignes saisies à la main conservées
+        $auto = [self::CADRE_PASSAGE, ...array_column(self::IR_DEPUIS_F6005, 1)];
+        $garde = fn ($t) => array_values(array_filter((array) ($f[$t] ?? []), fn ($l) => ! in_array($l['cadre'] ?? null, $auto, true)));
+        $f['ded_act'] = $garde('ded_act');
+        $f['reinv'] = $garde('reinv');
+        foreach (self::IR_DEPUIS_F6005 as $l => [$table, $lib]) {
+            $m = r3((float) ($V[$l] ?? 0));
+            if ($m == 0) continue;
+            $f[$table][] = $table === 'reinv' ? ['code' => '', 'cadre' => $lib, 'investi' => '', 'mf' => '', 'nom' => '', 'deduit' => $m] : ['code' => '', 'cadre' => $lib, 'montant' => $m];
+        }
         if (! $bnc) { $f['bic_achats'] = r3($P['ach']); }
         $f['min_loc_02'] = r3($P['ca'] + $tvac);
         if (! empty($L['rs'])) $f['ded_rs'] = (float) $L['rs'];

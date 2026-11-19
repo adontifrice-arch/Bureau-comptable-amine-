@@ -24,7 +24,33 @@
             <form method="POST" action="{{ route('liasse.passage') }}" class="card lg:col-span-2"
                   x-data="{ k: 0, res: {{ (float) $fisc['res'] }}, imp: {{ (float) $fisc['impots'] }},
                             somme(sel) { this.k; return [...this.$root.querySelectorAll(sel)].reduce((s, i) => s + (parseFloat(i.value) || 0), 0) },
-                            fmt(v) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) } }" @input="k++">@csrf <input type="hidden" name="annee" value="{{ $annee }}">
+                            fmt(v) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) },
+                            cf: @js(['annexe' => $annexe, 'prov' => array_keys($TP::provisions($annexe)), 'def' => collect($TP::DEFICITS)->map(fn ($d) => $d[2]),
+                                     'exc' => array_keys($TP::exceptionnels($annexe)), 'vi' => array_merge(...array_map('array_keys', array_values($TP::NON_ELIGIBLES))),
+                                     'exploit' => ['e1', 'e5', 'e6', 'e2']]),
+                            {{-- Aperçu pendant la saisie : mêmes règles que le F6005 de la liasse (LiasseFiscale::resultatFiscal), recalculé à l’enregistrement --}}
+                            c() {
+                                this.k;
+                                const v = (k) => parseFloat(this.$root.querySelector(`[name='suite[${k}]']`)?.value) || 0;
+                                const sum = (ks) => ks.reduce((s, k) => s + v(k), 0);
+                                const r = { prov: 0, apres_prov: 0, mv: 0, avant_deficits: 0, apres_deficits: 0, V: 0, VI: 0, imposable: 0, deficit: 0, deficitaire: false };
+                                r.avant_prov = this.res + this.imp + this.somme('[data-rei]') - this.somme('[data-ded]');
+                                r.prov_limite = Math.max(0, r.avant_prov) / 2;
+                                const amort = v('a1') - v('a2') - v('a3') - v('a4');
+                                if (r.avant_prov < 0) { r.deficitaire = true; r.deficit = r.avant_prov + amort; return r; }                       // cas 1
+                                r.prov = Math.min(sum(this.cf.prov), r.prov_limite);
+                                r.apres_prov = r.avant_prov - r.prov;
+                                r.mv = this.cf.annexe === 2 ? Math.min(v('mv'), Math.max(0, r.apres_prov) * 0.05) : 0;
+                                r.avant_deficits = Math.max(r.apres_prov - r.mv, 0);
+                                const x = r.avant_deficits + amort;
+                                if (x < 0) { r.deficitaire = true; r.deficit = amort; return r; }                                                  // cas 2 à 4
+                                r.apres_deficits = x;
+                                r.V = Math.max(x - sum(this.cf.exc), 0);
+                                r.VI = r.V - sum(this.cf.vi);
+                                const apres = r.V - sum(this.cf.exploit);
+                                r.imposable = apres < 0 ? 0 : apres - v('e3') + v('e4');                                                          // cas 5
+                                return r;
+                            } }" @input="k++">@csrf <input type="hidden" name="annee" value="{{ $annee }}">
                 <div class="card-h"><h2 class="card-t">Tableau de détermination du résultat fiscal</h2>
                     <span class="text-xs text-slate-400">Note commune n° 26/2016 — annexe {{ $annexe }} ({{ $annexe === 1 ? 'personnes physiques, sociétés de personnes et assimilées' : 'sociétés passibles de l’impôt sur les sociétés' }})</span></div>
                 <table class="tbl">
@@ -58,7 +84,53 @@
                         @endforeach
                         <tr class="font-semibold"><td colspan="2">Total déductions</td><td class="num" x-text="fmt(somme('[data-ded]'))">{{ tnd($fisc['ded']) }}</td></tr>
 
-                        <tr class="bg-slate-50 text-base font-semibold dark:bg-slate-800/40"><td colspan="2">Résultat fiscal</td><td class="num" x-text="fmt(res + imp + somme('[data-rei]') - somme('[data-ded]'))">{{ tnd($fisc['rf']) }}</td></tr>
+                        @php
+                            $Kc = $fisc['calc']; $s = $passage['suite'];
+                            $inp = fn ($code, $lbl) => '<input type="number" step="0.001" min="0" name="suite['.$code.']" value="'.e($mt(old("suite.$code", $s[$code] ?? ''))).'" class="input text-right font-mono" aria-label="'.e($lbl).'">';
+                            $ligneTotal = fn ($lib, $expr, $val, $fort = false) => '<tr class="'.($fort ? 'bg-slate-50 font-semibold dark:bg-slate-800/40' : 'font-semibold').'"><td colspan="2">'.e($lib).'</td><td class="num" x-text="fmt('.$expr.')">'.tnd($val).'</td></tr>';
+                            $titre = fn ($t) => '<tr class="bg-slate-100/70 font-semibold dark:bg-slate-800"><td colspan="3">'.e($t).'</td></tr>';
+                        @endphp
+                        {!! $ligneTotal('Résultat fiscal avant déduction des provisions', 'c().avant_prov', $Kc['avant_prov'], true) !!}
+
+                        <tr><td colspan="3" class="pt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Déduction des provisions dans la limite de 50 % du résultat fiscal</td></tr>
+                        @foreach($TP::provisions($annexe) as $code => $lib)
+                            <tr><td class="text-slate-500">—</td><td>{{ $lib }}</td><td>{!! $inp($code, $lib) !!}</td></tr>
+                        @endforeach
+                        <tr><td></td><td class="text-xs text-slate-500">Provisions déduites (plafond : <span x-text="fmt(c().prov_limite)">{{ tnd($Kc['prov_limite']) }}</span>)</td><td class="num" x-text="fmt(c().prov)">{{ tnd($Kc['prov']) }}</td></tr>
+                        {!! $ligneTotal('Résultat fiscal après déduction des provisions', 'c().apres_prov', $Kc['apres_prov']) !!}
+                        @if($annexe === 2)
+                            <tr><td class="text-slate-500">—</td><td>{{ $TP::MOINS_VALUE_OPTION }} <span class="text-xs text-slate-500">(retenu : <span x-text="fmt(c().mv)">{{ tnd($Kc['mv']) }}</span>)</span></td><td>{!! $inp('mv', 'Moins-value de levée d’option') !!}</td></tr>
+                        @endif
+                        {!! $ligneTotal('Résultat fiscal après déduction des provisions et avant déduction des déficits et des amortissements', 'c().avant_deficits', $Kc['avant_deficits']) !!}
+
+                        {!! $titre('III- Déduction des amortissements différés et déficits reportés') !!}
+                        @foreach($TP::DEFICITS as $code => [$n, $lib, $sg])
+                            <tr><td class="text-slate-500">{{ $n }}</td><td>{{ $lib }} <span class="text-xs text-slate-400">({{ $sg > 0 ? '+' : '−' }})</span></td><td>{!! $inp($code, $lib) !!}</td></tr>
+                        @endforeach
+                        {!! $ligneTotal('Résultat fiscal après déduction des déficits et amortissements', 'c().apres_deficits', $Kc['apres_deficits']) !!}
+
+                        {!! $titre('IV- Déduction des bénéfices ou revenus exceptionnels non imposables') !!}
+                        @foreach($TP::exceptionnels($annexe) as $code => [$n, $lib])
+                            <tr><td class="text-slate-500">{{ $n }}</td><td>{{ $lib }}</td><td>{!! $inp($code, $lib) !!}</td></tr>
+                        @endforeach
+                        {!! $ligneTotal('V- Résultat fiscal avant déduction des bénéfices provenant de l’exploitation', 'c().V', $Kc['V'], true) !!}
+
+                        {!! $titre('VI- Bénéfices servant de base pour la détermination de la quote-part des bénéfices provenant de l’exploitation déductible') !!}
+                        <tr><td colspan="3" class="text-xs text-slate-500">Déduction des bénéfices et gains exceptionnels non éligibles aux avantages fiscaux (VI = V − ces bénéfices et gains)</td></tr>
+                        @foreach($TP::NON_ELIGIBLES as $groupe => $lignes)
+                            @foreach($lignes as $code => [$n, $lib])
+                                <tr><td class="text-slate-500">{{ $n }}</td><td>{{ $groupe }} : {{ mb_strtolower(mb_substr($lib, 0, 1)).mb_substr($lib, 1) }}</td><td>{!! $inp($code, $lib) !!}</td></tr>
+                            @endforeach
+                        @endforeach
+                        {!! $ligneTotal('Bénéfices servant de base à la quote-part (VI)', 'c().VI', $Kc['VI']) !!}
+
+                        {!! $titre($annexe === 1 ? 'VII- Bénéfice après déduction' : 'VII- Bénéfice fiscal après déduction des bénéfices au titre de l’exploitation') !!}
+                        @foreach($TP::finales($annexe) as $code => [$lib, $sg])
+                            <tr><td class="text-slate-500">{{ $sg > 0 ? '+' : '−' }}</td><td>{{ $lib }}</td><td>{!! $inp($code, $lib) !!}</td></tr>
+                        @endforeach
+                        {!! $ligneTotal('Résultat imposable', 'c().imposable', $Kc['imposable'], true) !!}
+                        <tr x-show="c().deficitaire" @if(! $Kc['deficitaire']) x-cloak @endif class="bg-rose-50 font-semibold text-rose-700 dark:bg-rose-950/40">
+                            <td colspan="2">Résultat fiscal déficitaire : déficit reportable</td><td class="num" x-text="fmt(c().deficit)">{{ tnd($Kc['deficit_reportable']) }}</td></tr>
                     </tbody>
                 </table>
                 @if($errors->any())<p class="px-5 pt-3 text-xs text-rose-600">{{ $errors->first() }}</p>@endif
@@ -73,7 +145,8 @@
             </form>
             <div class="card card-b space-y-2 self-start text-sm">
                 <h3 class="card-t mb-2">Résultat</h3>
-                <div class="flex justify-between"><span>Résultat fiscal</span><b class="font-mono">{{ tnd($fisc['rf']) }}</b></div>
+                <div class="flex justify-between"><span>Résultat fiscal (avant provisions)</span><span class="font-mono">{{ tnd($fisc['rf']) }}</span></div>
+                <div class="flex justify-between"><span>Résultat imposable</span><b class="font-mono">{{ tnd($fisc['imposable']) }}</b></div>
                 <div class="flex justify-between"><span>Impôt théorique {{ $client->estPhysique() ? '(barème IRPP)' : '' }}</span><span class="font-mono">{{ tnd($fisc['th']) }}</span></div>
                 <div class="flex justify-between"><span>Impôt dû</span><b class="font-mono">{{ tnd($fisc['du']) }}</b></div>
                 <div class="flex justify-between border-t border-slate-200 pt-2 text-base"><span>{{ $fisc['sol'] >= 0 ? 'Solde à payer' : 'Crédit d’impôt' }}</span><b class="font-mono {{ $fisc['sol'] >= 0 ? 'text-rose-600' : 'text-emerald-600' }}">{{ tnd(abs($fisc['sol'])) }}</b></div>
