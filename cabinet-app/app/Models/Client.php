@@ -57,9 +57,28 @@ class Client extends Model
         'gerant_associe', 'gerant_parts', 'gerant_parts_de', 'gerant_parts_a', 'gerant_apport'];
 
     /** Champs propres à une personne physique, vidés pour une personne morale. */
-    public const CHAMPS_PHYSIQUE = ['activite', 'categories_revenus', 'regime_imposition'];
+    public const CHAMPS_PHYSIQUE = ['activite', 'categories_revenus', 'regime_imposition', 'situation_familiale', 'chef_famille', 'enfants_charge', 'parents_charge'];
 
-    protected $casts = ['cadres_legaux'=>'array','categories_revenus'=>'array','paie_config'=>'array','gerant_cin_date'=>'date','gerant_passeport_date'=>'date','gerant_passeport_validite'=>'date','gerant_naissance_date'=>'date','gerant_nomination_date'=>'date','gerant_associe'=>'boolean'];
+    public const SITUATIONS_FAMILIALES = ['celibataire' => 'Célibataire', 'marie' => 'Marié(e)', 'divorce' => 'Divorcé(e)', 'veuf' => 'Veuf / veuve'];
+
+    /** Enfants à charge du chef de famille : type => [libellé, déduction annuelle en dinars]. */
+    public const TYPES_ENFANT = [
+        'moins_20' => ['Enfant âgé de moins de 20 ans', 100],
+        'etudiant' => ['Étudiant âgé de 25 ans au plus', 1000],
+        'handicape' => ['Enfant handicapé', 2000],
+    ];
+
+    /** Nombre d'enfants à charge ouvrant droit à déduction (les premiers). */
+    public const ENFANTS_DEDUCTIBLES = 4;
+
+    /** Déduction pour enfants à charge (dinars), dans la limite des premiers enfants. */
+    public function deductionEnfants(): int
+    {
+        if (! $this->chef_famille) return 0;
+        return (int) collect($this->enfants_charge ?? [])->take(self::ENFANTS_DEDUCTIBLES)->sum(fn ($e) => self::TYPES_ENFANT[$e['type'] ?? ''][1] ?? 0);
+    }
+
+    protected $casts = ['enfants_charge'=>'array','chef_famille'=>'boolean','cadres_legaux'=>'array','categories_revenus'=>'array','paie_config'=>'array','gerant_cin_date'=>'date','gerant_passeport_date'=>'date','gerant_passeport_validite'=>'date','gerant_naissance_date'=>'date','gerant_nomination_date'=>'date','gerant_associe'=>'boolean'];
 
     public function associes() { return $this->hasMany(Associe::class); }
     public function echeances() { return $this->hasMany(Echeance::class); }

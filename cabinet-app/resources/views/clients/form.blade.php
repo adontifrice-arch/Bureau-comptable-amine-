@@ -9,6 +9,10 @@
                     addA() { this.associes.push({nom:'',cin:'',parts:'',apport:'numeraire'}) },
                     totalParts() { return (this.gas === '1' ? (+this.gp || 0) : 0) + this.associes.reduce((s, a) => s + (+a.parts || ((+a.parts_a && +a.parts_de) ? a.parts_a - a.parts_de + 1 : 0)), 0) },
                     nat: @js((string) old('gerant_nationalite', $client->gerant_nationalite)),
+                    chef: @js((string) old('chef_famille', $client->chef_famille === null ? '' : ($client->chef_famille ? '1' : '0'))),
+                    enfants: @js(collect(old('enfants_charge', $client->enfants_charge ?? []))->values()),
+                    typesEnfant: @js(collect(\App\Models\Client::TYPES_ENFANT)->map(fn ($t) => $t[1])),
+                    deduction() { return this.enfants.slice(0, {{ \App\Models\Client::ENFANTS_DEDUCTIBLES }}).reduce((s, e) => s + (this.typesEnfant[e.type] || 0), 0) },
                     tun(n) { return /^\s*tunisi/i.test(n || '') }, etr(n) { return (n || '').trim() !== '' && ! this.tun(n) },
                     calcCap() { if (+this.np > 0 && +this.vn > 0) this.cap = Math.round(this.np * this.vn * 1000) / 1000 } }">
         @csrf @if($edit) @method('PUT') @endif
@@ -84,6 +88,37 @@
                     </div>
                     @error('categories_revenus')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
                 <x-select label="Régime d’imposition" name="regime_imposition" :value="$client->regime_imposition" placeholder="Non précisé" :options="\App\Models\Client::REGIMES_IMPOSITION"/>
+            </div>
+        </div>
+
+        <div class="card" x-show="tp === 'physique'">
+            <div class="card-h"><h2 class="card-t">Situation familiale</h2></div>
+            <div class="card-b grid gap-4 md:grid-cols-3">
+                <x-select label="Situation familiale" name="situation_familiale" :value="$client->situation_familiale" placeholder="Non précisé" :options="\App\Models\Client::SITUATIONS_FAMILIALES"/>
+                <div><label class="label" for="f-chef_famille">Chef de famille ?</label>
+                    <select id="f-chef_famille" name="chef_famille" class="input" x-model="chef"><option value="">—</option><option value="1">Oui</option><option value="0">Non</option></select></div>
+                <x-field label="Parents à charge" name="parents_charge" type="number" min="0" max="9" :value="$client->parents_charge"/>
+
+                <div class="md:col-span-3 space-y-2" x-show="chef === '1'">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="label !mb-0">Enfants à charge : <span x-text="enfants.length"></span></span>
+                        <button type="button" class="btn-secondary btn-sm" @click="enfants.push({prenom: '', type: ''})"><x-icon name="plus" class="h-3.5 w-3.5"/> Ajouter un enfant</button>
+                    </div>
+                    <template x-for="(e, i) in enfants" :key="i">
+                        <div class="grid items-end gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[1fr_2fr_auto_auto] dark:border-slate-700">
+                            <div><label class="label">Prénom</label><input class="input" :name="`enfants_charge[${i}][prenom]`" x-model="e.prenom"></div>
+                            <div><label class="label">Type</label>
+                                <select class="input" :name="`enfants_charge[${i}][type]`" x-model="e.type" :disabled="chef !== '1'"><option value="">— Choisir —</option>
+                                    @foreach(\App\Models\Client::TYPES_ENFANT as $k => [$lib, $mt])<option value="{{ $k }}">{{ $lib }} ({{ number_format($mt, 0, ',', ' ') }} DT)</option>@endforeach
+                                </select></div>
+                            <div class="pb-2 text-sm tabular-nums text-slate-600 dark:text-slate-300" x-text="i < {{ \App\Models\Client::ENFANTS_DEDUCTIBLES }} ? ((typesEnfant[e.type] || 0).toLocaleString('fr-FR') + ' DT') : 'au-delà de {{ \App\Models\Client::ENFANTS_DEDUCTIBLES }} enfants'"></div>
+                            <button type="button" class="btn-ghost btn-sm !text-rose-600" @click="enfants.splice(i, 1)" aria-label="Retirer l’enfant"><x-icon name="trash" class="h-3.5 w-3.5"/></button>
+                        </div>
+                    </template>
+                    <p x-show="!enfants.length" class="text-sm text-slate-500">Aucun enfant à charge renseigné.</p>
+                    <p x-show="enfants.length" class="text-sm">Déduction pour enfants à charge : <strong class="tabular-nums" x-text="deduction().toLocaleString('fr-FR') + ' DT'"></strong>
+                        <span class="text-xs text-slate-500">({{ \App\Models\Client::ENFANTS_DEDUCTIBLES }} premiers enfants)</span></p>
+                    @error('enfants_charge.*')<p class="text-xs text-rose-600">{{ $message }}</p>@enderror                </div>
             </div>
         </div>
 

@@ -125,6 +125,35 @@ class ClientTest extends TestCase
         $this->get(route('clients.create'))->assertSee('Tunisienne : carte d’identité', false);
     }
 
+    public function test_situation_familiale_et_enfants_a_charge_d_une_personne_physique(): void
+    {
+        $base = ['nom' => 'Ben Ali Sami', 'type_personne' => 'physique', 'categories_revenus' => ['bnc'], 'situation_familiale' => 'marie', 'parents_charge' => 2];
+        $enfants = [
+            ['prenom' => 'Yasmine', 'type' => 'moins_20'], ['prenom' => '', 'type' => ''],   // ligne vide ignorée
+            ['prenom' => 'Omar', 'type' => 'etudiant'], ['prenom' => 'Ines', 'type' => 'handicape'],
+            ['prenom' => 'Adam', 'type' => 'moins_20'], ['prenom' => 'Lina', 'type' => 'handicape'],   // 5e enfant : hors déduction
+        ];
+
+        $this->post(route('clients.store'), $base + ['chef_famille' => '1', 'enfants_charge' => [['prenom' => 'Sans type', 'type' => '']]])
+            ->assertSessionHasErrors(['enfants_charge.0.type' => 'Précisez le type de chaque enfant à charge.']);
+
+        $this->post(route('clients.store'), $base + ['chef_famille' => '1', 'enfants_charge' => $enfants])->assertSessionHasNoErrors();
+        $c = Client::sole();
+        $this->assertSame(['marie', true, 2], [$c->situation_familiale, $c->chef_famille, $c->parents_charge]);
+        $this->assertCount(5, $c->enfants_charge);
+        $this->assertSame(100 + 1000 + 2000 + 100, $c->deductionEnfants());
+        $this->get(route('clients.show', $c))->assertSee('Étudiant âgé de 25 ans au plus (1 000 DT)')->assertSee('3 200 DT');
+
+        // Pas chef de famille : les enfants ne sont pas retenus.
+        $this->put(route('clients.update', $c), $base + ['chef_famille' => '0', 'enfants_charge' => $enfants])->assertSessionHasNoErrors();
+        $this->assertNull($c->fresh()->enfants_charge);
+        $this->assertSame(0, $c->fresh()->deductionEnfants());
+
+        // Une personne morale n'a pas de situation familiale.
+        $this->put(route('clients.update', $c), $this->fiche(['situation_familiale' => 'marie', 'chef_famille' => '1', 'enfants_charge' => $enfants]))->assertSessionHasNoErrors();
+        $this->assertSame([null, null, null], [$c->fresh()->situation_familiale, $c->fresh()->chef_famille, $c->fresh()->enfants_charge]);
+    }
+
     public function test_cadre_legal_de_l_activite(): void
     {
         $vides = array_fill(0, 3, ['cadre' => '', 'organisme' => '', 'numero' => '', 'date_declaration' => '', 'date_entree' => '']);

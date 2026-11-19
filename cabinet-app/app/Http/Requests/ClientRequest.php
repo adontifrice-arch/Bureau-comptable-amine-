@@ -45,6 +45,17 @@ class ClientRequest extends FormRequest
             if (array_filter($l, fn ($v) => $v !== null)) $cadres[] = $l;
         }
         $this->merge(['cadres_legaux' => $cadres]);
+
+        // Enfants à charge : seulement pour un chef de famille ; lignes vides ignorées.
+        $enfants = [];
+        if ((string) $this->input('chef_famille') === '1') {
+            foreach ((array) $this->input('enfants_charge', []) as $e) {
+                if (! is_array($e)) continue;
+                $e = ['prenom' => trim((string) ($e['prenom'] ?? '')) ?: null, 'type' => ($e['type'] ?? '') ?: null];
+                if ($e['prenom'] !== null || $e['type'] !== null) $enfants[] = $e;
+            }
+        }
+        $this->merge(['enfants_charge' => $enfants]);
         $this->merge(collect(self::piecesInutiles($this->input('gerant_nationalite')))->mapWithKeys(fn ($v, $k) => ['gerant_'.$k => $v])->all());
 
         // Chaque nature a ses propres rubriques : celles de l'autre nature sont vidées (une personne physique n'a ni capital,
@@ -90,6 +101,10 @@ class ClientRequest extends FormRequest
             'activite' => 'nullable|max:255', 'categories_revenus' => 'nullable|required_if:type_personne,physique|array',
             'categories_revenus.*' => 'in:'.implode(',', array_keys(Client::CATEGORIES_REVENUS)),
             'regime_imposition' => 'nullable|in:'.implode(',', array_keys(Client::REGIMES_IMPOSITION)),
+            'situation_familiale' => 'nullable|in:'.implode(',', array_keys(Client::SITUATIONS_FAMILIALES)),
+            'chef_famille' => 'nullable|in:0,1', 'enfants_charge' => 'nullable|array|max:20', 'enfants_charge.*.prenom' => 'nullable|max:100',
+            'enfants_charge.*.type' => 'required|in:'.implode(',', array_keys(Client::TYPES_ENFANT)),
+            'parents_charge' => 'nullable|integer|min:0|max:9',
             'cadres_legaux' => 'array|max:'.Client::CADRES_LEGAUX_MAX, 'cadres_legaux.*.cadre' => 'required|in:'.implode(',', array_map('strval', array_keys(Client::CADRES_LEGAUX))),
             'cadres_legaux.*.organisme' => 'nullable|in:'.implode(',', array_keys(Client::ORGANISMES_INVESTISSEMENT)),
             'cadres_legaux.*.numero' => 'nullable|max:50', 'cadres_legaux.*.date_declaration' => $date,
@@ -119,6 +134,7 @@ class ClientRequest extends FormRequest
         return [
             'type_personne.required' => 'Cochez « Personne physique » ou « Personne morale ».',
             'type_personne.in' => 'Cochez « Personne physique » ou « Personne morale ».',
+            'enfants_charge.*.type.required' => 'Précisez le type de chaque enfant à charge.',
             'cadres_legaux.max' => 'Le cadre légal de l’activité compte au plus '.Client::CADRES_LEGAUX_MAX.' lignes.',
             'cadres_legaux.*.cadre.required' => 'Choisissez le cadre légal de chaque ligne renseignée.',
             'categories_revenus.required_if' => 'Cochez au moins une catégorie de revenus.',
@@ -205,6 +221,8 @@ class ClientRequest extends FormRequest
         $d = collect($this->validated())->except('associes')->all();
         $d['honoraires_mensuels'] = $d['honoraires_mensuels'] ?? 0;
         if ($d['type_personne'] === 'physique' && empty($d['forme'])) $d['forme'] = 'Personne physique';
+        if (array_key_exists('chef_famille', $d) && $d['chef_famille'] !== null) $d['chef_famille'] = (bool) $d['chef_famille'];
+        if (($d['type_personne'] ?? null) === 'physique') $d['enfants_charge'] = $d['enfants_charge'] ?: null;
         if (empty($d['capital']) && ! empty($d['nb_parts']) && ! empty($d['valeur_nominale'])) {
             $d['capital'] = r3($d['nb_parts'] * $d['valeur_nominale']);
         }
