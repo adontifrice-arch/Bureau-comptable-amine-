@@ -8,6 +8,7 @@ use App\Services\LiasseFiscale;
 use App\Models\PassageFiscal;
 use App\Services\Compta;
 use App\Services\PaieCalc;
+use App\Services\TableauPassage;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 
@@ -19,7 +20,9 @@ class LiasseController extends Controller
         $rf = r3($P['rav'] + $L['rei'] - $L['ded']);
         $th = $c->estPhysique() ? r3(PaieCalc::bareme(\App\Services\DeclarationAnnuelle::arrondiImposable($rf), Setting::paie()['bar'])) : r3(max(0, $rf) * $L['taux'] / 100);
         $du = r3(max($th, $L['min']));
-        return $L + ['rf' => $rf, 'th' => $th, 'du' => $du, 'sol' => r3($du - $L['acp'] - $L['rs'])];
+        // Résultat fiscal = résultat comptable après impôt + impôt sur les bénéfices comptabilisé (69 : IS, IRPP, CSS)
+        // + réintégrations − déductions, soit le résultat avant impôt + réintégrations − déductions.
+        return $L + ['res' => $P['res'], 'impots' => $P['is'], 'rf' => $rf, 'th' => $th, 'du' => $du, 'sol' => r3($du - $L['acp'] - $L['rs'])];
     }
 
     private function data(Request $r): array
@@ -29,7 +32,8 @@ class LiasseController extends Controller
         $F = Compta::etats($client->id, $annee);
         $Fp = Compta::etats($client->id, $annee - 1);
         $L = PassageFiscal::where('client_id', $client->id)->where('annee', $annee)->first()?->donnees;
-        return compact('client', 'annee', 'F', 'Fp') + ['fisc' => static::fiscal($client, $F['P'], $L), 'saved' => (bool) $L];
+        return compact('client', 'annee', 'F', 'Fp') + ['fisc' => static::fiscal($client, $F['P'], $L), 'saved' => (bool) $L,
+            'annexe' => TableauPassage::annexe($client), 'passage' => TableauPassage::pourAffichage($L)];
     }
 
     public function index(Request $r)
@@ -51,9 +55,14 @@ class LiasseController extends Controller
     public function passage(Request $r)
     {
         $client = $this->dossier($r);
-        $d = $r->validate(['annee' => 'required|integer', 'rei' => 'nullable|numeric', 'ded' => 'nullable|numeric', 'taux' => 'nullable|numeric', 'min' => 'nullable|numeric', 'acp' => 'nullable|numeric', 'rs' => 'nullable|numeric']);
-        $annee = $d['annee']; unset($d['annee']);
-        PassageFiscal::updateOrCreate(['client_id' => $client->id, 'annee' => $annee], ['donnees' => array_map(fn ($v) => (float) $v, $d)]);
+        $d = $r->validate(['annee' => 'required|integer', 'taux' => 'nullable|numeric', 'min' => 'nullable|numeric', 'acp' => 'nullable|numeric', 'rs' => 'nullable|numeric',
+            'rei_l' => 'nullable|array', 'rei_l.*' => 'nullable|numeric', 'ded_l' => 'nullable|array', 'ded_l.*' => 'nullable|numeric',
+            'rei_autres' => 'nullable|array|max:'.TableauPassage::AUTRES_LIGNES, 'rei_autres.*.lib' => 'nullable|max:255', 'rei_autres.*.m' => 'nullable|numeric',
+            'ded_autres' => 'nullable|array|max:'.TableauPassage::AUTRES_LIGNES, 'ded_autres.*.lib' => 'nullable|max:255', 'ded_autres.*.m' => 'nullable|numeric'],
+            [], ['rei_l.*' => 'montant de réintégration', 'ded_l.*' => 'montant de déduction', 'rei_autres.*.m' => 'montant', 'ded_autres.*.m' => 'montant']);
+        $donnees = array_map(fn ($v) => (float) $v, array_intersect_key($d, array_flip(['taux', 'min', 'acp', 'rs'])))
+            + TableauPassage::donnees(TableauPassage::annexe($client), $d);
+        PassageFiscal::updateOrCreate(['client_id' => $client->id, 'annee' => $d['annee']], ['donnees' => $donnees]);
         return back()->with('ok', 'Tableau de passage enregistré.');
     }
 

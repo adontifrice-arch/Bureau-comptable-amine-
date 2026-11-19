@@ -14,12 +14,56 @@
         @include('liasse._etats-financiers')
     @elseif($tab === 'fis')
         <div class="grid gap-6 lg:grid-cols-3">
-            <form method="POST" action="{{ route('liasse.passage') }}" class="card lg:col-span-2">@csrf <input type="hidden" name="annee" value="{{ $annee }}">
-                <div class="card-h"><h2 class="card-t">Tableau de passage simplifié</h2></div>
+            @php
+                $TP = \App\Services\TableauPassage::class; $num = $TP::numeroAutres($annexe);
+                $mt = fn ($v) => $v === null || $v === '' ? '' : rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
+                $autresRei = array_pad(array_values($passage['rei_autres']), $TP::AUTRES_LIGNES, ['lib' => '', 'm' => '']);
+                $autresDed = array_pad(array_values($passage['ded_autres']), $TP::AUTRES_LIGNES, ['lib' => '', 'm' => '']);
+                $impLib = $client->estPhysique() ? 'IRPP et CSS comptabilisés (comptes 69)' : 'Impôt sur les sociétés comptabilisé (comptes 69)';
+            @endphp
+            <form method="POST" action="{{ route('liasse.passage') }}" class="card lg:col-span-2"
+                  x-data="{ k: 0, res: {{ (float) $fisc['res'] }}, imp: {{ (float) $fisc['impots'] }},
+                            somme(sel) { this.k; return [...this.$root.querySelectorAll(sel)].reduce((s, i) => s + (parseFloat(i.value) || 0), 0) },
+                            fmt(v) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) } }" @input="k++">@csrf <input type="hidden" name="annee" value="{{ $annee }}">
+                <div class="card-h"><h2 class="card-t">Tableau de détermination du résultat fiscal</h2>
+                    <span class="text-xs text-slate-400">Note commune n° 26/2016 — annexe {{ $annexe }} ({{ $annexe === 1 ? 'personnes physiques, sociétés de personnes et assimilées' : 'sociétés passibles de l’impôt sur les sociétés' }})</span></div>
+                <table class="tbl">
+                    <tbody>
+                        <tr class="bg-slate-50 font-semibold dark:bg-slate-800/40"><td colspan="2">Résultat comptable après impôt ({{ $fisc['res'] >= 0 ? 'bénéfice' : 'déficit' }})</td><td class="num w-44">{{ tnd($fisc['res']) }}</td></tr>
+
+                        <tr class="bg-slate-100/70 font-semibold dark:bg-slate-800"><td colspan="3">I- Réintégrations</td></tr>
+                        <tr><td class="w-14 text-slate-500">—</td><td>{{ $impLib }}</td><td class="num">{{ tnd($fisc['impots']) }}</td></tr>
+                        @foreach($TP::reintegrations($annexe) as $groupe => $lignes)
+                            <tr><td colspan="3" class="pt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{{ $loop->iteration }}. {{ $groupe }}</td></tr>
+                            @foreach($lignes as $code => [$n, $lib])
+                                <tr><td class="text-slate-500">{{ $n }}</td><td><label for="rei-{{ $code }}">{{ $lib }}</label></td>
+                                    <td><input id="rei-{{ $code }}" data-rei type="number" step="0.001" name="rei_l[{{ $code }}]" value="{{ $mt(old("rei_l.$code", $passage['rei_l'][$code] ?? '')) }}" class="input text-right font-mono"></td></tr>
+                            @endforeach
+                        @endforeach
+                        <tr><td colspan="3" class="pt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{{ $num['rei'] }}. Autres réintégrations (à préciser)</td></tr>
+                        @foreach($autresRei as $i => $l)
+                            <tr><td class="text-slate-500">{{ $num['rei'] }}</td><td><input name="rei_autres[{{ $i }}][lib]" value="{{ $l['lib'] }}" class="input" placeholder="Nature de la réintégration" aria-label="Autre réintégration {{ $i + 1 }}"></td>
+                                <td><input data-rei type="number" step="0.001" name="rei_autres[{{ $i }}][m]" value="{{ $mt($l['m']) }}" class="input text-right font-mono" aria-label="Montant de l’autre réintégration {{ $i + 1 }}"></td></tr>
+                        @endforeach
+                        <tr class="font-semibold"><td colspan="2">Total réintégrations</td><td class="num" x-text="fmt(imp + somme('[data-rei]'))">{{ tnd($fisc['impots'] + $fisc['rei']) }}</td></tr>
+
+                        <tr class="bg-slate-100/70 font-semibold dark:bg-slate-800"><td colspan="3">II- Déductions</td></tr>
+                        @foreach($TP::deductions($annexe) as $code => [$n, $lib])
+                            <tr><td class="text-slate-500">{{ $n }}</td><td><label for="ded-{{ $code }}">{{ $lib }}</label></td>
+                                <td><input id="ded-{{ $code }}" data-ded type="number" step="0.001" name="ded_l[{{ $code }}]" value="{{ $mt(old("ded_l.$code", $passage['ded_l'][$code] ?? '')) }}" class="input text-right font-mono"></td></tr>
+                        @endforeach
+                        @foreach($autresDed as $i => $l)
+                            <tr><td class="text-slate-500">{{ $num['ded'] }}</td><td><input name="ded_autres[{{ $i }}][lib]" value="{{ $l['lib'] }}" class="input" placeholder="Autre déduction (à préciser)" aria-label="Autre déduction {{ $i + 1 }}"></td>
+                                <td><input data-ded type="number" step="0.001" name="ded_autres[{{ $i }}][m]" value="{{ $mt($l['m']) }}" class="input text-right font-mono" aria-label="Montant de l’autre déduction {{ $i + 1 }}"></td></tr>
+                        @endforeach
+                        <tr class="font-semibold"><td colspan="2">Total déductions</td><td class="num" x-text="fmt(somme('[data-ded]'))">{{ tnd($fisc['ded']) }}</td></tr>
+
+                        <tr class="bg-slate-50 text-base font-semibold dark:bg-slate-800/40"><td colspan="2">Résultat fiscal</td><td class="num" x-text="fmt(res + imp + somme('[data-rei]') - somme('[data-ded]'))">{{ tnd($fisc['rf']) }}</td></tr>
+                    </tbody>
+                </table>
+                @if($errors->any())<p class="px-5 pt-3 text-xs text-rose-600">{{ $errors->first() }}</p>@endif
+                <div class="card-h border-t"><h2 class="card-t">Impôt</h2></div>
                 <div class="card-b grid gap-4 md:grid-cols-3">
-                    <div class="md:col-span-3 rounded-xl bg-slate-50 p-4 text-sm dark:bg-slate-800/40">Résultat comptable avant impôt : <b class="font-mono">{{ tnd($F['P']['rav']) }}</b></div>
-                    <x-field label="Réintégrations fiscales" name="rei" type="number" step="0.001" :value="$fisc['rei']"/>
-                    <x-field label="Déductions fiscales" name="ded" type="number" step="0.001" :value="$fisc['ded']"/>
                     @unless($client->estPhysique())<x-field label="Taux de l’IS (%)" name="taux" type="number" step="0.01" :value="$fisc['taux']"/>@endunless
                     <x-field label="Minimum d’impôt" name="min" type="number" step="0.001" :value="$fisc['min']"/>
                     <x-field label="Acomptes provisionnels versés" name="acp" type="number" step="0.001" :value="$fisc['acp']"/>

@@ -91,7 +91,7 @@ class LiasseFiscaleTest extends TestCase
         $this->assertSame([-2500.0, 0.0, 0.0, -2500.0, -2700.0], [$v[55], $v[56], $v[66], $v[102], $v[107]]);
 
         // Réintégrations par défaut : tableau de passage simplifié ; résultat avant impôt (2 050 + IS 200)
-        $this->post(route('liasse.passage'), ['annee' => 2024, 'rei' => 150, 'ded' => 50]);
+        $this->post(route('liasse.passage'), ['annee' => 2024, 'rei_l' => ['r1_17' => 100], 'rei_autres' => [['lib' => 'Autre', 'm' => 50]], 'ded_l' => ['d2' => 50]])->assertSessionHasNoErrors();
         $F = LiasseFiscale::calculer($this->client, 2024)['docs']['F6005']['n'];
         $this->assertSame([2250.0, 150.0, 50.0, 2350.0, 2350.0], [$F[2], $F[44], $F[54], $F[55], $F[101]]);
     }
