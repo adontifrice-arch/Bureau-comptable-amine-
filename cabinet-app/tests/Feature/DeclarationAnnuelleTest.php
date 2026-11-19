@@ -94,6 +94,23 @@ class DeclarationAnnuelleTest extends TestCase
         $this->assertSame(40000.0, (float) $f['bic_res_fiscal']);                       // résultat fiscal : à partir du résultat avant impôt
         $this->get(route('compta.index', ['tab' => 'bal', 'annee' => 2025]))->assertOk()->assertSee('31 800,000');
 
+        // Résultat fiscal = résultat comptable + IRPP + CSS + réintégrations du passage au résultat fiscal
+        PassageFiscal::create(['client_id' => $c->id, 'annee' => 2025, 'donnees' => ['rei' => 500, 'ded' => 1000]]);
+        $this->post(route('declarations.prefill'), $this->q())->assertSessionHas('ok');
+        $f = Declaration::where(['client_id' => $c->id, 'type' => 'ann'])->sole()->champs;
+        $this->assertSame([31800.0, 40500.0], [(float) $f['bic_res_compta'], (float) $f['bic_res_fiscal']]);   // 31 800 + 8 000 + 200 + 500
+
+        // Déductions du passage : dans les déductions au titre de l'activité (revenu imposable diminué d'autant)
+        $this->assertEquals([['code' => '', 'cadre' => A::CADRE_PASSAGE, 'montant' => 1000]], $f['ded_act']);
+        $this->assertSame([1000.0, 39500.0], [A::calculIr($f)['ded_act'], A::calculIr($f)['rni']]);
+
+        // Nouveau pré-remplissage : la ligne du passage est mise à jour, une ligne saisie à la main est gardée
+        $d = Declaration::where(['client_id' => $c->id, 'type' => 'ann'])->sole();
+        $d->update(['champs' => array_merge($f, ['ded_act' => array_merge($f['ded_act'], [['code' => '10', 'cadre' => 'Zone de développement régional', 'montant' => 300]])])]);
+        PassageFiscal::where('client_id', $c->id)->update(['donnees' => ['rei' => 500, 'ded' => 1200]]);
+        $this->post(route('declarations.prefill'), $this->q())->assertSessionHas('ok');
+        $this->assertSame([300.0, 1200.0], array_map('floatval', array_column($d->fresh()->champs['ded_act'], 'montant')));
+
         // CSS = bénéfice net imposable (arrondi au dinar supérieur, comme pour l'IRPP) × 0,5 %
         $C = A::calculIr(['modele' => 'ir', 'bic_res_fiscal' => '30000.400']);
         $this->assertSame([30000.4, 30001.0, 30001.0, 150.005], [$C['rni'], $C['rni_arrondi'], $C['css_base'], $C['css_du']]);
@@ -105,6 +122,26 @@ class DeclarationAnnuelleTest extends TestCase
         $C = A::calculIr(['modele' => 'ir', 'bic_res_fiscal' => '30000.400']);
         $this->assertSame([1.0, 300.01], [$C['css_taux'], $C['css_du']]);
         $this->get(route('declarations.index', $this->q()))->assertOk()->assertSee('Contribution sociale de solidarité (1 %)');
+    }
+
+    public function test_deductions_familiales_reprises_de_la_fiche_client(): void
+    {
+        $c = Client::create(['nom' => 'Gharbi Nadia', 'type_personne' => 'physique', 'forme' => 'Commerçant (BIC)', 'paie_activite' => 'Négoce',
+            'situation_familiale' => 'marie', 'chef_famille' => true, 'parents_charge' => 2,
+            'enfants_charge' => [['prenom' => 'Sami', 'type' => 'moins_20'], ['prenom' => 'Rim', 'type' => 'etudiant']]]);
+        session(['dossier' => $c->id]);
+        Compta::passer($c->id, '2025-06-30', 'VTE', 'Ventes', [['compte' => '411', 'debit' => 50000, 'credit' => 0], ['compte' => '7061', 'debit' => 0, 'credit' => 50000]]);
+
+        $this->post(route('declarations.prefill'), $this->q())->assertSessionHas('ok');
+        $f = Declaration::where(['client_id' => $c->id, 'type' => 'ann'])->sole()->champs;
+        $this->assertSame(['2', '1', '2'], [$f['situation'], $f['chef'], $f['parents']]);
+        $this->assertSame(['1', '2'], array_column($f['enfants'], 'etat'));
+
+        $C = A::calculIr($f);
+        $avant = 50000 - 300 - 1100;                         // revenu après chef de famille et enfants
+        $this->assertSame([300.0, 1100.0], [$C['ded_chef'], $C['ded_enf']]);
+        $this->assertSame(r3(min($avant * 0.05, 450) * 2), $C['ded_parents']);   // 5 %, 450 D au plus par parent
+        $this->assertSame(r3($avant - $C['ded_parents']), $C['rni']);
     }
 
     public function test_declaration_des_personnes_physiques(): void

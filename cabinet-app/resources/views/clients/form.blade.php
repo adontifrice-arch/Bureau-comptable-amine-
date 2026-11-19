@@ -97,7 +97,7 @@
                 <x-select label="Situation familiale" name="situation_familiale" :value="$client->situation_familiale" placeholder="Non précisé" :options="\App\Models\Client::SITUATIONS_FAMILIALES"/>
                 <div><label class="label" for="f-chef_famille">Chef de famille ?</label>
                     <select id="f-chef_famille" name="chef_famille" class="input" x-model="chef"><option value="">—</option><option value="1">Oui</option><option value="0">Non</option></select></div>
-                <x-field label="Parents à charge" name="parents_charge" type="number" min="0" max="9" :value="$client->parents_charge"/>
+                <x-field label="Parents à charge" name="parents_charge" type="number" min="0" max="9" :value="$client->parents_charge" hint="Déduction : 5 % du revenu net imposable, 450 DT au plus par parent"/>
 
                 <div class="md:col-span-3 space-y-2" x-show="chef === '1'">
                     <div class="flex flex-wrap items-center justify-between gap-2">

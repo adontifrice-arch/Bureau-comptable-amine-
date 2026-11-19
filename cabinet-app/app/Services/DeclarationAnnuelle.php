@@ -179,7 +179,7 @@ class DeclarationAnnuelle
         }
         $f += ['acte' => '0', 'nature' => 'd', 'ouv' => "$annee-01-01", 'clo' => "$annee-12-31", 'activite' => $c->paie_activite, 'forme' => $c->forme,
             'nationalite' => 'tunisienne', 'taux' => 15, 'capital' => $c->capital ?: null, 'nominal' => $c->valeur_nominale ?: null, 'nb_parts' => $c->nb_parts ?: null];
-        if ($c->estPhysique()) $f += ['nom' => $c->nom, 'telephone' => $c->telephone, 'id_code' => '2'];
+        if ($c->estPhysique()) $f += ['nom' => $c->nom, 'telephone' => $c->telephone, 'id_code' => '2'] + self::famille($c);
         if (empty($f['associes']) && ! $c->estPhysique()) {
             $f['associes'] = $c->associes()->get()->map(fn ($a) => ['nom' => $a->nom, 'adr' => $a->adresse, 'code' => $a->cin ? '1' : '', 'id' => $a->cin, 'parts' => $a->parts, 'dividendes' => ''])->all();
         }
@@ -556,13 +556,51 @@ class DeclarationAnnuelle
     }
 
     /** Pré-remplissage de la déclaration IR depuis les états financiers (entreprise individuelle) et la paie n'existe pas pour l'exploitant. */
+    /**
+     * Situation familiale de la fiche client, pour les déductions de la déclaration IR : chef de famille (300 D),
+     * enfants à charge (100, 1 000 ou 2 000 D chacun, 4 premiers) et parents à charge (5 % du revenu net, 450 D au plus par parent).
+     * Seules les rubriques renseignées sur la fiche sont reprises.
+     */
+    public static function famille(Client $c): array
+    {
+        $etat = ['moins_20' => '1', 'etudiant' => '2', 'handicape' => '3'];
+        $sit = ['celibataire' => '1', 'marie' => '2', 'divorce' => '3', 'veuf' => '4'];
+        $f = [];
+        if (isset($sit[$c->situation_familiale])) $f['situation'] = $sit[$c->situation_familiale];
+        if ($c->chef_famille !== null) $f['chef'] = $c->chef_famille ? '1' : '';
+        if ($c->chef_famille && $c->enfants_charge) {
+            $f['enfants'] = collect($c->enfants_charge)->map(fn ($e) => ['nom' => $e['prenom'] ?? '', 'naissance' => '', 'etat' => $etat[$e['type'] ?? ''] ?? ''])->values()->all();
+        }
+        if ($c->parents_charge !== null) $f['parents'] = (string) $c->parents_charge;
+        return $f;
+    }
+
+    /**
+     * Résultat fiscal d'une personne physique : résultat comptable (balance) + IRPP et CSS comptabilisés (comptes 69, non déductibles)
+     * + réintégrations du passage au résultat fiscal.
+     */
+    /** Libellé de la ligne de déduction reprise du passage au résultat fiscal. */
+    public const CADRE_PASSAGE = 'Déductions du passage au résultat fiscal';
+
+    public static function resultatFiscalIr(array $P, array $L): float
+    {
+        return r3($P['res'] + $P['is'] + (float) ($L['rei'] ?? 0));
+    }
+
     public static function preremplirIr(array &$f, Client $c, int $y, array $P, float $tvac, float $rf, array $L): void
     {
+        foreach (self::famille($c) as $k => $v) $f[$k] = $v;
         $bnc = (bool) preg_match('/lib[ée]ral|bnc|m[ée]decin|avocat|architecte|expert|conseil|ing[ée]nieur/iu', (string) $c->forme.' '.$c->paie_activite);
         $p = $bnc ? 'bnc_' : 'bic_';
         $f[$p.'ca_loc'] = r3($P['ca']);
         $f[$p.'ca_ttc'] = r3($P['ca'] + $tvac);
-        $f[$p.'res_fiscal'] = $rf;
+        // Résultat fiscal = résultat comptable + IRPP + CSS (comptes 69) + réintégrations du passage au résultat fiscal
+        $f[$p.'res_fiscal'] = self::resultatFiscalIr($P, $L);
+        // Les déductions du passage ne diminuent pas le résultat fiscal : elles figurent parmi les déductions au titre de l'activité.
+        // La ligne reprise du passage est remplacée à chaque pré-remplissage ; les lignes saisies à la main sont conservées.
+        $lignes = array_values(array_filter((array) ($f['ded_act'] ?? []), fn ($l) => ($l['cadre'] ?? null) !== self::CADRE_PASSAGE));
+        if ((float) ($L['ded'] ?? 0) != 0) $lignes[] = ['code' => '', 'cadre' => self::CADRE_PASSAGE, 'montant' => r3((float) $L['ded'])];
+        $f['ded_act'] = $lignes;
         if (! $bnc) { $f['bic_achats'] = r3($P['ach']); }
         $f['min_loc_02'] = r3($P['ca'] + $tvac);
         if (! empty($L['rs'])) $f['ded_rs'] = (float) $L['rs'];
