@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Associe;
+use App\Models\Client;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -31,21 +32,68 @@ class ClientRequest extends FormRequest
             $a = array_map(fn ($v) => is_string($v) && trim($v) === '' ? null : $v, array_intersect_key($a, array_flip(Associe::CHAMPS)));
             $a['nom'] = trim($a['nom']);
             $a['apport'] = $a['apport'] ?? 'numeraire';
-            $associes[] = $a;
+            $associes[] = array_merge($a, self::piecesInutiles($a['nationalite'] ?? null));
         }
         $this->merge(['associes' => $associes]);
+
+        // Cadre légal de l'activité : lignes vides ignorées, champs vides ramenés à null.
+        $cadres = [];
+        foreach ((array) $this->input('cadres_legaux', []) as $l) {
+            if (! is_array($l)) continue;
+            $l = array_map(fn ($v) => is_string($v) && trim($v) === '' ? null : (is_string($v) ? trim($v) : $v),
+                array_merge(array_fill_keys(self::CADRE_CHAMPS, null), array_intersect_key($l, array_flip(self::CADRE_CHAMPS))));
+            if (array_filter($l, fn ($v) => $v !== null)) $cadres[] = $l;
+        }
+        $this->merge(['cadres_legaux' => $cadres]);
+        $this->merge(collect(self::piecesInutiles($this->input('gerant_nationalite')))->mapWithKeys(fn ($v, $k) => ['gerant_'.$k => $v])->all());
+
+        // Chaque nature a ses propres rubriques : celles de l'autre nature sont vidées (une personne physique n'a ni capital,
+        // ni gérant, ni associés ; une personne morale n'a pas de catégories de revenus de l'impôt sur le revenu).
+        $vider = fn (array $champs) => array_fill_keys($champs, null);
+        match ($this->input('type_personne')) {
+            'physique' => $this->merge($vider(Client::CHAMPS_MORALE) + ['gerant_nom' => null, 'associes' => []]),
+            'morale' => $this->merge($vider(Client::CHAMPS_PHYSIQUE)),
+            default => null,
+        };
+    }
+
+    public const CADRE_CHAMPS = ['cadre', 'organisme', 'numero', 'date_declaration', 'date_entree'];
+
+    public const PIECES_TUNISIEN =['cin', 'cin_date', 'cin_lieu'];
+    public const PIECES_ETRANGER = ['passeport', 'passeport_date', 'passeport_validite', 'carte_sejour'];
+
+    public static function estTunisien(?string $nationalite): bool
+    {
+        return (bool) preg_match('/^\s*tunisi/iu', (string) $nationalite);
+    }
+
+    /**
+     * Pièces d'identité sans objet pour la nationalité (vidées) : un Tunisien est identifié par sa carte d'identité,
+     * un étranger par son passeport et, le cas échéant, sa carte de séjour. Nationalité non renseignée : rien n'est vidé.
+     */
+    public static function piecesInutiles(?string $nationalite): array
+    {
+        if (trim((string) $nationalite) === '') return [];
+        return array_fill_keys(self::estTunisien($nationalite) ? self::PIECES_ETRANGER : self::PIECES_TUNISIEN, null);
     }
 
     public function rules(): array
     {
         $date = 'nullable|date';
         return [
-            'nom' => 'required|max:255', 'forme' => 'nullable|max:100', 'type_personne' => 'nullable|in:morale,physique',
+            'nom' => 'required|max:255', 'forme' => 'nullable|max:100', 'type_personne' => 'required|in:morale,physique',
             'denomination_commerciale' => 'nullable|max:255', 'residence' => 'nullable|in:residente,non_residente',
             'regime_export' => 'nullable|in:non,totale,partielle', 'mission' => 'nullable|max:255', 'honoraires_mensuels' => 'nullable|numeric|min:0',
             'matricule_fiscal' => ['nullable', 'max:20', 'regex:'.self::MF_REGEX], 'compte_comptable' => ['nullable', 'regex:/^411\d{0,5}$/'],
             'matricule_cnss' => 'nullable|max:50', 'matricule_independant' => 'nullable|max:50',
             'capital' => 'nullable|numeric|min:0', 'nb_parts' => 'nullable|integer|min:1', 'valeur_nominale' => 'nullable|numeric|gt:0',
+            'activite' => 'nullable|max:255', 'categories_revenus' => 'nullable|required_if:type_personne,physique|array',
+            'categories_revenus.*' => 'in:'.implode(',', array_keys(Client::CATEGORIES_REVENUS)),
+            'regime_imposition' => 'nullable|in:'.implode(',', array_keys(Client::REGIMES_IMPOSITION)),
+            'cadres_legaux' => 'array|max:'.Client::CADRES_LEGAUX_MAX, 'cadres_legaux.*.cadre' => 'required|in:'.implode(',', array_map('strval', array_keys(Client::CADRES_LEGAUX))),
+            'cadres_legaux.*.organisme' => 'nullable|in:'.implode(',', array_keys(Client::ORGANISMES_INVESTISSEMENT)),
+            'cadres_legaux.*.numero' => 'nullable|max:50', 'cadres_legaux.*.date_declaration' => $date,
+            'cadres_legaux.*.date_entree' => $date,
             'adresse' => 'nullable|max:255', 'email' => 'nullable|email|max:255', 'telephone' => 'nullable|max:50',
 
             'gerant_nom' => 'nullable|max:255', 'gerant_cin' => 'nullable|max:50', 'gerant_cin_date' => $date, 'gerant_cin_lieu' => 'nullable|max:100',
@@ -69,6 +117,11 @@ class ClientRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'type_personne.required' => 'Cochez « Personne physique » ou « Personne morale ».',
+            'type_personne.in' => 'Cochez « Personne physique » ou « Personne morale ».',
+            'cadres_legaux.max' => 'Le cadre légal de l’activité compte au plus '.Client::CADRES_LEGAUX_MAX.' lignes.',
+            'cadres_legaux.*.cadre.required' => 'Choisissez le cadre légal de chaque ligne renseignée.',
+            'categories_revenus.required_if' => 'Cochez au moins une catégorie de revenus.',
             'matricule_fiscal.regex' => 'Le matricule fiscal doit comporter 7 chiffres suivis d’une lettre (ex. 1234567/A/M/000).',
             'compte_comptable.regex' => 'Le compte comptable client doit commencer par 411 (ex. 411001).',
             'gerant_passeport_validite.after_or_equal' => 'La date de validité du passeport doit suivre sa date de délivrance.',
@@ -151,6 +204,7 @@ class ClientRequest extends FormRequest
     {
         $d = collect($this->validated())->except('associes')->all();
         $d['honoraires_mensuels'] = $d['honoraires_mensuels'] ?? 0;
+        if ($d['type_personne'] === 'physique' && empty($d['forme'])) $d['forme'] = 'Personne physique';
         if (empty($d['capital']) && ! empty($d['nb_parts']) && ! empty($d['valeur_nominale'])) {
             $d['capital'] = r3($d['nb_parts'] * $d['valeur_nominale']);
         }

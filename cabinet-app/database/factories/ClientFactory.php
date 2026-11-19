@@ -29,6 +29,6 @@ class ClientFactory extends Factory
 
     public function physique(): static
     {
-        return $this->state(['forme' => 'Libéral (BNC)', 'type_personne' => 'physique', 'capital' => 0, 'nb_parts' => null, 'valeur_nominale' => null]);
+        return $this->state(['forme' => 'Libéral (BNC)', 'type_personne' => 'physique', 'activite' => 'Profession libérale', 'categories_revenus' => ['bnc'], 'capital' => 0, 'nb_parts' => null, 'valeur_nominale' => null]);
     }
 }

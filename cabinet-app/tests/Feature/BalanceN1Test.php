@@ -58,7 +58,7 @@ class BalanceN1Test extends TestCase
 
     public function test_creation_du_client_avec_la_balance_excel_puis_reprise(): void
     {
-        $this->post(route('clients.store'), ['nom' => 'Nouvelle Société', 'exercice' => 2026, 'balance_n1' => $this->excel()])
+        $this->post(route('clients.store'), ['nom' => 'Nouvelle Société', 'type_personne' => 'morale', 'exercice' => 2026, 'balance_n1' => $this->excel()])
             ->assertRedirect(route('compta.balance-n1'));
         $client = Client::where('nom', 'Nouvelle Société')->firstOrFail();
         $import = session('balance_n1.'.$client->id);

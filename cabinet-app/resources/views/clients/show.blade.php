@@ -6,7 +6,7 @@
             <div>
                 <h1 class="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{{ $client->nom }}</h1>
                 <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                    <span>{{ $client->forme ?: '—' }}</span>
+                    <span>{{ ($client->estPhysique() ? ($client->activite ?: $client->forme) : $client->forme) ?: '—' }}</span>
                     <span class="badge-gray" @if(!$client->type_personne) title="Déduit de la forme juridique" @endif>{{ $client->estPhysique() ? 'Personne physique' : 'Personne morale' }}</span>
                     @if($client->mission)<span class="badge-blue">{{ $client->mission }}</span>@endif
                 </div>
@@ -14,7 +14,7 @@
         </div>
         <div class="flex flex-wrap gap-2">
             <a href="{{ route('echeances.calendrier', $client) }}" class="btn-secondary"><x-icon name="calendar" class="h-4 w-4"/> Calendrier</a>
-            <a href="{{ route('actes.create', $client) }}" class="btn-secondary"><x-icon name="file-text" class="h-4 w-4"/> Rédiger statuts / PV</a>
+            @unless($client->estPhysique())<a href="{{ route('actes.create', $client) }}" class="btn-secondary"><x-icon name="file-text" class="h-4 w-4"/> Rédiger statuts / PV</a>@endunless
             <a href="{{ route('factures.create', ['client' => $client->id]) }}" class="btn-secondary"><x-icon name="invoice" class="h-4 w-4"/> Facturer</a>
             <a href="{{ route('clients.edit', $client) }}" class="btn-primary"><x-icon name="edit" class="h-4 w-4"/> Modifier</a>
         </div>
@@ -26,7 +26,14 @@
     @if($tab === 'fiche')
         @php
             $bloc = function ($titre, $rows) { return [$titre, array_filter($rows, fn($v) => $v !== null && $v !== '' && $v !== '—')]; };
-            $blocs = [
+            $pp = $client->estPhysique();
+            $identite = ['Nationalité' => $client->gerant_nationalite, 'CIN' => trim($client->gerant_cin.($client->gerant_cin_date ? ' du '.dfr($client->gerant_cin_date) : '').($client->gerant_cin_lieu ? ' à '.$client->gerant_cin_lieu : '')), 'Passeport' => $client->gerant_passeport ? trim($client->gerant_passeport.($client->gerant_passeport_date ? ' du '.dfr($client->gerant_passeport_date) : '').($client->gerant_passeport_validite ? ', valable jusqu’au '.dfr($client->gerant_passeport_validite) : '')) : null, 'Carte de séjour' => $client->gerant_carte_sejour, 'Né(e) le' => $client->gerant_naissance_date ? dfr($client->gerant_naissance_date).($client->gerant_naissance_lieu ? ' à '.$client->gerant_naissance_lieu : '') : null, 'Adresse' => $client->gerant_adresse];
+            $blocs = $pp ? [
+                $bloc('Identification', ['Activité' => $client->activite, 'Dénomination commerciale' => $client->denomination_commerciale, 'Résidence' => ['residente' => 'Résident(e)', 'non_residente' => 'Non résident(e)'][$client->residence] ?? null, 'Régime d’exportation' => ['non' => 'Non exportateur', 'totale' => 'Totalement exportateur', 'partielle' => 'Partiellement exportateur'][$client->regime_export] ?? null, 'Matricule fiscal' => $client->matricule_fiscal, 'Matricule CNSS' => $client->matricule_cnss, 'Matricule indépendant' => $client->matricule_independant, 'Adresse' => $client->adresse, 'Téléphone' => $client->telephone, 'E-mail' => $client->email]),
+                $bloc('Mission & imposition', ['Mission' => $client->mission, 'Honoraires mensuels' => $client->honoraires_mensuels > 0 ? tnd($client->honoraires_mensuels) : null, 'Compte comptable' => $client->compte_comptable, 'Régime d’imposition' => \App\Models\Client::REGIMES_IMPOSITION[$client->regime_imposition] ?? null]
+                    + collect($client->categories_revenus ?? [])->values()->mapWithKeys(fn ($k, $i) => [($i ? 'Catégorie '.($i + 1) : 'Catégorie de revenus') => \App\Models\Client::CATEGORIES_REVENUS[$k] ?? $k])->all()),
+                $bloc('Identité', $identite),
+            ] : [
                 $bloc('Identification', ['Dénomination commerciale' => $client->denomination_commerciale, 'Résidence' => ['residente' => 'Résidente', 'non_residente' => 'Non résidente'][$client->residence] ?? null, 'Régime d’exportation' => ['non' => 'Non exportatrice', 'totale' => 'Totalement exportatrice', 'partielle' => 'Partiellement exportatrice'][$client->regime_export] ?? null, 'Matricule fiscal' => $client->matricule_fiscal, 'Matricule CNSS' => $client->matricule_cnss, 'Matricule indépendant' => $client->matricule_independant, 'Adresse' => $client->adresse, 'Téléphone' => $client->telephone, 'E-mail' => $client->email]),
                 $bloc('Mission & capital', ['Mission' => $client->mission, 'Honoraires mensuels' => $client->honoraires_mensuels > 0 ? tnd($client->honoraires_mensuels) : null, 'Compte comptable' => $client->compte_comptable, 'Capital' => $client->capital > 0 ? tnd($client->capital) : null, 'Nombre de parts' => $client->nb_parts, 'Valeur nominale' => $client->valeur_nominale ? tnd($client->valeur_nominale) : null]),
                 $bloc('Gérant', ['Nom' => $client->gerant_nom, 'Nationalité' => $client->gerant_nationalite, 'CIN' => trim($client->gerant_cin.($client->gerant_cin_date ? ' du '.dfr($client->gerant_cin_date) : '').($client->gerant_cin_lieu ? ' à '.$client->gerant_cin_lieu : '')), 'Passeport' => $client->gerant_passeport ? trim($client->gerant_passeport.($client->gerant_passeport_date ? ' du '.dfr($client->gerant_passeport_date) : '').($client->gerant_passeport_validite ? ', valable jusqu’au '.dfr($client->gerant_passeport_validite) : '')) : null, 'Carte de séjour' => $client->gerant_carte_sejour, 'Né(e) le' => $client->gerant_naissance_date ? dfr($client->gerant_naissance_date).($client->gerant_naissance_lieu ? ' à '.$client->gerant_naissance_lieu : '') : null, 'Adresse' => $client->gerant_adresse, 'Nommé le' => $client->gerant_nomination_date ? dfr($client->gerant_nomination_date).($client->gerant_nomination_duree ? ' ('.$client->gerant_nomination_duree.')' : '') : null, 'Associé' => $client->gerant_associe === null ? null : ($client->gerant_associe ? 'Oui'.($client->gerant_parts ? ' — '.$client->gerant_parts.' parts' : '').($client->gerant_parts_de ? ' (n° '.$client->gerant_parts_de.' à '.$client->gerant_parts_a.')' : '').($client->gerant_apport ? ', apport en '.($client->gerant_apport === 'nature' ? 'nature' : 'numéraire') : '') : 'Non')]),
@@ -47,6 +54,21 @@
             @endforeach
         </div>
         <div class="card mt-6">
+            <div class="card-h"><h2 class="card-t">Cadre légal de l’activité</h2></div>
+            @if($client->cadres_legaux)
+                <table class="tbl"><thead><tr><th>Cadre légal</th><th>Déclaration d’investissement</th><th>Date de la déclaration</th><th>Entrée en activité</th></tr></thead><tbody>
+                @foreach($client->cadres_legaux as $l)
+                    <tr><td class="font-medium">{{ \App\Models\Client::libelleCadre($l['cadre'] ?? null) }}</td>
+                        <td>{{ trim((\App\Models\Client::ORGANISMES_INVESTISSEMENT[$l['organisme'] ?? ''] ?? '').(! empty($l['numero']) ? ' n° '.$l['numero'] : '')) ?: '—' }}</td>
+                        <td>{{ ! empty($l['date_declaration']) ? dfr($l['date_declaration']) : '—' }}</td>
+                        <td>{{ ! empty($l['date_entree']) ? dfr($l['date_entree']) : '—' }}</td></tr>
+                @endforeach
+                </tbody></table>
+            @else <x-empty icon="file-text" title="Cadre légal non renseigné"/> @endif
+        </div>
+
+        @unless($pp)
+        <div class="card mt-6">
             <div class="card-h"><h2 class="card-t">Associés</h2></div>
             @if($client->associes->count())
                 <table class="tbl"><thead><tr><th>Associé</th><th>Pièce d’identité</th><th>Nationalité</th><th>Apport</th><th class="text-right">Parts</th></tr></thead><tbody>
@@ -56,6 +78,7 @@
                 </tbody></table>
             @else <x-empty icon="users" title="Aucun associé renseigné"/> @endif
         </div>
+        @endunless
         <div class="mt-6 flex justify-end"><x-confirm-delete :action="route('clients.destroy', $client)" :icon="false" label="Supprimer ce client" message="Supprimer ce client avec toutes ses échéances, factures, écritures et documents ?"/></div>
 
     @elseif($tab === 'echeances')
