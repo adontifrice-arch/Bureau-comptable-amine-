@@ -115,8 +115,12 @@
                 <div><label class="label">Numéros des parts cédées</label><div class="flex gap-2"><input type="number" name="parts_de" class="input" placeholder="de"><input type="number" name="parts_a" class="input" placeholder="à"></div></div>
                 <div><label class="label">Prix de cession (TND)</label><input type="number" step="0.001" name="prix" class="input"></div>
                 <div><label class="label">Cessionnaire</label><div class="flex gap-2"><select name="cessionnaire_civilite" class="input w-28" aria-label="Civilité du cessionnaire"><option value="">—</option><option value="M">Mr</option><option value="Mme">Mme</option></select><input name="cessionnaire" class="input" aria-label="Nom du cessionnaire"></div></div>
-                <div><label class="label">CIN du cessionnaire</label><input name="cessionnaire_cin" class="input"></div>
-                <div><label class="label">Adresse du cessionnaire</label><input name="cessionnaire_adresse" class="input"></div>
+                <div><label class="label">CIN du cessionnaire</label><div class="flex gap-2"><input name="cessionnaire_cin" class="input" placeholder="n°"><input type="date" name="cessionnaire_cin_date" class="input" aria-label="Date de la CIN du cessionnaire"></div></div>
+                <div><label class="label">Naissance du cessionnaire</label><div class="flex gap-2"><input type="date" name="cessionnaire_naissance_date" class="input" aria-label="Date de naissance du cessionnaire"><input name="cessionnaire_naissance_lieu" class="input" placeholder="à"></div></div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-3">Constitution de la société (exposé du contrat)</p>
+                <div><label class="label">Acte de constitution du</label><input type="date" name="constitution_date" class="input"></div>
+                <div><label class="label">Enregistré le / sous le n°</label><div class="flex gap-2"><input type="date" name="enregistrement_date" class="input" aria-label="Date d’enregistrement"><input name="enregistrement_numero" class="input" placeholder="n°"></div></div>
+                <div><label class="label">Bureau d’enregistrement</label><input name="enregistrement_bureau" class="input" value="guichet unique de l’API Tunis"></div>
             </div></template>
         </div>
         <div class="flex items-center justify-between border-t border-slate-100 p-4 dark:border-slate-800">

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Acte;
 use App\Models\Client;
 use App\Models\ModeleActe;
+use App\Services\Actes\Cession;
 use App\Services\Actes\Balises;
 use App\Services\Actes\HtmlActe;
 use App\Services\Actes\ModeleDocx;
@@ -57,11 +58,15 @@ class ActeController extends Controller
             'cedant' => 'nullable|max:255', 'cessionnaire' => 'nullable|max:255', 'cessionnaire_cin' => 'nullable|max:50', 'cessionnaire_adresse' => 'nullable|max:255', 'cessionnaire_civilite' => 'nullable|in:M,Mme',
             'parts' => 'nullable|integer|min:1', 'parts_de' => 'nullable|integer|min:1|required_with:parts_a', 'parts_a' => 'nullable|integer|gte:parts_de|required_with:parts_de',
             'prix' => 'nullable|numeric|min:0',
+            // Contrat de cession : identité du cessionnaire, constitution et enregistrement de la société
+            'cessionnaire_cin_date' => 'nullable|date', 'cessionnaire_naissance_date' => 'nullable|date', 'cessionnaire_naissance_lieu' => 'nullable|max:100',
+            'constitution_date' => 'nullable|date', 'enregistrement_date' => 'nullable|date', 'enregistrement_numero' => 'nullable|max:50', 'enregistrement_bureau' => 'nullable|max:255',
             // Procès-verbaux d'assemblée : heure, exercice, chiffres des états financiers, affectation, augmentation du capital, nouvelle forme
             'heure' => 'nullable|max:20', 'exercice' => 'nullable|integer|min:2000|max:2100', 'total_bilan' => 'nullable|numeric', 'resultat' => 'nullable|numeric',
             'affectation' => 'nullable|max:500', 'augmentation' => 'nullable|numeric|min:0', 'nouvelle_forme' => 'nullable|max:50']);
         $d += array_fill_keys(['objet', 'duree', 'ordre', 'ordre_libre', 'motif', 'date_cessation', 'cedant', 'cessionnaire', 'cessionnaire_cin', 'cessionnaire_adresse', 'parts', 'parts_de', 'parts_a', 'prix', 'cessionnaire_civilite',
-            'heure', 'exercice', 'total_bilan', 'resultat', 'affectation', 'augmentation', 'nouvelle_forme'], null);
+            'heure', 'exercice', 'total_bilan', 'resultat', 'affectation', 'augmentation', 'nouvelle_forme',
+            'cessionnaire_cin_date', 'cessionnaire_naissance_date', 'cessionnaire_naissance_lieu', 'constitution_date', 'enregistrement_date', 'enregistrement_numero', 'enregistrement_bureau'], null);
         if (empty($d['parts']) && $d['parts_de'] && $d['parts_a']) $d['parts'] = $d['parts_a'] - $d['parts_de'] + 1;
         if (in_array($d['type'], OrdreDuJour::TYPES, true) && $d['ordre']) {
             // L'ordre du PV est celui de la liste, quel que soit l'ordre d'envoi des cases cochées.
@@ -161,9 +166,6 @@ class ActeController extends Controller
         $P = fn ($s) => '<p>'.$s.'</p>';
         $H = fn ($s) => '<h3>'.$s.'</h3>';
         $cap = $c->capital > 0 ? tnd($c->capital) : '………';
-        $vn = $c->valeur_nominale ? tnd($c->valeur_nominale) : '………';
-        $lieu = Balises::lieu($c);
-        $id = fn ($x) => $e(Balises::identite($x));
         $as = Balises::detenteurs($c);
         $np = $c->nb_parts ?: $as->sum('p');
         $entete = '<p style="text-align:center"><b>'.$e(mb_strtoupper($c->nom)).'</b><br>'.$e($c->forme).' au capital de '.$cap.'<br>Siège social : '.$e($c->adresse ?: '………').($c->matricule_fiscal ? '<br>Matricule fiscal : '.$e($c->matricule_fiscal) : '').'</p>';
@@ -172,19 +174,7 @@ class ActeController extends Controller
 
         if (in_array($t, ['sarl', 'suarl'])) return Statuts::html($c, $d, $entete);
 
-        if ($t === 'cession') {
-            $ced = $as->first(fn ($a) => mb_strtolower(trim($a['nom'])) === mb_strtolower(trim($d['cedant'] ?? ''))) ?? ['nom' => $d['cedant'] ?: '………'];
-            $h = '<h3 style="text-align:center">CONTRAT DE CESSION DE PARTS SOCIALES</h3>'.$entete.$P('<b>ENTRE LES SOUSSIGNÉS :</b>');
-            $cess = ['civ' => $d['cessionnaire_civilite'], 'nom' => $d['cessionnaire'] ?: '………', 'cin' => $d['cessionnaire_cin'], 'adr' => $d['cessionnaire_adresse']];
-            $h .= $P('1) '.$id($ced).', ci-après '.Balises::accord($ced, 'dénommé', 'dénommée', 'dénommé(e)').' « le Cédant »,').$P('ET')
-                .$P('2) '.$id($cess).', ci-après '.Balises::accord($cess, 'dénommé', 'dénommée', 'dénommé(e)').' « le Cessionnaire »,');
-            $h .= $P('<b>IL A ÉTÉ CONVENU ET ARRÊTÉ CE QUI SUIT :</b>').$H('Article 1 – Cession').$P('Le Cédant cède, sous les garanties ordinaires de fait et de droit, au Cessionnaire qui accepte, '.($d['parts'] ?: '………').' parts sociales de '.$vn.' chacune'.($d['parts_de'] ? ', numérotées de '.$d['parts_de'].' à '.$d['parts_a'].' inclus' : '').', qu’il détient dans le capital de la société '.$e($c->nom).'.');
-            $h .= $H('Article 2 – Prix').$P('La présente cession est consentie et acceptée moyennant le prix global de '.(! empty($d['prix']) ? tnd($d['prix']) : '………').', que le Cédant reconnaît avoir reçu, dont quittance.');
-            $h .= $H('Article 3 – Propriété – Jouissance').$P('Le Cessionnaire est propriétaire des parts cédées à compter de ce jour et a droit aux bénéfices à compter de la même date.');
-            $h .= $H('Article 4 – Agrément').$P('La présente cession a été agréée conformément aux statuts et au Code des sociétés commerciales.');
-            $h .= $H('Article 5 – Formalités').$P('Les parties donnent tous pouvoirs au porteur d’un original pour accomplir les formalités d’enregistrement et de publicité. Les droits d’enregistrement sont à la charge du Cessionnaire.');
-            return $h.$P('Fait à '.$e($lieu).', le '.dlong($d['date']).', en quatre exemplaires.').'<p style="margin-top:30px">Le Cédant : ……………………<br>Le Cessionnaire : ……………………</p>';
-        }
+        if ($t === 'cession') return Cession::html($c, $d);
 
         // Procès-verbaux d'assemblée générale : modèles du cabinet (PV AGO, PV AGE)
         if (in_array($t, ['ago', 'age', 'mixte'], true)) return \App\Services\Actes\ProcesVerbal::html($c, $d);
