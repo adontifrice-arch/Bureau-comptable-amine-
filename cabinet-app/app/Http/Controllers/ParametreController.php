@@ -37,8 +37,11 @@ class ParametreController extends Controller
     /** Paramètres fiscaux : taux de la contribution sociale de solidarité (CSS) des personnes physiques. */
     public function fiscal(Request $r)
     {
-        $d = $r->validate(['css' => 'required|numeric|min:0|max:100'], ['css.required' => 'Indiquez le taux de la CSS.'], ['css' => 'taux de la CSS']);
-        Setting::put('fiscal', ['css' => +$d['css']] + Setting::fiscal());
+        $d = $r->validate(['css' => 'required|numeric|min:0|max:100', 'feries' => ['nullable', 'max:2000', 'regex:#^[\d/\-\s,;]*$#']],
+            ['css.required' => 'Indiquez le taux de la CSS.', 'feries.regex' => 'Jours fériés : une date par ligne (JJ/MM/AAAA).'], ['css' => 'taux de la CSS']);
+        Setting::put('fiscal', ['css' => +$d['css'], 'feries' => trim((string) ($d['feries'] ?? ''))] + Setting::fiscal());
+        // Report au jour ouvrable : les échéances non cochées du mois suivent les jours fériés saisis
+        \App\Services\EcheancesFiscales::genererCabinet(now()->year, now()->month);
         $this->log('Taux de la CSS fixé à '.+$d['css'].' %');
         return redirect()->route('parametres.index', ['tab' => 'fiscal'])->with('ok', 'Taux de la CSS enregistré : '.str_replace('.', ',', (string) +$d['css']).' %.');
     }

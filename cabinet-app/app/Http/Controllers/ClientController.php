@@ -36,6 +36,7 @@ class ClientController extends Controller
             $c = Client::create($r->client());
             $this->syncAssocies($c, $r->associes());
             EcheanceController::acomptesProvisionnels($c);
+            \App\Services\EcheancesFiscales::genererMois($c, now()->year, now()->month);
             return $c;
         });
         $this->log('Création du client '.$client->nom, $client->id);
@@ -74,6 +75,8 @@ class ClientController extends Controller
             $this->syncAssocies($client, $r->associes());
             // Changement de nature (personne morale ↔ physique) : les acomptes non cochés passent au 25 ou au 28.
             if ($client->estPhysique() !== $etaitPhysique) EcheanceController::acomptesProvisionnels($client);
+            // Nature ou mode de dépôt modifiés : échéances non cochées du mois remises au bon jour
+            \App\Services\EcheancesFiscales::genererMois($client->fresh(), now()->year, now()->month);
         });
         $this->log('Modification du client '.$client->nom, $client->id);
         return redirect()->route('clients.show', $client)->with('ok', 'Fiche client enregistrée.');

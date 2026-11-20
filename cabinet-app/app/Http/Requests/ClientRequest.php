@@ -94,7 +94,7 @@ class ClientRequest extends FormRequest
         return [
             'nom' => 'required|max:255', 'forme' => 'nullable|max:100', 'type_personne' => 'required|in:morale,physique',
             'denomination_commerciale' => 'nullable|max:255', 'residence' => 'nullable|in:residente,non_residente',
-            'regime_export' => 'nullable|in:non,totale,partielle', 'mission' => 'nullable|max:255', 'honoraires_mensuels' => 'nullable|numeric|min:0',
+            'regime_export' => 'nullable|in:non,totale,partielle', 'mode_depot' => 'nullable|in:'.implode(',', array_keys(Client::MODES_DEPOT)),'mission' => 'nullable|max:255', 'honoraires_mensuels' => 'nullable|numeric|min:0',
             'matricule_fiscal' => ['nullable', 'max:20', 'regex:'.self::MF_REGEX], 'compte_comptable' => ['nullable', 'regex:/^411\d{0,5}$/'],
             'matricule_cnss' => 'nullable|max:50', 'matricule_independant' => 'nullable|max:50',
             'capital' => 'nullable|numeric|min:0', 'nb_parts' => 'nullable|integer|min:1', 'valeur_nominale' => 'nullable|numeric|gt:0',

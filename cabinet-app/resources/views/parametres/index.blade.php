@@ -36,6 +36,12 @@
                     <input id="f-css" type="number" name="css" step="0.01" min="0" max="100" value="{{ old('css', $fisc['css']) }}" class="input max-w-[10rem]" required>
                     <p class="mt-1 text-xs text-slate-400">CSS = bénéfice net imposable × ce taux (déclaration annuelle de l’impôt sur le revenu).</p>
                     @error('css')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
+                <div><label class="label" for="f-feries">Jours fériés à ajouter (une date par ligne, JJ/MM/AAAA)</label>
+                    <textarea id="f-feries" name="feries" rows="4" class="input font-mono" placeholder="20/03/2026">{{ old('feries', $fisc['feries'] ?? '') }}</textarea>
+                    <p class="mt-1 text-xs text-slate-400">Les échéances tombant un samedi, un dimanche ou un jour férié sont reportées au jour ouvrable suivant. Jours fériés fixes pris en compte :
+                        1er janvier, 20 mars, 9 avril, 1er mai, 25 juillet, 13 août, 15 octobre, 17 décembre ; fêtes religieuses (Aïd el-Fitr, Aïd el-Idha, Ras El Am El Hijri, Mouled) à dates prévisionnelles jusqu’en 2028 :
+                        saisissez ici les dates officielles annoncées.</p>
+                    @error('feries')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
                 <button class="btn-primary">Enregistrer</button>
             </div>
         </form>

@@ -54,7 +54,10 @@ class Client extends Model
 
     /** Champs propres à une personne morale, vidés pour une personne physique. */
     public const CHAMPS_MORALE = ['capital', 'nb_parts', 'valeur_nominale', 'gerant_nomination_date', 'gerant_nomination_duree',
-        'gerant_associe', 'gerant_parts', 'gerant_parts_de', 'gerant_parts_a', 'gerant_apport'];
+        'gerant_associe', 'gerant_parts', 'gerant_parts_de', 'gerant_parts_a', 'gerant_apport', 'mode_depot'];
+
+    /** Personne morale : mode de dépôt des déclarations mensuelles (échéance le 20 ou le 28 du mois suivant). */
+    public const MODES_DEPOT = ['teledeclaration' => 'Télé-déclaration et télé-paiement (le 20)', 'recette' => 'Dépôt à la recette des finances (le 28)'];
 
     /** Champs propres à une personne physique, vidés pour une personne morale. */
     public const CHAMPS_PHYSIQUE = ['activite', 'categories_revenus', 'regime_imposition', 'situation_familiale', 'chef_famille', 'enfants_charge', 'parents_charge'];

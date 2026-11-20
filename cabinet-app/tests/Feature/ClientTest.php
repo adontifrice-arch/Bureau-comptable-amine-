@@ -72,8 +72,9 @@ class ClientTest extends TestCase
         $ap = Echeance::where('auto', 'ap')->orderBy('date_echeance')->get();
 
         $this->assertCount(15, $ap);                                  // 3 par an, 2026 à 2030
-        $this->assertSame('2026-06-28', $ap->first()->date_echeance->format('Y-m-d'));
-        $this->assertSame('2030-12-28', $ap->last()->date_echeance->format('Y-m-d'));
+        $this->assertSame('2026-06-29', $ap->first()->date_echeance->format('Y-m-d'));   // 28/06/2026 = dimanche → lundi
+        $this->assertSame('2030-12-30', $ap->last()->date_echeance->format('Y-m-d'));    // 28/12/2030 = samedi → lundi
+        $this->assertSame('2026-09-28', $ap[1]->date_echeance->format('Y-m-d'));
     }
 
     public function test_le_type_de_personne_est_obligatoire(): void
@@ -189,7 +190,10 @@ class ClientTest extends TestCase
         $this->post(route('clients.store'), ['nom' => 'Dr Karim Jaziri', 'forme' => 'Libéral (BNC)', 'type_personne' => 'physique', 'categories_revenus' => ['bnc']])->assertSessionHasNoErrors();
 
         $this->assertTrue(Client::sole()->estPhysique());
-        $this->assertSame([25], Echeance::where('auto', 'ap')->get()->map(fn ($e) => $e->date_echeance->day)->unique()->values()->all());
+        // Le 25, reporté au jour ouvrable suivant s'il tombe un samedi, un dimanche ou un jour férié
+        foreach (Echeance::where('auto', 'ap')->get() as $e) {
+            $this->assertSame(\App\Services\EcheancesFiscales::jourOuvrable($e->date_echeance->copy()->day(25))->format('Y-m-d'), $e->date_echeance->format('Y-m-d'));
+        }
     }
 
     public function test_changement_de_nature_regenere_les_acomptes_non_coches_sans_recreer_les_supprimes(): void
@@ -202,7 +206,7 @@ class ClientTest extends TestCase
 
         $this->put(route('clients.update', $c), $this->fiche(['type_personne' => 'physique', 'categories_revenus' => ['bic']]))->assertSessionHasNoErrors();
 
-        $this->assertSame('2026-06-28', $fait->fresh()->date_echeance->format('Y-m-d'));      // cochée : inchangée
+        $this->assertSame('2026-06-29', $fait->fresh()->date_echeance->format('Y-m-d'));      // cochée : inchangée (28/06 = dimanche)
         $this->assertSame('2026-12-25', Echeance::where('intitule', '3e acompte provisionnel 2026')->sole()->date_echeance->format('Y-m-d'));
         $this->assertNull(Echeance::where('intitule', '2e acompte provisionnel 2026')->first()); // suppression définitive
         $this->assertSame(14, Echeance::where('auto', 'ap')->count());

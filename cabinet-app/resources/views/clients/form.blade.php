@@ -53,6 +53,7 @@
                 <x-field label="Dénomination commerciale" name="denomination_commerciale" :value="$client->denomination_commerciale"/>
                 <x-select label="Résidence" name="residence" :value="$client->residence" placeholder="Non précisé" :options="['residente' => 'Résident(e)', 'non_residente' => 'Non résident(e)']"/>
                 <x-select label="Régime d’exportation" name="regime_export" :value="$client->regime_export" placeholder="Non précisé" :options="['non' => 'Non exportatrice', 'totale' => 'Totalement exportatrice', 'partielle' => 'Partiellement exportatrice']"/>
+                <div x-show="tp !== 'physique'"><x-select label="Dépôt des déclarations mensuelles" name="mode_depot" :value="$client->mode_depot" placeholder="Non précisé (le 28)" :options="\App\Models\Client::MODES_DEPOT"/></div>
                 <x-field label="Matricule fiscal" name="matricule_fiscal" :value="$client->matricule_fiscal" placeholder="1234567/A/M/000" hint="7 chiffres + 1 lettre, puis code TVA, catégorie et n° d’établissement"/>
                 <x-field label="Matricule CNSS" name="matricule_cnss" :value="$client->matricule_cnss"/>
                 <x-field label="Matricule indépendant" name="matricule_independant" :value="$client->matricule_independant"/>
