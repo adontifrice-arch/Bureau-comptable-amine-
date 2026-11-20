@@ -57,6 +57,9 @@ class Client extends Model
         'gerant_associe', 'gerant_parts', 'gerant_parts_de', 'gerant_parts_a', 'gerant_apport', 'mode_depot'];
 
     /** Personne morale : mode de dépôt des déclarations mensuelles (échéance le 20 ou le 28 du mois suivant). */
+    /** Civilité du gérant, de la personne physique et des associés (accords dans les actes). */
+    public const CIVILITES = ['M' => 'Monsieur', 'Mme' => 'Madame'];
+
     public const MODES_DEPOT = ['teledeclaration' => 'Télé-déclaration et télé-paiement (le 20)', 'recette' => 'Dépôt à la recette des finances (le 28)'];
 
     /** Champs propres à une personne physique, vidés pour une personne morale. */

@@ -82,7 +82,7 @@ class Statuts
         $apports = $as->values()->map(function ($a, $i) use ($e, $vn, $dinars, $V) {
             $montant = $vn && $a['p'] ? $a['p'] * $vn : 0;
             $nature = ($a['ap'] ?? null) === 'nature';
-            return ($i + 1).'- '.$e($a['nom']).' apporte à la présente société '.($nature ? 'des biens en nature évalués à la somme de ' : 'la somme de ')
+            return ($i + 1).'- '.$e(Balises::nomCivil($a)).' apporte à la présente société '.($nature ? 'des biens en nature évalués à la somme de ' : 'la somme de ')
                 .($montant ? $e(mb_strtoupper(self::lettres($montant))).' ('.self::chiffres($montant).') dinars' : $V.' dinars')
                 .' et reçoit en rémunération de son apport '.($a['p'] ? $e(self::lettres($a['p'])).' ('.$a['p'].')' : $V).' parts de '.$dinars($vn).' chacune à créer à cet effet.';
         })->all();
@@ -91,21 +91,21 @@ class Statuts
         $lignes = $as->map(function ($a) use ($e, $vn, $np, $td) {
             $m = $vn && $a['p'] ? $a['p'] * $vn : 0;
             $nature = ($a['ap'] ?? null) === 'nature';
-            return '<tr>'.$td($e($a['nom']), 'left').$td(self::chiffres($nature ? $m : 0)).$td(self::chiffres($nature ? 0 : $m)).$td(self::chiffres($m))
+            return '<tr>'.$td($e(Balises::nomCivil($a)), 'left').$td(self::chiffres($nature ? $m : 0)).$td(self::chiffres($nature ? 0 : $m)).$td(self::chiffres($m))
                 .$td($np && $a['p'] ? rtrim(rtrim(number_format($a['p'] / $np * 100, 2, ',', ''), '0'), ',').' %' : '').'</tr>';
         })->implode('');
         $totNat = $as->filter(fn ($a) => ($a['ap'] ?? null) === 'nature')->sum(fn ($a) => $vn * (int) $a['p']);
         $totApp = $as->sum(fn ($a) => $vn * (int) $a['p']);
         $tableau = '<table style="border-collapse:collapse; width:100%"><thead><tr>'.$th('Associé').$th('Apport en nature').$th('Apport en numéraire').$th('Total en DT').$th('%').'</tr></thead><tbody>'
             .$lignes.'<tr>'.$td('<b>Total</b>', 'left').$td(self::chiffres($totNat)).$td(self::chiffres($totApp - $totNat)).$td(self::chiffres($totApp)).$td($totApp ? '100 %' : '').'</tr></tbody></table>';
-        $repartition = $as->map(fn ($a) => ($a['p'] ?: $V).' parts'.($a['pd'] ? ' numérotées de '.$a['pd'].' à '.$a['pf'].' inclus' : '').' à '.$e($a['nom']).'.')->all();
+        $repartition = $as->map(fn ($a) => ($a['p'] ?: $V).' parts'.($a['pd'] ? ' numérotées de '.$a['pd'].' à '.$a['pf'].' inclus' : '').' à '.$e(Balises::nomCivil($a)).'.')->all();
 
         // Articles 12 et 13 : gérant statutaire
         $gerant = Balises::gerant($c);
         $associe = $as->contains(fn ($a) => mb_strtolower(trim($a['nom'])) === mb_strtolower(trim((string) $c->gerant_nom)));
         $duree = trim((string) $c->gerant_nomination_duree);
         $dureeG = $duree !== '' ? (preg_match('/^\d/', $duree) ? 'une durée de ' : '').$e($duree) : 'toute la durée de la société';
-        $designation = ($associe || ! $c->gerant_nom ? $e($gerant['nom']) : $e(Balises::identite($gerant))).' a été désigné(e) gérant(e) statutaire de la société pour '.$dureeG
+        $designation = ($associe || ! $c->gerant_nom ? $e(Balises::nomCivil($gerant)) : $e(Balises::identite($gerant))).' a été '.Balises::accord($gerant, 'désigné gérant', 'désignée gérante', 'désigné(e) gérant(e)').' statutaire de la société pour '.$dureeG
             .($c->gerant_nomination_date ? ' à compter du '.dlong($c->gerant_nomination_date) : '').' et dispose des pouvoirs les plus étendus sans limitation aucune.';
 
         return [
@@ -245,8 +245,8 @@ class Statuts
         if (preg_match('/\b\d{4}\s+([^\d,]+)$/u', $lieu, $m)) $lieu = trim($m[1]);
         $h .= '<p style="margin-top:20px">Fait à '.$e(mb_strtoupper($lieu)).' en autant d’exemplaires que de droit.<br>Le '.(! empty($d['date']) ? dfr($d['date'], 'd-m-Y') : Balises::VIDE).'</p>';
         $h .= '<p>Lu et approuvé :</p><p style="text-align:center"><b>LES ASSOCIÉS</b></p>';
-        $h .= '<table style="width:100%"><tr>'.$as->map(fn ($x) => '<td style="text-align:center; vertical-align:top; padding:4px">'.$e($x['nom']).'</td>')->implode('').'</tr></table>';
-        return $h.'<p style="margin-top:60px; text-align:center"><b>LE GÉRANT</b><br>'.$e($c->gerant_nom ?: Balises::VIDE).'</p>';
+        $h .= '<table style="width:100%"><tr>'.$as->map(fn ($x) => '<td style="text-align:center; vertical-align:top; padding:4px">'.$e(Balises::nomCivil($x)).'</td>')->implode('').'</tr></table>';
+        return $h.'<p style="margin-top:60px; text-align:center"><b>LE GÉRANT</b><br>'.$e($c->gerant_nom ? Balises::nomCivil(Balises::gerant($c)) : Balises::VIDE).'</p>';
     }
 
     // ---------------------------------------------------------------- SUARL : plan court
@@ -267,7 +267,7 @@ class Statuts
         ]);
 
         $duree = trim((string) $c->gerant_nomination_duree);
-        $gerance = 'La société est gérée par '.$e(Balises::identite(Balises::gerant($c))).', nommé(e) gérant(e)'
+        $gerance = 'La société est gérée par '.$e(Balises::identite(Balises::gerant($c))).', '.Balises::accord(Balises::gerant($c), 'nommé gérant', 'nommée gérante', 'nommé(e) gérant(e)')
             .($c->gerant_nomination_date ? ' le '.dlong($c->gerant_nomination_date) : '')
             .($duree !== '' ? ' pour une durée '.(preg_match('/^\d/', $duree) ? 'de ' : '').$e($duree) : ' pour une durée illimitée')
             .', avec les pouvoirs les plus étendus pour agir au nom de la société, dans la limite de l’objet social et des pouvoirs que la loi attribue aux associés.';
@@ -281,11 +281,11 @@ class Statuts
             ['Siège social', $P('Le siège social est fixé à : '.$e($v['SIEGE']).'. Il pourra être transféré en tout autre lieu par décision de l’associé unique.')],
             ['Durée', $P('La durée de la société est fixée à '.$e($v['DUREE']).' ans à compter de son immatriculation au registre national des entreprises, sauf dissolution anticipée ou prorogation.')],
             ['Capital social', $P('Le capital social est fixé à '.$e($v['CAPITAL']).', divisé en '.$e($np ?: Balises::VIDE).' parts sociales d’une valeur nominale de '.$e($vn).' chacune, entièrement souscrites et libérées.')
-                .($as->isEmpty() ? '' : $P('Les parts sont souscrites et libérées comme suit :').$liste($as->map(fn ($a) => $e($a['nom']).' : '.($a['p'] ?: Balises::VIDE).' parts'
+                .($as->isEmpty() ? '' : $P('Les parts sont souscrites et libérées comme suit :').$liste($as->map(fn ($a) => $e(Balises::nomCivil($a)).' : '.($a['p'] ?: Balises::VIDE).' parts'
                     .($c->valeur_nominale && $a['p'] ? ' de '.$e($vn).' chacune, soit '.tnd($a['p'] * $c->valeur_nominale) : '')
                     .', apport '.(($a['ap'] ?? null) === 'nature' ? 'en nature' : (($a['ap'] ?? null) === 'numeraire' ? 'en numéraire' : 'en numéraire ou en nature (à préciser)')).'.')))],
             ['Répartition des parts', $P('Les '.$e($np ?: Balises::VIDE).' parts sociales sont attribuées comme suit :')
-                .$liste($as->map(fn ($a) => $e($a['nom']).' : '.($a['p'] ?: Balises::VIDE).' parts'.($a['pd'] ? ', numérotées de '.$a['pd'].' à '.$a['pf'].' inclus' : '')))],
+                .$liste($as->map(fn ($a) => $e(Balises::nomCivil($a)).' : '.($a['p'] ?: Balises::VIDE).' parts'.($a['pd'] ? ', numérotées de '.$a['pd'].' à '.$a['pf'].' inclus' : '')))],
             ['Gérance', $P($gerance)],
             ['Cession et transmission des parts', $P('Les parts sont librement cessibles par l’associé unique. Toute cession est constatée par écrit et rendue opposable à la société dans les formes légales.')],
             ['Décisions collectives', $P('L’associé unique exerce les pouvoirs dévolus à l’assemblée générale. Il statue sur les comptes dans les six mois de la clôture de l’exercice et ses décisions sont consignées dans un registre.')],
@@ -307,6 +307,6 @@ class Statuts
             $h .= '<h3>Article '.($i + 1).' – '.$titre.'</h3>'.$corps;
         }
         $h .= '<p>Fait à '.$e(Balises::lieu($c)).', le '.dlong($d['date'] ?? null).', en quatre exemplaires originaux.</p>';
-        return $h.'<p style="margin-top:30px">'.$as->map(fn ($a) => $e($a['nom']).' : ……………………')->implode('<br>').'</p>';
+        return $h.'<p style="margin-top:30px">'.$as->map(fn ($a) => $e(Balises::nomCivil($a)).' : ……………………')->implode('<br>').'</p>';
     }
 }

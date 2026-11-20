@@ -41,6 +41,19 @@ class ClientTest extends TestCase
         ], $extra);
     }
 
+    public function test_civilite_du_gerant_et_des_associes(): void
+    {
+        $f = $this->fiche(['gerant_civilite' => 'M']);
+        $f['associes'][0]['civilite'] = 'Mme';
+        $this->post(route('clients.store'), $f)->assertSessionHasNoErrors();
+        $c = Client::sole();
+        $this->assertSame(['M', 'Mme'], [$c->gerant_civilite, $c->associes->first()->civilite]);
+        $this->get(route('clients.show', $c))->assertOk()->assertSee('Monsieur Sami Ben Ali')->assertSee('Madame Leila Trabelsi');
+        $this->get(route('clients.edit', $c))->assertOk()->assertSee('name="gerant_civilite"', false);
+
+        $this->post(route('clients.store'), $this->fiche(['nom' => 'Beta', 'gerant_civilite' => 'Mlle']))->assertSessionHasErrors('gerant_civilite');
+    }
+
     public function test_un_visiteur_non_connecte_est_redirige(): void
     {
         auth()->logout();

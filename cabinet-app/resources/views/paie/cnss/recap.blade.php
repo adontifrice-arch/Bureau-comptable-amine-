@@ -50,7 +50,7 @@
                 <tr>
                     <td class="c br" style="padding-top: 10pt; height: 52pt">{{ $trimestre }}</td>
                     <td class="c br" style="padding-top: 10pt">{{ $annee }}</td>
-                    <td class="c br" style="padding-top: 10pt">{{ $employeur }}</td>
+                    <td class="c br" style="padding-top: 10pt">{{ $employeur }}<br><span style="font-size: 7.5pt">Code d’exploitation : {{ $code }}</span></td>
                     <td class="c" style="padding-top: 10pt">{{ $bureau }}</td>
                 </tr>
                 <tr>

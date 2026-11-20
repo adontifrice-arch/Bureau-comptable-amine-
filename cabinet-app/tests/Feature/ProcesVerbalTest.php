@@ -82,6 +82,24 @@ class ProcesVerbalTest extends TestCase
         $this->assertMatchesRegularExpression('#Yosr Hend Lakhoua</td>\s*<td[^>]*>Slim Gammoudi</td></tr></table>$#', $h);
     }
 
+    public function test_accords_selon_la_civilite(): void
+    {
+        $this->client->update(['gerant_civilite' => 'Mme']);
+        $h = $this->pv(['type' => 'ago', 'date' => '2026-07-24', 'ordre' => ['Quitus au gérant']]);
+        $this->assertStringContainsString('l’associée unique de la société QUEUES DE JOIE SUARL s’est réunie au siège', $h);
+        $this->assertStringContainsString('Était présente : Madame Yosr Hend Lakhoua, de nationalité tunisienne', $h);
+        $this->assertStringContainsString(', l’associée unique de la société.', $h);
+        $this->assertStringContainsString('<b>L’associée unique</b><br><br>Mme Yosr Hend Lakhoua', $h);
+        $this->assertStringNotContainsString('(e)', $h);
+
+        $h = $this->pv(['type' => 'age', 'date' => '2026-09-22', 'ordre' => ['Cession de parts sociales et agrément du cessionnaire'],
+            'cedant' => 'Yosr Hend Lakhoua', 'parts' => 49, 'cessionnaire_civilite' => 'M', 'cessionnaire' => 'Slim Gammoudi', 'cessionnaire_cin' => '07039838']);
+        $this->assertStringContainsString('Était présent aussi : Monsieur Slim Gammoudi, titulaire de la CIN n° 07039838.', $h);
+        $this->assertStringContainsString('L’associée unique a décidé d’autoriser et d’approuver la cession de 49 parts sociales lui appartenant à Mr Slim Gammoudi, et l’agrée en qualité d’associé.', $h);
+        $this->assertMatchesRegularExpression('#Mme Yosr Hend Lakhoua</td>\s*<td[^>]*>Mr Slim Gammoudi</td>#', $h);
+        $this->assertStringNotContainsString('(e)', $h);
+    }
+
     public function test_informations_manquantes(): void
     {
         $h = $this->pv(['type' => 'ago', 'date' => '2026-06-30', 'ordre' => ['Approbation des états financiers de l’exercice clos le 31 décembre', 'Questions diverses']]);

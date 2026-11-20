@@ -50,7 +50,7 @@
                         <tr>
                             <td class="sep-d" style="height: 62pt">
                                 <b>Trimestre</b>&nbsp;&nbsp; <b>{{ $libelle_trimestre }}</b><br><br>
-                                <b>Br :</b> {{ $bureau }}<br><br>
+                                <b>Br :</b> {{ $bureau }}<span style="margin-left: 30pt"><b>Code d’exploitation :</b> {{ $code }}</span><br><br>
                                 <b>Page :</b>&nbsp; <b>{{ $i + 1 }}</b>
                                 <span style="margin-left: 40pt"><b>Année :{{ $annee }}</b></span>
                             </td>

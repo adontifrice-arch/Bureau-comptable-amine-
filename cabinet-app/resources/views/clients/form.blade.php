@@ -6,7 +6,7 @@
           x-data="{ tp: @js(old('type_personne', $client->type_personne ?? ($edit ? ($client->estPhysique() ? 'physique' : 'morale') : (in_array(request('type'), ['physique', 'morale'], true) ? request('type') : '')))),
                     associes:@js(collect(old('associes', $associes))->values()), gas: @js((string) old('gerant_associe', $client->gerant_associe === null ? '' : ($client->gerant_associe ? '1' : '0'))),
                     np: @js((string) old('nb_parts', $client->nb_parts)), gp: @js((string) old('gerant_parts', $client->gerant_parts)), vn: @js((string) old('valeur_nominale', $client->valeur_nominale)), cap: @js((string) old('capital', $client->capital > 0 ? $client->capital : '')),
-                    addA() { this.associes.push({nom:'',cin:'',parts:'',apport:'numeraire'}) },
+                    addA() { this.associes.push({civilite:'',nom:'',cin:'',parts:'',apport:'numeraire'}) },
                     totalParts() { return (this.gas === '1' ? (+this.gp || 0) : 0) + this.associes.reduce((s, a) => s + (+a.parts || ((+a.parts_a && +a.parts_de) ? a.parts_a - a.parts_de + 1 : 0)), 0) },
                     nat: @js((string) old('gerant_nationalite', $client->gerant_nationalite)),
                     chef: @js((string) old('chef_famille', $client->chef_famille === null ? '' : ($client->chef_famille ? '1' : '0'))),
@@ -152,6 +152,8 @@
         <div class="card">
             <div class="card-h"><h2 class="card-t" x-text="tp === 'physique' ? 'Identité de la personne physique' : 'Gérant'">Gérant</h2></div>
             <div class="card-b grid gap-4 md:grid-cols-3">
+                <div><label class="label" for="f-gciv">Civilité</label>
+                    <select id="f-gciv" name="gerant_civilite" class="input"><option value="">—</option>@foreach(\App\Models\Client::CIVILITES as $k => $l)<option value="{{ $k }}" @selected(old('gerant_civilite', $client->gerant_civilite) === $k)>{{ $l }}</option>@endforeach</select></div>
                 <div x-show="tp !== 'physique'"><x-field label="Nom et prénom" name="gerant_nom" :value="$client->gerant_nom"/></div>
                 <x-field label="Nationalité" name="gerant_nationalite" :value="$client->gerant_nationalite" x-model="nat" list="nationalites" placeholder="Tunisienne, Française…" hint="Tunisienne : carte d’identité — autre : passeport et carte de séjour"/>
                 <datalist id="nationalites">@foreach(['Tunisienne', 'Algérienne', 'Libyenne', 'Marocaine', 'Française', 'Italienne', 'Allemande'] as $n)<option value="{{ $n }}">@endforeach</datalist>
@@ -185,6 +187,7 @@
             <div class="card-b space-y-3">
                 <template x-for="(a, i) in associes" :key="i">
                     <div class="grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-4 dark:border-slate-700">
+                        <div><label class="label">Civilité</label><select class="input" :name="`associes[${i}][civilite]`" x-model="a.civilite"><option value="">—</option><option value="M">Monsieur</option><option value="Mme">Madame</option></select></div>
                         <div class="md:col-span-2"><label class="label">Nom et prénom</label><input class="input" :name="`associes[${i}][nom]`" x-model="a.nom"></div>
                         <div><label class="label">Nationalité</label><input class="input" list="nationalites" placeholder="Tunisienne, Française…" :name="`associes[${i}][nationalite]`" x-model="a.nationalite"></div>
                         <div x-show="! etr(a.nationalite)"><label class="label">CIN</label><input class="input" :name="`associes[${i}][cin]`" x-model="a.cin"></div>

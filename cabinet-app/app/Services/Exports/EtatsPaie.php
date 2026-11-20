@@ -493,18 +493,48 @@ class EtatsPaie
      * (brut 1, 2, 3 et total par assuré, paginée) et état récapitulatif des salaires et appointements
      * (sécurité sociale, accident du travail, total à payer, montants en lettres).
      */
-    public static function modeleCnss(Client $client, string $mois): array
+    /** Code d'exploitation CNSS d'une ligne de paie (profil de l'employé ; régime général 0000 par défaut). */
+    private static function codeCnss(array $x): string
+    {
+        return trim((string) ($x['code_exploitant'] ?? '')) ?: '0000';
+    }
+
+    /**
+     * Codes d'exploitation CNSS du trimestre de $mois (régime général 0000, Dignité 0334, Exo 2 ans 0337…), chacun avec ses taux
+     * salarial et patronal : chaque code fait l'objet de sa propre déclaration trimestrielle et de son propre état récapitulatif.
+     * @return array<string, array{cnssS: float, cnssP: float, profil: ?string}>
+     */
+    public static function codesCnss(Client $client, string $mois): array
+    {
+        $P = PaieCalc::parametres($client);
+        $codes = [];
+        foreach (self::trimestre($mois) as $m) {
+            foreach (self::declares(PaieCalc::moisDeclares($client, $m), 'decl_cnss') as $x) {
+                $codes[self::codeCnss($x)] ??= ['cnssS' => (float) ($x['taux_cnssS'] ?? $P['cnssS']), 'cnssP' => (float) ($x['taux_cnssP'] ?? $P['cnssP']), 'profil' => $x['profil'] ?? null];
+            }
+        }
+        ksort($codes);
+        return $codes ?: ['0000' => ['cnssS' => (float) $P['cnssS'], 'cnssP' => (float) $P['cnssP'], 'profil' => null]];
+    }
+
+    /**
+     * $code : code d'exploitation déclaré (par défaut le premier du trimestre). Les assurés des autres codes (contrats aidés : Dignité,
+     * Exo 2 ans…) figurent sur leur propre déclaration, aux taux de leur régime.
+     */
+    public static function modeleCnss(Client $client, string $mois, ?string $code = null): array
     {
         $mm = self::trimestre($mois);
         $d = Carbon::parse($mois.'-01');
         $P = PaieCalc::parametres($client);
+        $codes = self::codesCnss($client, $mois);
+        $code = isset($codes[$code]) ? $code : array_key_first($codes);
         $k = $client->paie_config ?? [];
         $lignes = [];
         $tot = [0.0, 0.0, 0.0, 0.0];
         // Permanents : CDI ou contrat non renseigné ; occasionnels : tout autre contrat (CDD, SIVP, Karama, stage…).
         $contrats = \App\Models\Salarie::where('client_id', $client->id)->pluck('type_contrat', 'id');
         $permanents = 0;
-        foreach (self::parSalarie($client, $mm, 'base_cnss', 'decl_cnss') as $id => $p) {
+        foreach (self::parSalarie($client, $mm, 'base_cnss', 'decl_cnss', $code) as $id => $p) {
             $v = array_map(fn ($m) => (float) ($p['mois'][$m] ?? 0.0), $mm);
             $v[] = r3(array_sum($v));
             if ($v[3] == 0.0) continue;
@@ -518,9 +548,11 @@ class EtatsPaie
             return ['lignes' => $bloc, 'total' => $t];
         }, array_chunk($lignes, self::CNSS_LIGNES_PAGE) ?: [[]]);
 
-        // Sécurité sociale : parts salariale et patronale hors accident du travail, déclaré sur sa propre ligne.
-        $tauxAt = (float) ($P['at'] ?? 0);
-        $tauxSs = r3((float) $P['cnssS'] + (float) $P['cnssP'] - $tauxAt);
+        // Sécurité sociale : parts salariale et patronale du régime de ce code, hors accident du travail, déclaré sur sa propre ligne
+        // (le taux patronal d'un contrat aidé réduit au taux de l'accident du travail ou en dessous ne couvre que celui-ci).
+        $taux = $codes[$code];
+        $tauxAt = min((float) ($P['at'] ?? 0), $taux['cnssP']);
+        $tauxSs = r3($taux['cnssS'] + $taux['cnssP'] - $tauxAt);
         $base = $tot[3];
         $ss = r3($base * $tauxSs / 100);
         $at = r3($base * $tauxAt / 100);
@@ -528,6 +560,7 @@ class EtatsPaie
         return [
             'client' => $client, 'trimestre' => $d->quarter, 'libelle_trimestre' => $d->quarter.($d->quarter === 1 ? 'er' : 'ème').' Trimestre', 'annee' => $d->year,
             'employeur' => self::numeroCnss($client->matricule_cnss), 'bureau' => $client->cnss_bureau, 'matricule_fiscal' => $client->matricule_fiscal,
+            'code' => $code, 'codes' => array_keys($codes), 'profil' => $taux['profil'],
             'activite' => $client->paie_activite, 'adresse' => $client->adresse, 'code_postal' => $k['code_postal'] ?? null, 'ville' => $k['ville'] ?? null,
             'pages' => $pages, 'totaux' => $tot, 'effectif' => count($lignes),
             'permanents' => $permanents, 'occasionnels' => count($lignes) - $permanents,
@@ -546,18 +579,26 @@ class EtatsPaie
     /** Récapitulatif des cotisations CNSS du trimestre (mois par mois). */
     public static function recapCnss(Client $client, string $mois): Etat
     {
-        $P = PaieCalc::parametres($client);
+        // Une ligne par mois et par code d'exploitation, chacun à ses taux (régime général, contrats aidés)
+        $codes = self::codesCnss($client, $mois);
+        $taux = fn ($c) => $c['cnssS'].' % + '.$c['cnssP'].' %';
         $e = new Etat('Récapitulatif CNSS', $client->nom, self::libelleTrimestre($mois), [
-            ['Mois', 'text'], ['Effectif', 'text'], ['Masse salariale', 'num'], ['Part salariale ('.$P['cnssS'].' %)', 'num'], ['Part patronale ('.$P['cnssP'].' %)', 'num'], ['Total à payer', 'num'],
+            ['Mois', 'text'], ['Code d’exploitation', 'text'], ['Taux (salarial + patronal)', 'text'], ['Effectif', 'text'], ['Masse salariale', 'num'], ['Part salariale', 'num'], ['Part patronale', 'num'], ['Total à payer', 'num'],
         ], false);
         $tot = [0, 0, 0, 0];
         foreach (self::trimestre($mois) as $m) {
-            $T = PaieCalc::totaux($R = self::declares(PaieCalc::moisDeclares($client, $m), 'decl_cnss'));
-            $v = [$T['brut'], $T['cnssS'], $T['cnssP'], r3($T['cnssS'] + $T['cnssP'])];
-            $e->ligne([ucfirst(mois_fr($m)), (string) count(array_unique(array_column($R, 'salarie_id'))), ...$v]);
-            foreach ($v as $k => $x) $tot[$k] += $x;
+            $parCode = collect(self::declares(PaieCalc::moisDeclares($client, $m), 'decl_cnss'))->groupBy(fn ($x) => self::codeCnss($x));
+            foreach ($codes as $code => $c) {
+                $R = $parCode->get($code, collect())->all();
+                if (! $R && count($codes) > 1) continue;
+                $T = PaieCalc::totaux($R);
+                // Masse salariale soumise à cotisation (hors gains non cotisables)
+                $v = [r3(array_sum(array_map(fn ($x) => $x['base_cnss'] ?? $x['brut'], $R))), $T['cnssS'], $T['cnssP'], r3($T['cnssS'] + $T['cnssP'])];
+                $e->ligne([ucfirst(mois_fr($m)), $code, $taux($c), (string) count(array_unique(array_column($R, 'salarie_id'))), ...$v]);
+                foreach ($v as $k => $x) $tot[$k] += $x;
+            }
         }
-        $e->ligne(['TOTAL DU TRIMESTRE', '', ...array_map('r3', $tot)], 'total');
+        $e->ligne(['TOTAL DU TRIMESTRE', '', '', '', ...array_map('r3', $tot)], 'total');
         return $e;
     }
 
@@ -723,11 +764,12 @@ class EtatsPaie
     }
 
     /** Valeur d'une rubrique par salarié et par mois. */
-    private static function parSalarie(Client $client, array $mois, string $cle, ?string $decl = null): array
+    private static function parSalarie(Client $client, array $mois, string $cle, ?string $decl = null, ?string $code = null): array
     {
         $par = [];
         foreach ($mois as $m) {
             foreach (self::declares(PaieCalc::moisDeclares($client, $m), $decl) as $x) {
+                if ($code !== null && self::codeCnss($x) !== $code) continue;   // autre code d'exploitation CNSS
                 $par[$x['salarie_id']] ??= ['nom' => $x['nom'], 'cin' => $x['cin'] ?? null, 'cnss' => $x['cnss'] ?? null, 'matricule' => $x['matricule'] ?? null, 'mois' => []];
                 $par[$x['salarie_id']]['mois'][$m] = r3(($par[$x['salarie_id']]['mois'][$m] ?? 0) + ($x[$cle] ?? $x['brut']));
             }

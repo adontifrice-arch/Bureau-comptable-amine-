@@ -108,6 +108,21 @@ class StatutsTest extends TestCase
         $this->assertStringContainsString('<b>LE GÉRANT</b><br>John Smith', $h);
     }
 
+    public function test_statuts_sarl_avec_civilites(): void
+    {
+        $this->client->update(['gerant_civilite' => 'M', 'gerant_naissance_date' => '1988-07-10', 'gerant_naissance_lieu' => 'Tunis']);
+        $this->client->associes()->update(['civilite' => 'Mme', 'naissance_date' => '1994-06-20', 'naissance_lieu' => 'Sfax']);
+        $h = Statuts::html($this->client->fresh(), ['type' => 'sarl', 'date' => '2026-10-01'], '');
+
+        $this->assertStringContainsString('1- Monsieur John Smith, de nationalité britannique, né le 10 juillet 1988 à Tunis', $h);
+        $this->assertStringContainsString('2- Madame Leila Trabelsi, née le 20 juin 1994 à Sfax', $h);
+        $this->assertStringContainsString('1- Mr John Smith apporte à la présente société', $h);
+        $this->assertStringContainsString('<li>40 parts numérotées de 61 à 100 inclus à Mme Leila Trabelsi.</li>', $h);
+        $this->assertStringContainsString('Mr John Smith a été désigné gérant statutaire', $h);
+        $this->assertStringContainsString('<b>LE GÉRANT</b><br>Mr John Smith', $h);
+        $this->assertStringNotContainsString('(e)', $h);
+    }
+
     public function test_sarl_gerant_non_associe_et_numerotation_des_parts(): void
     {
         $c = Client::factory()->create(['nom' => 'Beta', 'forme' => 'SARL', 'capital' => 5000, 'valeur_nominale' => 10, 'nb_parts' => 500, 'adresse' => 'Rue Chatt Mariem bureau B1.2 Montplaisir 1073 Tunis.',

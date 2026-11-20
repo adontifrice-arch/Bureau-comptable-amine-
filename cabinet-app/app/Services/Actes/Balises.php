@@ -64,7 +64,7 @@ class Balises
     public static function detenteurs(Client $c): Collection
     {
         $c->loadMissing('associes');
-        $as = $c->associes->map(fn ($a) => ['nom' => $a->nom, 'nat' => $a->nationalite, 'dn' => $a->naissance_date, 'ln' => $a->naissance_lieu, 'cin' => $a->cin,
+        $as = $c->associes->map(fn ($a) => ['civ' => $a->civilite, 'nom' => $a->nom, 'nat' => $a->nationalite, 'dn' => $a->naissance_date, 'ln' => $a->naissance_lieu, 'cin' => $a->cin,
             'cind' => $a->cin_date, 'cinl' => $a->cin_lieu, 'pas' => $a->passeport, 'pasd' => $a->passeport_date, 'pasv' => $a->passeport_validite,
             'cs' => $a->carte_sejour, 'adr' => $a->adresse,
             'p' => $a->parts, 'pd' => $a->parts_de, 'pf' => $a->parts_a, 'ap' => $a->apport])->values();
@@ -77,18 +77,30 @@ class Balises
 
     public static function gerant(Client $c): array
     {
-        return ['nom' => $c->gerant_nom ?: self::VIDE, 'nat' => $c->gerant_nationalite, 'dn' => $c->gerant_naissance_date, 'ln' => $c->gerant_naissance_lieu,
+        return ['civ' => $c->gerant_civilite, 'nom' => $c->gerant_nom ?: self::VIDE, 'nat' => $c->gerant_nationalite, 'dn' => $c->gerant_naissance_date, 'ln' => $c->gerant_naissance_lieu,
             'cin' => $c->gerant_cin, 'cind' => $c->gerant_cin_date, 'cinl' => $c->gerant_cin_lieu, 'pas' => $c->gerant_passeport, 'pasd' => $c->gerant_passeport_date,
             'pasv' => $c->gerant_passeport_validite, 'cs' => $c->gerant_carte_sejour,
             'adr' => $c->gerant_adresse];
     }
 
-    /** « Nom, de nationalité …, né(e) le … à …, titulaire de la CIN n° … délivrée le … à …, demeurant à … » */
+    /** Accord selon la civilité : masculin (Monsieur), féminin (Madame), forme neutre si la civilité n'est pas renseignée. */
+    public static function accord(?array $x, string $masculin, string $feminin, string $neutre): string
+    {
+        return match ($x['civ'] ?? null) { 'M' => $masculin, 'Mme' => $feminin, default => $neutre };
+    }
+
+    /** Nom précédé de la civilité abrégée : « Mme Yasmine Tlili », « Mr Hichem Boudaya ». */
+    public static function nomCivil(array $x): string
+    {
+        return self::accord($x, 'Mr ', 'Mme ', '').$x['nom'];
+    }
+
+    /** « Madame Nom, de nationalité …, née le … à …, titulaire de la CIN n° … délivrée le … à …, demeurant à … » */
     public static function identite(array $x): string
     {
-        $s = $x['nom'];
+        $s = self::accord($x, 'Monsieur ', 'Madame ', '').$x['nom'];
         if (! empty($x['nat'])) $s .= ', de nationalité '.$x['nat'];
-        if (! empty($x['dn'])) $s .= ', né(e) le '.dlong($x['dn']).(! empty($x['ln']) ? ' à '.$x['ln'] : '');
+        if (! empty($x['dn'])) $s .= ', '.self::accord($x, 'né', 'née', 'né(e)').' le '.dlong($x['dn']).(! empty($x['ln']) ? ' à '.$x['ln'] : '');
         // Toutes les pièces d'identité renseignées : CIN, carte de séjour (résident étranger), passeport.
         if (! empty($x['cin'])) $s .= ', titulaire de la CIN n° '.$x['cin'].(! empty($x['cind']) ? ' délivrée le '.dfr($x['cind']) : '').(! empty($x['cinl']) ? ' à '.$x['cinl'] : '');
         if (! empty($x['cs'])) $s .= ', titulaire de la carte de séjour n° '.$x['cs'];
@@ -140,7 +152,7 @@ class Balises
         $type = $d['type'] ?? '';
         $items = self::ordreDuJour($d);
         $ced = $as->first(fn ($a) => mb_strtolower(trim($a['nom'])) === mb_strtolower(trim((string) ($d['cedant'] ?? ''))));
-        $cessionnaire = ['nom' => ($d['cessionnaire'] ?? null) ?: self::VIDE, 'cin' => $d['cessionnaire_cin'] ?? null, 'adr' => $d['cessionnaire_adresse'] ?? null];
+        $cessionnaire = ['civ' => $d['cessionnaire_civilite'] ?? null, 'nom' => ($d['cessionnaire'] ?? null) ?: self::VIDE, 'cin' => $d['cessionnaire_cin'] ?? null, 'adr' => $d['cessionnaire_adresse'] ?? null];
 
         return [
             'DENOMINATION' => $v($c->nom),
@@ -166,14 +178,14 @@ class Balises
             'DUREE_GERANT' => $v($c->gerant_nomination_duree),
 
             'ASSOCIES' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.self::identite($a))->implode("\n"),
-            'REPARTITION_PARTS' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.$a['nom'].' : '.($a['p'] ?: self::VIDE).' parts'.($a['pd'] ? ', numérotées de '.$a['pd'].' à '.$a['pf'].' inclus' : ''))
+            'REPARTITION_PARTS' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.self::nomCivil($a).' : '.($a['p'] ?: self::VIDE).' parts'.($a['pd'] ? ', numérotées de '.$a['pd'].' à '.$a['pf'].' inclus' : ''))
                 ->push('Total : '.($np ?: self::VIDE).' parts')->implode("\n"),
-            'APPORTS' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.$a['nom'].' : apport en '.(($a['ap'] ?? 'numeraire') === 'nature' ? 'nature' : 'numéraire')
+            'APPORTS' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.self::nomCivil($a).' : apport en '.(($a['ap'] ?? 'numeraire') === 'nature' ? 'nature' : 'numéraire')
                 .' de '.($c->valeur_nominale && $a['p'] ? tnd($a['p'] * $c->valeur_nominale) : self::VIDE))->implode("\n"),
-            'SIGNATURES' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => $a['nom'].' : ……………………')->implode("\n"),
+            'SIGNATURES' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => self::nomCivil($a).' : ……………………')->implode("\n"),
 
             'TYPE_AG' => ['ago' => 'ordinaire', 'age' => 'extraordinaire', 'mixte' => 'mixte', 'cess' => 'extraordinaire'][$type] ?? self::VIDE,
-            'PRESENTS' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.$a['nom'].' : '.($a['p'] ?: self::VIDE).' parts')->implode("\n"),
+            'PRESENTS' => $as->isEmpty() ? self::VIDE : $as->map(fn ($a) => '- '.self::nomCivil($a).' : '.($a['p'] ?: self::VIDE).' parts')->implode("\n"),
             'ORDRE_DU_JOUR' => $items->isEmpty() ? self::VIDE : $items->map(fn ($x, $i) => ($i + 1).'. '.$x)->implode("\n"),
             'RESOLUTIONS' => $items->isEmpty() ? self::VIDE : $items->map(fn ($x, $i) => self::rang($i).' résolution'."\n".self::resolution($x, $d)."\n".'Cette résolution, mise aux voix, est adoptée à l’unanimité.')->implode("\n\n"),
             'DATE_CESSATION' => dlong($d['date_cessation'] ?? null),

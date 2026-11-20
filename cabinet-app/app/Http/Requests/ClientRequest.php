@@ -111,7 +111,7 @@ class ClientRequest extends FormRequest
             'cadres_legaux.*.date_entree' => $date,
             'adresse' => 'nullable|max:255', 'email' => 'nullable|email|max:255', 'telephone' => 'nullable|max:50',
 
-            'gerant_nom' => 'nullable|max:255', 'gerant_cin' => 'nullable|max:50', 'gerant_cin_date' => $date, 'gerant_cin_lieu' => 'nullable|max:100',
+            'gerant_civilite' => 'nullable|in:M,Mme', 'gerant_nom' => 'nullable|max:255', 'gerant_cin' => 'nullable|max:50', 'gerant_cin_date' => $date, 'gerant_cin_lieu' => 'nullable|max:100',
             'gerant_carte_sejour' => 'nullable|max:50', 'gerant_passeport' => 'nullable|max:50', 'gerant_passeport_date' => $date,
             'gerant_passeport_validite' => 'nullable|date|after_or_equal:gerant_passeport_date', 'gerant_nationalite' => 'nullable|max:100',
             'gerant_adresse' => 'nullable|max:255', 'gerant_naissance_date' => 'nullable|date|before:today', 'gerant_naissance_lieu' => 'nullable|max:100',
@@ -125,7 +125,7 @@ class ClientRequest extends FormRequest
             'associes.*.passeport_date' => $date, 'associes.*.passeport_validite' => $date, 'associes.*.nationalite' => 'nullable|max:100',
             'associes.*.adresse' => 'nullable|max:255', 'associes.*.naissance_date' => $date, 'associes.*.naissance_lieu' => 'nullable|max:100',
             'associes.*.parts' => 'nullable|integer|min:1', 'associes.*.parts_de' => 'nullable|integer|min:1', 'associes.*.parts_a' => 'nullable|integer|min:1',
-            'associes.*.apport' => 'in:numeraire,nature',
+            'associes.*.apport' => 'in:numeraire,nature', 'associes.*.civilite' => 'nullable|in:M,Mme',
         ];
     }
 

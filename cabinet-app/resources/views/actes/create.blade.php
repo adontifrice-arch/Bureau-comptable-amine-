@@ -97,7 +97,7 @@
                     <div><label class="label">Nombre de parts cédées</label><input type="number" name="parts" class="input" placeholder="déduit des numéros si vide"></div>
                     <div><label class="label">Numéros des parts cédées</label><div class="flex gap-2"><input type="number" name="parts_de" class="input" placeholder="de"><input type="number" name="parts_a" class="input" placeholder="à"></div></div>
                     <div><label class="label">Prix de cession (DT)</label><input type="number" step="0.001" name="prix" class="input"></div>
-                    <div><label class="label">Cessionnaire</label><input name="cessionnaire" class="input"></div>
+                    <div><label class="label">Cessionnaire</label><div class="flex gap-2"><select name="cessionnaire_civilite" class="input w-28" aria-label="Civilité du cessionnaire"><option value="">—</option><option value="M">Mr</option><option value="Mme">Mme</option></select><input name="cessionnaire" class="input" aria-label="Nom du cessionnaire"></div></div>
                     <div><label class="label">CIN du cessionnaire</label><input name="cessionnaire_cin" class="input"></div>
                     <div class="md:col-span-2"><label class="label">Adresse du cessionnaire</label><input name="cessionnaire_adresse" class="input"></div>
                     <div><label class="label">Augmentation du capital en numéraire (DT)</label><input type="number" step="0.001" min="0" name="augmentation" class="input"></div>
@@ -114,7 +114,7 @@
                 <div><label class="label">Nombre de parts cédées</label><input type="number" name="parts" class="input" placeholder="déduit des numéros si vide"></div>
                 <div><label class="label">Numéros des parts cédées</label><div class="flex gap-2"><input type="number" name="parts_de" class="input" placeholder="de"><input type="number" name="parts_a" class="input" placeholder="à"></div></div>
                 <div><label class="label">Prix de cession (TND)</label><input type="number" step="0.001" name="prix" class="input"></div>
-                <div><label class="label">Cessionnaire</label><input name="cessionnaire" class="input"></div>
+                <div><label class="label">Cessionnaire</label><div class="flex gap-2"><select name="cessionnaire_civilite" class="input w-28" aria-label="Civilité du cessionnaire"><option value="">—</option><option value="M">Mr</option><option value="Mme">Mme</option></select><input name="cessionnaire" class="input" aria-label="Nom du cessionnaire"></div></div>
                 <div><label class="label">CIN du cessionnaire</label><input name="cessionnaire_cin" class="input"></div>
                 <div><label class="label">Adresse du cessionnaire</label><input name="cessionnaire_adresse" class="input"></div>
             </div></template>
