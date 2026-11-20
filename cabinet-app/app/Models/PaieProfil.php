@@ -10,7 +10,8 @@ use Illuminate\Support\Collection;
  * Profil de paie d'un dossier (menu Profil). Un employé suit le profil dont le nom figure sur sa fiche.
  * Effets sur la paie : taux de CNSS patronale (vide = taux du dossier), TFP et FOPROLOS seulement si « Soumis TFP-FOPROLOS »,
  * cotisation salariale CNSS et déclaration CNSS seulement si « Inclue dans la déclaration CNSS », présence dans la déclaration employeur.
- * « Base de calcul », « Contrat Dignité », « Contrat Exo 2 ans » et « Rég. d'IRPP KARAMA » sont enregistrés pour les déclarations.
+ * « Contrat Dignité » : CNSS prise en charge par l’État jusqu’à 600 DT par mois (taux du régime général au-delà), 400 DT exonérés d’IRPP,
+ * ni TFP ni FOPROLOS. « Base de calcul », « Contrat Exo 2 ans » et « Rég. d'IRPP KARAMA » sont enregistrés pour les déclarations.
  */
 class PaieProfil extends Model
 {
@@ -28,7 +29,7 @@ class PaieProfil extends Model
     public const STANDARD = [
         'Ordinaire' => ['cnss_patronale' => null, 'code_exploitant' => '0000', 'soumis_tfp_fop' => true, 'decl_cnss' => true, 'decl_employeur' => true],
         'CIVP' => ['cnss_patronale' => 0, 'code_exploitant' => '0006'],
-        'DIGNITE' => ['cnss_patronale' => 0.5, 'code_exploitant' => '0334', 'decl_cnss' => true, 'decl_employeur' => true, 'contrat_dignite' => true],
+        'DIGNITE' => ['cnss_patronale' => null, 'code_exploitant' => '0334', 'decl_cnss' => true, 'decl_employeur' => true, 'contrat_dignite' => true],
         'Exo 2 ans' => ['cnss_patronale' => 1, 'code_exploitant' => '0337', 'soumis_tfp_fop' => true, 'decl_cnss' => true, 'decl_employeur' => true, 'contrat_exo2ans' => true],
         'Gérant' => ['cnss_patronale' => 0, 'code_exploitant' => '0006', 'soumis_tfp_fop' => true, 'decl_employeur' => true],
     ];

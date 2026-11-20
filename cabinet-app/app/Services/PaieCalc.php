@@ -14,6 +14,11 @@ use Illuminate\Support\Collection;
 /** Calcul de paie selon la législation tunisienne (paramétrable). */
 class PaieCalc
 {
+    /** Contrat Dignité : salaire mensuel dont les cotisations CNSS sont prises en charge par l'État (FNE). */
+    public const DIGNITE_PLAFOND_CNSS = 600.0;
+    /** Contrat Dignité : quote-part mensuelle de l'État, exonérée d'IRPP. */
+    public const DIGNITE_SUBVENTION = 400.0;
+
     public static function bareme(float $base, string $bareme): float
     {
         $prev = 0; $t = 0;
@@ -543,8 +548,13 @@ class PaieCalc
         $brut = r3($f['salaire'] + $f['hs_montant'] + $f['prime'] + $gains - $dedBrut);
         $baseCnss = r3($brut - $somme(fn ($l) => $l['sens'] === 'gain' && ! $l['cotisable']));
         $brutImp = r3($brut - $somme(fn ($l) => $l['sens'] === 'gain' && ! $l['imposable']));
+        // Contrat Dignité (KARAMA) : cotisations salariale et patronale prises en charge par l'État (FNE) jusqu'au plafond mensuel
+        // (600 DT), dues aux taux du régime général sur la fraction excédentaire ; quote-part de l'État (400 DT) exonérée d'IRPP.
+        $dignite = ! empty($P['dignite']);
+        $baseCot = $dignite ? r3(max(0, $baseCnss - $P['dignite_plafond'])) : $baseCnss;
+        if ($dignite) $brutImp = r3(max(0, $brutImp - $P['dignite_subvention']));
         $assujetti = $e->cnss_assujetti ?? true;
-        $cs = $assujetti ? $ar($baseCnss * $P['cnssS'] / 100) : 0.0;
+        $cs = $assujetti ? $ar($baseCot * $P['cnssS'] / 100) : 0.0;
         $regul = ! empty($P['regul_irpp']) && $cumul !== null;
         $n = $regul ? $cumul['n'] + 1 : 12;
         $bAn = $regul ? ($cumul['brut'] + $brutImp) * 12 / $n : $brutImp * 12;
@@ -561,14 +571,14 @@ class PaieCalc
         // L'acompte déjà versé dans le mois est déduit du net à payer.
         // Échéances des prêts (société, CNSS) retenues sur le net.
         $net = r3($brut - $cs - $ras - $retenues - $nature - ($f['acompte'] ?? 0) - ($f['pret_societe'] ?? 0) - ($f['pret_cnss'] ?? 0));
-        $cp = $assujetti ? $ar($baseCnss * $P['cnssP'] / 100) : 0.0;
+        $cp = $assujetti ? $ar($baseCot * $P['cnssP'] / 100) : 0.0;
         $tfp = $ar($brut * $P['tfp'] / 100);
         $fop = $ar($brut * $P['fop'] / 100);
         return ['salarie_id' => $e->id, 'nom' => $e->nomComplet(), 'regime' => $f['horaire'] ? 'horaire' : 'mensuel', 'poste' => $e->poste,
             'cin' => $e->cin, 'cnss' => $e->cnss, 'matricule' => $e->matricule,
             'base' => $f['base'], 'jours' => $f['jours'], 'jours_mois' => $f['J'], 'salaire' => $f['salaire'], 'hs' => $f['hs'], 'hs_montant' => $f['hs_montant'],
             'prime' => $f['prime'], 'rubriques' => $L, 'gains' => $gains, 'ded_brut' => $dedBrut,
-            'brut' => $brut, 'base_cnss' => $baseCnss, 'brut_imp' => $brutImp,
+            'brut' => $brut, 'base_cnss' => $baseCnss, 'base_cotisee' => $assujetti ? $baseCot : 0.0, 'brut_imp' => $brutImp,
             'cnssS' => $cs, 'fp' => r3($fp), 'fam' => r3($fam), 'autres_deductions' => r3($autres), 'bi' => r3($bi),
             'ir' => $ir, 'css' => $css, 'ras' => $ras, 'retenues' => $retenues, 'nature' => $nature, 'acompte' => $f['acompte'] ?? 0.0, 'pret_societe' => $f['pret_societe'] ?? 0.0, 'pret_cnss' => $f['pret_cnss'] ?? 0.0, 'net' => $net,
             'taux_h' => $f['taux_h'] ?? null, ...($f['pointage'] ?? []),
@@ -658,7 +668,14 @@ class PaieCalc
     public static function pourProfil(array $P, ?PaieProfil $profil): array
     {
         if (! $profil) return $P;
-        if ($profil->cnss_patronale !== null) $P['cnssP'] = (float) $profil->cnss_patronale;
+        if ($profil->contrat_dignite) {
+            // Contrat Dignité : taux du régime général sur la fraction du salaire excédant le plafond pris en charge par l'État ;
+            // ni TFP ni FOPROLOS.
+            $P['dignite'] = true;
+            $P['dignite_plafond'] = (float) ($P['dignite_plafond'] ?? self::DIGNITE_PLAFOND_CNSS);
+            $P['dignite_subvention'] = (float) ($P['dignite_subvention'] ?? self::DIGNITE_SUBVENTION);
+            $P['tfp'] = 0.0; $P['fop'] = 0.0;
+        } elseif ($profil->cnss_patronale !== null) $P['cnssP'] = (float) $profil->cnss_patronale;
         if (! $profil->decl_cnss) $P['cnssS'] = 0.0;
         if (! $profil->soumis_tfp_fop) { $P['tfp'] = 0.0; $P['fop'] = 0.0; }
         $P['profil'] = $profil->meta();
@@ -761,7 +778,7 @@ class PaieCalc
             ...$rub->where('sens', 'gain')->map(fn ($l) => [$lib($l), $l['montant']])->values()->all(),
             ...$rub->where('sens', 'retenue')->where('cotisable', true)->map(fn ($l) => [$lib($l), -$l['montant']])->values()->all(),
             ['SALAIRE BRUT', $x['brut'], 1],
-            ['Retenue CNSS ('.($x['taux_cnssS'] ?? $P['cnssS']).' %)'.(isset($x['base_cnss']) && $x['base_cnss'] != $x['brut'] ? ' sur '.n3($x['base_cnss']) : ''), -$x['cnssS']],
+            ['Retenue CNSS ('.($x['taux_cnssS'] ?? $P['cnssS']).' %)'.(($b = $x['base_cotisee'] ?? $x['base_cnss'] ?? null) !== null && $b != $x['brut'] ? ' sur '.n3($b) : ''), -$x['cnssS']],
             ['Salaire imposable annuel (après abattements)', $x['bi'], 2],
             ['Retenue à la source IRPP', -$x['ir']],
             ['Contribution sociale de solidarité', -$x['css']],

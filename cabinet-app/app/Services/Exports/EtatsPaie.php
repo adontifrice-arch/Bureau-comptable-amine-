@@ -553,7 +553,8 @@ class EtatsPaie
         $taux = $codes[$code];
         $tauxAt = min((float) ($P['at'] ?? 0), $taux['cnssP']);
         $tauxSs = r3($taux['cnssS'] + $taux['cnssP'] - $tauxAt);
-        $base = $tot[3];
+        // Assiette des cotisations : salaires déclarés, moins pour un contrat Dignité la fraction prise en charge par l'État (600 DT / mois).
+        $base = r3(array_sum(array_map(fn ($p) => array_sum($p['mois']), self::parSalarie($client, $mm, 'base_cotisee', 'decl_cnss', $code))));
         $ss = r3($base * $tauxSs / 100);
         $at = r3($base * $tauxAt / 100);
         $total = r3($ss + $at);
@@ -565,7 +566,7 @@ class EtatsPaie
             'pages' => $pages, 'totaux' => $tot, 'effectif' => count($lignes),
             'permanents' => $permanents, 'occasionnels' => count($lignes) - $permanents,
             'base' => $base, 'taux_ss' => $tauxSs, 'ss' => $ss, 'taux_at' => $tauxAt, 'at' => $at, 'total' => $total,
-            'lettres_salaires' => montant_lettres($base), 'lettres_total' => montant_lettres($total), 'date' => now()->format('d/m/Y'),
+            'lettres_salaires' => montant_lettres($tot[3]), 'lettres_total' => montant_lettres($total), 'date' => now()->format('d/m/Y'),
         ];
     }
 
@@ -771,7 +772,8 @@ class EtatsPaie
             foreach (self::declares(PaieCalc::moisDeclares($client, $m), $decl) as $x) {
                 if ($code !== null && self::codeCnss($x) !== $code) continue;   // autre code d'exploitation CNSS
                 $par[$x['salarie_id']] ??= ['nom' => $x['nom'], 'cin' => $x['cin'] ?? null, 'cnss' => $x['cnss'] ?? null, 'matricule' => $x['matricule'] ?? null, 'mois' => []];
-                $par[$x['salarie_id']]['mois'][$m] = r3(($par[$x['salarie_id']]['mois'][$m] ?? 0) + ($x[$cle] ?? $x['brut']));
+                $v = $x[$cle] ?? ($cle === 'base_cotisee' ? ($x['base_cnss'] ?? $x['brut']) : $x['brut']);   // paies figées avant l'assiette cotisée
+                $par[$x['salarie_id']]['mois'][$m] = r3(($par[$x['salarie_id']]['mois'][$m] ?? 0) + $v);
             }
         }
         uasort($par, fn ($a, $b) => strcasecmp($a['nom'], $b['nom']));

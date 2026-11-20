@@ -51,7 +51,7 @@ class PaieProfilsTest extends TestCase
         $this->assertSame(['CIVP', 'DIGNITE', 'Exo 2 ans', 'Gérant', 'Ordinaire'], $p->keys()->sort()->values()->all());
         $this->assertNull($p['Ordinaire']->cnss_patronale);
         $this->assertSame('0000', $p['Ordinaire']->code_exploitant);
-        $this->assertEquals(0.5, $p['DIGNITE']->cnss_patronale);
+        $this->assertNull($p['DIGNITE']->cnss_patronale);
         $this->assertTrue($p['DIGNITE']->contrat_dignite && $p['DIGNITE']->decl_cnss && ! $p['DIGNITE']->soumis_tfp_fop);
         $this->assertTrue($p['Exo 2 ans']->contrat_exo2ans && $p['Exo 2 ans']->soumis_tfp_fop);
         $this->assertSame('0337', $p['Exo 2 ans']->code_exploitant);
@@ -90,10 +90,13 @@ class PaieProfilsTest extends TestCase
         $x = $this->resultat($civp);
         $this->assertEquals(0, $x['cnssS'] + $x['cnssP'] + $x['tfp'] + $x['fop']);
 
+        // Contrat Dignité : CNSS sur la fraction au-delà de 600 DT, aux taux du régime général ; 400 DT exonérés d'IRPP.
         $x = $this->resultat($dig);
-        $this->assertEqualsWithDelta(r3(1000 * $P['cnssS'] / 100), $x['cnssS'], 0.001);
-        $this->assertEqualsWithDelta(5, $x['cnssP'], 0.001);
+        $this->assertEqualsWithDelta(r3(400 * $P['cnssS'] / 100), $x['cnssS'], 0.001);
+        $this->assertEqualsWithDelta(r3(400 * $P['cnssP'] / 100), $x['cnssP'], 0.001);
         $this->assertEquals(0, $x['tfp'] + $x['fop']);
+        $this->assertEquals(600.0, $x['brut_imp']);
+        $this->assertEquals(400.0, $x['base_cotisee']);
 
         $x = $this->resultat($exo);
         $this->assertEqualsWithDelta(10, $x['cnssP'], 0.001);
