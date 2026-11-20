@@ -64,7 +64,7 @@
                     @endforeach
                 </tbody>
             </table>
-            <div class="mt-4 text-xs text-slate-500">Charges patronales : CNSS {{ tnd($x['cnssP']) }} · TFP {{ tnd($x['tfp']) }} · FOPROLOS {{ tnd($x['fop']) }} — coût total employeur {{ tnd($x['cout']) }}</div>
+            <div class="mt-4 text-xs text-slate-500">Charges patronales : CNSS {{ tnd($x['cnssP']) }} · TFP {{ tnd($x['tfp']) }} · FOPROLOS {{ tnd($x['fop']) }}@if(! empty($x['etat'])) · quote-part de l’État (contrat Dignité) − {{ tnd($x['etat']) }}@endif — coût total employeur {{ tnd($x['cout']) }}</div>
         </x-doc-sheet>
         </div>
         @endforeach

@@ -552,6 +552,8 @@ class PaieCalc
         // (600 DT), dues aux taux du régime général sur la fraction excédentaire ; quote-part de l'État (400 DT) exonérée d'IRPP.
         $dignite = ! empty($P['dignite']);
         $baseCot = $dignite ? r3(max(0, $baseCnss - $P['dignite_plafond'])) : $baseCnss;
+        // La quote-part de l'État est versée à l'employeur : le salarié perçoit son salaire complet, le coût employeur en est diminué.
+        $etat = $dignite ? r3(min($P['dignite_subvention'], $brut)) : 0.0;
         if ($dignite) $brutImp = r3(max(0, $brutImp - $P['dignite_subvention']));
         $assujetti = $e->cnss_assujetti ?? true;
         $cs = $assujetti ? $ar($baseCot * $P['cnssS'] / 100) : 0.0;
@@ -582,7 +584,7 @@ class PaieCalc
             'cnssS' => $cs, 'fp' => r3($fp), 'fam' => r3($fam), 'autres_deductions' => r3($autres), 'bi' => r3($bi),
             'ir' => $ir, 'css' => $css, 'ras' => $ras, 'retenues' => $retenues, 'nature' => $nature, 'acompte' => $f['acompte'] ?? 0.0, 'pret_societe' => $f['pret_societe'] ?? 0.0, 'pret_cnss' => $f['pret_cnss'] ?? 0.0, 'net' => $net,
             'taux_h' => $f['taux_h'] ?? null, ...($f['pointage'] ?? []),
-            'cnssP' => $cp, 'tfp' => $tfp, 'fop' => $fop, 'cout' => r3($brut + $cp + $tfp + $fop),
+            'cnssP' => $cp, 'tfp' => $tfp, 'fop' => $fop, 'etat' => $etat, 'cout' => r3($brut + $cp + $tfp + $fop - $etat),
             'taux_cnssS' => (float) $P['cnssS'], 'taux_cnssP' => (float) $P['cnssP'],
             ...($P['profil'] ?? ['profil' => $e->profil ?: null, 'code_exploitant' => null, 'decl_cnss' => true, 'decl_employeur' => true])];
     }
@@ -744,7 +746,7 @@ class PaieCalc
 
     public static function totaux(array $R): array
     {
-        $t = array_fill_keys(['brut', 'cnssS', 'ir', 'css', 'ras', 'retenues', 'nature', 'acompte', 'pret_societe', 'pret_cnss', 'net', 'cnssP', 'tfp', 'fop', 'cout'], 0);
+        $t = array_fill_keys(['brut', 'cnssS', 'ir', 'css', 'ras', 'retenues', 'nature', 'acompte', 'pret_societe', 'pret_cnss', 'net', 'cnssP', 'tfp', 'fop', 'etat', 'cout'], 0);
         foreach ($R as $r) foreach ($t as $k => $_) $t[$k] += $r[$k] ?? 0;
         return array_map('r3', $t);
     }
@@ -793,7 +795,8 @@ class PaieCalc
 
     /**
      * Écriture de paie (plan comptable tunisien) : D 640 salaires, 647 charges sociales, 661 TFP/FOPROLOS / C 425 net, 45311 CNSS, 432 retenues,
-     * 437 TFP/FOPROLOS, 427 retenues diverses sur salaires (rubriques à déduire non cotisables), 79 transfert de charges (avantages en nature).
+     * 437 TFP/FOPROLOS, 427 retenues diverses sur salaires (rubriques à déduire non cotisables), 79 transfert de charges (avantages en nature) ;
+     * D 441 / C 74 : quote-part de l'État des contrats Dignité.
      */
     public static function lignes(array $t): array
     {
@@ -811,6 +814,9 @@ class PaieCalc
             ['compte' => '437', 'debit' => 0, 'credit' => $tf],
             ['compte' => '427', 'debit' => 0, 'credit' => r3(($t['retenues'] ?? 0) + ($t['pret_cnss'] ?? 0))],
             ['compte' => '79', 'debit' => 0, 'credit' => r3($t['nature'] ?? 0)],
+            // Contrat Dignité : quote-part du salaire versée par l'État à l'employeur (441 État, subventions à recevoir / 74 subventions d'exploitation).
+            ['compte' => '441', 'debit' => r3($t['etat'] ?? 0), 'credit' => 0],
+            ['compte' => '74', 'debit' => 0, 'credit' => r3($t['etat'] ?? 0)],
         ], fn ($l) => $l['debit'] || $l['credit']));
     }
 }
