@@ -125,7 +125,7 @@ class ModeleActeTest extends TestCase
     public function test_texte_integre_inclut_le_gerant_associe_et_les_numeros_de_parts_cedees(): void
     {
         $this->post(route('actes.store', $this->client), ['type' => 'sarl', 'date' => '2026-03-15'])->assertSessionHasNoErrors();
-        $this->assertStringContainsString('Sami Ben Ali : 60 parts, numérotées de 1 à 60', Acte::sole()->contenu);
+        $this->assertStringContainsString('60 parts numérotées de 1 à 60 inclus à Sami Ben Ali.', Acte::sole()->contenu);
 
         $this->post(route('actes.store', $this->client), ['type' => 'cession', 'date' => '2026-03-15', 'cedant' => 'Leila Trabelsi', 'parts_de' => 61, 'parts_a' => 70]);
         $this->assertStringContainsString('10 parts sociales de 10,000 TND chacune, numérotées de 61 à 70', Acte::latest('id')->first()->contenu);

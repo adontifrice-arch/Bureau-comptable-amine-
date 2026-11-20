@@ -56,8 +56,12 @@ class ActeController extends Controller
             'ordre' => 'nullable|array', 'ordre.*' => 'string|max:500', 'ordre_libre' => 'nullable|max:2000', 'motif' => 'nullable|max:500', 'date_cessation' => 'nullable|date',
             'cedant' => 'nullable|max:255', 'cessionnaire' => 'nullable|max:255', 'cessionnaire_cin' => 'nullable|max:50', 'cessionnaire_adresse' => 'nullable|max:255',
             'parts' => 'nullable|integer|min:1', 'parts_de' => 'nullable|integer|min:1|required_with:parts_a', 'parts_a' => 'nullable|integer|gte:parts_de|required_with:parts_de',
-            'prix' => 'nullable|numeric|min:0']);
-        $d += array_fill_keys(['objet', 'duree', 'ordre', 'ordre_libre', 'motif', 'date_cessation', 'cedant', 'cessionnaire', 'cessionnaire_cin', 'cessionnaire_adresse', 'parts', 'parts_de', 'parts_a', 'prix'], null);
+            'prix' => 'nullable|numeric|min:0',
+            // Procès-verbaux d'assemblée : heure, exercice, chiffres des états financiers, affectation, augmentation du capital, nouvelle forme
+            'heure' => 'nullable|max:20', 'exercice' => 'nullable|integer|min:2000|max:2100', 'total_bilan' => 'nullable|numeric', 'resultat' => 'nullable|numeric',
+            'affectation' => 'nullable|max:500', 'augmentation' => 'nullable|numeric|min:0', 'nouvelle_forme' => 'nullable|max:50']);
+        $d += array_fill_keys(['objet', 'duree', 'ordre', 'ordre_libre', 'motif', 'date_cessation', 'cedant', 'cessionnaire', 'cessionnaire_cin', 'cessionnaire_adresse', 'parts', 'parts_de', 'parts_a', 'prix',
+            'heure', 'exercice', 'total_bilan', 'resultat', 'affectation', 'augmentation', 'nouvelle_forme'], null);
         if (empty($d['parts']) && $d['parts_de'] && $d['parts_a']) $d['parts'] = $d['parts_a'] - $d['parts_de'] + 1;
         if (in_array($d['type'], OrdreDuJour::TYPES, true) && $d['ordre']) {
             // L'ordre du PV est celui de la liste, quel que soit l'ordre d'envoi des cases cochées.
@@ -180,7 +184,10 @@ class ActeController extends Controller
             return $h.$P('Fait à '.$e($lieu).', le '.dlong($d['date']).', en quatre exemplaires.').'<p style="margin-top:30px">Le Cédant : ……………………<br>Le Cessionnaire : ……………………</p>';
         }
 
-        // Procès-verbaux
+        // Procès-verbaux d'assemblée générale : modèles du cabinet (PV AGO, PV AGE)
+        if (in_array($t, ['ago', 'age', 'mixte'], true)) return \App\Services\Actes\ProcesVerbal::html($c, $d);
+
+        // Procès-verbal de cessation d'activité
         $items = Balises::ordreDuJour($d);
         $lab = ['ago' => 'ORDINAIRE', 'age' => 'EXTRAORDINAIRE', 'mixte' => 'MIXTE', 'cess' => 'EXTRAORDINAIRE'][$t];
         $h = '<h3 style="text-align:center">'.($t === 'cess' ? 'PROCÈS-VERBAL DE CESSATION DÉFINITIVE D’ACTIVITÉ' : 'PROCÈS-VERBAL DE L’ASSEMBLÉE GÉNÉRALE '.$lab).'</h3>'.$entete;

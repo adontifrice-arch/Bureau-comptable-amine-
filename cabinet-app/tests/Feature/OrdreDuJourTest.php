@@ -83,9 +83,9 @@ class OrdreDuJourTest extends TestCase
 
         $c = Acte::sole()->contenu;
         $pos = fn ($s) => strpos($c, $s);
-        $this->assertTrue($pos('<li>Quitus au gérant</li>') < $pos('<li>Approbation du budget 2027</li>'));
-        $this->assertTrue($pos('<li>Approbation du budget 2027</li>') < $pos('<li>Pouvoirs pour l’accomplissement des formalités</li>'));
-        $this->assertTrue($pos('<li>Pouvoirs pour l’accomplissement des formalités</li>') < $pos('<li>Point ponctuel</li>'));
-        $this->assertStringContainsString('<h3>1re résolution</h3><p>L’assemblée générale donne quitus', $c);
+        $this->assertTrue($pos('<li>Quitus au gérant pour sa gestion de l’exercice 2025 ;</li>') < $pos('<li>Approbation du budget 2027 ;</li>'));
+        $this->assertTrue($pos('<li>Approbation du budget 2027 ;</li>') < $pos('<li>Pouvoirs pour l’accomplissement des formalités ;</li>'));
+        $this->assertTrue($pos('<li>Pouvoirs pour l’accomplissement des formalités ;</li>') < $pos('<li>Point ponctuel.</li>'));
+        $this->assertStringContainsString('<h3>Article premier :</h3><p style="text-align:justify">Un quitus entier et définitif est donné au gérant pour sa gestion de l’exercice 2025.', $c);
     }
 }

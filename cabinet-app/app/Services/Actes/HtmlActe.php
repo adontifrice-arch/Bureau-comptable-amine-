@@ -86,8 +86,12 @@ class HtmlActe
     {
         $style = self::styles((string) $n->getAttribute('style'));
         if (($align = strtolower((string) $n->getAttribute('align'))) && preg_match(self::STYLES['text-align'], $align)) $style['text-align'] ??= $align;
+        // Fusion de cellules des tableaux (colspan, rowspan : entiers de 1 à 20)
+        $fusion = in_array(strtolower($n->tagName), ['td', 'th'], true)
+            ? array_filter(['colspan' => $n->getAttribute('colspan'), 'rowspan' => $n->getAttribute('rowspan')], fn ($v) => preg_match('/^([2-9]|1\d|20)$/', $v)) : [];
         foreach (iterator_to_array($n->attributes) as $a) $n->removeAttribute($a->nodeName);
         if ($style) $n->setAttribute('style', self::css($style));
+        foreach ($fusion as $k => $v) $n->setAttribute($k, $v);
     }
 
     /** Propriétés de style autorisées, valeurs contrôlées. */

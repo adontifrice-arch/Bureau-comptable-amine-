@@ -49,7 +49,7 @@
                 <p class="mt-1 text-xs text-slate-400" x-show="!modeles.some(x => x.type === t)">Aucun modèle importé pour ce type : <a href="{{ route('modeles-actes.index') }}" class="underline">importer un modèle .docx ou .txt</a>.</p>
             </div>
             <template x-if="t === 'sarl' || t === 'suarl'"><div class="grid gap-4 md:col-span-2 md:grid-cols-3">
-                <div class="md:col-span-2"><label class="label">Objet social</label><textarea name="objet" rows="3" class="input" placeholder="La société a pour objet…"></textarea></div>
+                <div class="md:col-span-2"><label class="label">Objet social</label><textarea name="objet" rows="3" class="input" placeholder="Une activité par ligne, ex. : La programmation informatique"></textarea><p class="mt-1 text-xs text-slate-400">Statuts SARL : chaque ligne devient un point de l’article 2, suivi des clauses usuelles (participations, opérations connexes).</p></div>
                 <div><label class="label">Durée (années)</label><input type="number" name="duree" value="99" class="input"></div>
             </div></template>
             <template x-if="['ago','age','mixte','cess'].includes(t)"><div class="md:col-span-2">
@@ -82,6 +82,28 @@
                 <details class="mt-3"><summary class="cursor-pointer text-xs text-slate-500">Points ponctuels pour ce PV seulement</summary>
                     <textarea name="ordre_libre" rows="2" class="input mt-2" placeholder="Un point par ligne, ajouté à la fin, non conservé"></textarea>
                 </details>
+            </div></template>
+            <template x-if="['ago','age','mixte'].includes(t)"><div class="grid gap-4 md:col-span-2 md:grid-cols-4">
+                <div><label class="label" for="f-heure">Heure de la réunion</label><input id="f-heure" name="heure" class="input" placeholder="ex. 12 ou 9h30"></div>
+                <template x-if="t !== 'age'"><div class="contents">
+                    <div><label class="label" for="f-ex">Exercice</label><input id="f-ex" type="number" name="exercice" class="input" value="{{ now()->year - 1 }}"></div>
+                    <div><label class="label" for="f-bil">Total du bilan (DT)</label><input id="f-bil" type="number" step="0.001" name="total_bilan" class="input" placeholder="repris de la comptabilité"></div>
+                    <div><label class="label" for="f-res">Résultat net (DT)</label><input id="f-res" type="number" step="0.001" name="resultat" class="input" placeholder="perte : montant négatif"></div>
+                    <div class="md:col-span-4"><label class="label" for="f-aff">Affectation du résultat</label><input id="f-aff" name="affectation" class="input" placeholder="en report à nouveau"></div>
+                </div></template>
+                <template x-if="t !== 'ago'"><div class="contents">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-4">Assemblée extraordinaire : cession de parts, augmentation du capital, forme juridique</p>
+                    <div><label class="label">Cédant</label><select name="cedant" class="input"><option value="">—</option>@foreach($client->associes as $a)<option>{{ $a->nom }}</option>@endforeach @if($client->gerant_nom && ! $client->associes->contains('nom', $client->gerant_nom))<option>{{ $client->gerant_nom }}</option>@endif</select></div>
+                    <div><label class="label">Nombre de parts cédées</label><input type="number" name="parts" class="input" placeholder="déduit des numéros si vide"></div>
+                    <div><label class="label">Numéros des parts cédées</label><div class="flex gap-2"><input type="number" name="parts_de" class="input" placeholder="de"><input type="number" name="parts_a" class="input" placeholder="à"></div></div>
+                    <div><label class="label">Prix de cession (DT)</label><input type="number" step="0.001" name="prix" class="input"></div>
+                    <div><label class="label">Cessionnaire</label><input name="cessionnaire" class="input"></div>
+                    <div><label class="label">CIN du cessionnaire</label><input name="cessionnaire_cin" class="input"></div>
+                    <div class="md:col-span-2"><label class="label">Adresse du cessionnaire</label><input name="cessionnaire_adresse" class="input"></div>
+                    <div><label class="label">Augmentation du capital en numéraire (DT)</label><input type="number" step="0.001" min="0" name="augmentation" class="input"></div>
+                    <div><label class="label">Nouvelle forme juridique</label><input name="nouvelle_forme" class="input" placeholder="ex. SARL"></div>
+                    <p class="text-xs text-slate-400 md:col-span-2">Les parts nouvelles sont réparties au prorata des parts détenues après la cession ; utilisées seulement si le point correspondant est coché.</p>
+                </div></template>
             </div></template>
             <template x-if="t === 'cess'"><div class="grid gap-4 md:col-span-2 md:grid-cols-2">
                 <div><label class="label">Date de cessation</label><input type="date" name="date_cessation" class="input" value="{{ now()->format('Y-m-d') }}"></div>

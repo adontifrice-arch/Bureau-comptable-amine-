@@ -36,47 +36,92 @@ class StatutsTest extends TestCase
         return $m[0] ?? '';
     }
 
-    public function test_plan_des_articles(): void
+    /** Article n des statuts SARL (modèle du cabinet : « ARTICLE PREMIER : FORME », « ARTICLE 2 : OBJET »…). */
+    private function articleSarl(string $html, int $n): string
     {
-        $titres = array_column(Statuts::articles($this->client, ['type' => 'sarl', 'date' => '2026-03-15']), 0);
-
-        $this->assertSame(['Forme', 'Objet', 'Dénomination', 'Siège social', 'Durée', 'Capital social', 'Répartition des parts', 'Gérance'], array_slice($titres, 0, 8));
-        $this->assertSame(range(1, count($titres)), array_map(fn ($i) => $i + 1, array_keys($titres)));
+        preg_match('#<h3>ARTICLE '.($n === 1 ? 'PREMIER' : $n).' : [^<]+</h3>(.*?)(?=<h2|<h3>ARTICLE |<p style="margin-top:20px">Fait à )#s', $html, $m);
+        return $m[0] ?? '';
     }
 
-    public function test_contenu_des_articles_imposes(): void
+    public function test_plan_des_statuts_sarl_selon_le_modele_du_cabinet(): void
     {
-        $this->post(route('actes.store', $this->client), ['type' => 'sarl', 'date' => '2026-03-15', 'objet' => 'Le conseil en gestion'])->assertSessionHasNoErrors();
+        $articles = Statuts::articles($this->client, ['type' => 'sarl', 'date' => '2026-03-15']);
+
+        $this->assertCount(33, $articles);
+        $this->assertSame(['Forme', 'Objet', 'Dénomination', 'Siège social', 'Durée', 'Capital social / Apports', 'Comptes courants'], array_slice(array_column($articles, 0), 0, 7));
+        $this->assertSame('Tribunaux compétents', $articles[32][0]);
+        // Huit titres : I formation, II capital, III gérance, IV décisions, V exercice, VI surveillance, VII dissolution, VIII contestations
+        $titres = array_values(array_filter(array_map(fn ($a) => $a[2] ?? null, $articles)));
+        $this->assertCount(8, $titres);
+        $this->assertSame(['TITRE I – FORMATION', 'TITRE III – GÉRANCE', 'TITRE VIII – CONTESTATIONS'], [$titres[0], $titres[2], $titres[7]]);
+        $this->assertSame('Nomination du gérant', $articles[11][0]);
+        $this->assertSame('Assemblées générales', $articles[19][0]);   // l'article 19 renvoie à l'article 20
+    }
+
+    public function test_contenu_des_statuts_sarl(): void
+    {
+        $this->post(route('actes.store', $this->client), ['type' => 'sarl', 'date' => '2026-03-15', 'objet' => "la programmation informatique\nLe conseil en gestion."])->assertSessionHasNoErrors();
         $h = Acte::sole()->contenu;
 
-        $a1 = $this->article($h, 1);
-        $this->assertStringContainsString('Article 1 – Forme', $a1);
-        $this->assertStringContainsString('société à responsabilité limitée (SARL)', $a1);
-        $this->assertStringContainsString('La société est une société non résidente, totalement exportatrice.', $a1);
+        // En-tête et comparution
+        $this->assertStringContainsString('SARL AU CAPITAL DE 1.000 DINARS', $h);
+        $this->assertStringContainsString('NON RÉSIDENTE', $h);
+        $this->assertStringContainsString('TOTALEMENT EXPORTATRICE', $h);
+        $this->assertStringContainsString('Entre les soussignés :', $h);
+        $this->assertStringContainsString('1- John Smith, de nationalité britannique', $h);
+        $this->assertStringContainsString('2- Leila Trabelsi, titulaire de la CIN n° 07654321', $h);
 
-        $this->assertStringContainsString('La société a pour objet : Le conseil en gestion.', $this->article($h, 2));
+        $a1 = $this->articleSarl($h, 1);
+        $this->assertStringContainsString('ARTICLE PREMIER : FORME', $a1);
+        $this->assertStringContainsString('une société non résidente, totalement exportatrice, ayant la forme de société à responsabilité limitée SARL, qui sera régie par la loi n° 2000-93', $a1);
 
-        $a3 = $this->article($h, 3);
-        $this->assertStringContainsString('Article 3 – Dénomination', $a3);
-        $this->assertStringContainsString('Sa dénomination commerciale est : « Alpha Formation ».', $a3);
+        $a2 = $this->articleSarl($h, 2);
+        $this->assertStringContainsString('<li>La programmation informatique.</li><li>Le conseil en gestion.</li><li>La participation directe ou indirecte', $a2);
 
-        $a6 = $this->article($h, 6);
-        $this->assertStringContainsString('Article 6 – Capital social', $a6);
-        $this->assertStringContainsString('fixé à 1 000,000 TND, divisé en 100 parts sociales d’une valeur nominale de 10,000 TND chacune', $a6);
-        $this->assertStringContainsString('John Smith : 60 parts de 10,000 TND chacune, soit 600,000 TND, apport en numéraire.', $a6);
-        $this->assertStringContainsString('Leila Trabelsi : 40 parts de 10,000 TND chacune, soit 400,000 TND, apport en nature.', $a6);
+        $a3 = $this->articleSarl($h, 3);
+        $this->assertStringContainsString('La société prend la dénomination de : <b>Alpha Conseil</b>. Sa dénomination commerciale est : « Alpha Formation ».', $a3);
+        $this->assertStringContainsString('article 91 du code des sociétés commerciales', $a3);
 
-        $a7 = $this->article($h, 7);
-        $this->assertStringContainsString('John Smith : 60 parts, numérotées de 1 à 60 inclus', $a7);
-        $this->assertStringContainsString('Leila Trabelsi : 40 parts, numérotées de 61 à 100 inclus', $a7);
+        $this->assertStringContainsString('fixé au : 12 rue de Marseille, Tunis.', $this->articleSarl($h, 4));
+        $this->assertStringContainsString('fixée à 99 ans', $this->articleSarl($h, 5));
 
-        $a8 = $this->article($h, 8);
-        $this->assertStringContainsString('Article 8 – Gérance', $a8);
-        $this->assertStringContainsString('John Smith, de nationalité britannique, titulaire de la carte de séjour n° CS-123, titulaire du passeport n° P998877 délivré le 10/01/2022 et valable jusqu’au 09/01/2032', $a8);
-        $this->assertStringContainsString('nommé(e) gérant(e) le 15 mars 2026 pour une durée de 3 ans', $a8);
+        $a6 = $this->articleSarl($h, 6);
+        $this->assertStringContainsString('ARTICLE 6 : CAPITAL SOCIAL / APPORTS', $a6);
+        $this->assertStringContainsString('fixé à la somme de mille dinars (1 000 DT), soit l’équivalent de sa valeur en devises, divisé en cent (100) parts sociales de dix dinars (10 DT) chacune', $a6);
+        $this->assertStringContainsString('1- John Smith apporte à la présente société la somme de SIX CENTS (600) dinars et reçoit en rémunération de son apport soixante (60) parts de dix dinars (10 DT) chacune', $a6);
+        $this->assertStringContainsString('2- Leila Trabelsi apporte à la présente société des biens en nature évalués à la somme de QUATRE CENTS (400) dinars', $a6);
+        $this->assertMatchesRegularExpression('#Leila Trabelsi</td>\s*<td[^>]*>400</td>\s*<td[^>]*>0</td>\s*<td[^>]*>400</td>\s*<td[^>]*>40 %</td>#', $a6);
+        $this->assertMatchesRegularExpression('#<b>Total</b></td>\s*<td[^>]*>400</td>\s*<td[^>]*>600</td>\s*<td[^>]*>1 000</td>\s*<td[^>]*>100 %</td>#', $a6);
+        $this->assertStringContainsString('<li>60 parts numérotées de 1 à 60 inclus à John Smith.</li><li>40 parts numérotées de 61 à 100 inclus à Leila Trabelsi.</li>', $a6);
 
-        $this->assertStringContainsString('Article 14 – Publicité et pouvoirs', $h);
-        $this->assertStringContainsString('<p>Fait à Tunis, le 15 mars 2026', $h);
+        $a12 = $this->articleSarl($h, 12);
+        $this->assertStringContainsString('ARTICLE 12 : NOMINATION DU GÉRANT', $a12);
+        $this->assertStringContainsString('John Smith a été désigné(e) gérant(e) statutaire de la société pour une durée de 3 ans à compter du 15 mars 2026', $a12);
+        $this->assertStringContainsString('pour une durée de 3 ans à partir de la date de la constitution définitive', $this->articleSarl($h, 13));
+        $this->assertStringContainsString('ainsi qu’il est dit à l’article 20 des présents statuts', $this->articleSarl($h, 19));
+        $this->assertStringContainsString('ARTICLE 20 : ASSEMBLÉES GÉNÉRALES', $h);
+        $this->assertStringContainsString('ARTICLE 33 : TRIBUNAUX COMPÉTENTS', $h);
+
+        // Signatures
+        $this->assertStringContainsString('Fait à TUNIS en autant d’exemplaires que de droit.<br>Le 15-03-2026', $h);
+        $this->assertStringContainsString('<b>LES ASSOCIÉS</b>', $h);
+        $this->assertStringContainsString('<b>LE GÉRANT</b><br>John Smith', $h);
+    }
+
+    public function test_sarl_gerant_non_associe_et_numerotation_des_parts(): void
+    {
+        $c = Client::factory()->create(['nom' => 'Beta', 'forme' => 'SARL', 'capital' => 5000, 'valeur_nominale' => 10, 'nb_parts' => 500, 'adresse' => 'Rue Chatt Mariem bureau B1.2 Montplaisir 1073 Tunis.',
+            'gerant_nom' => 'Sami Gharbi', 'gerant_cin' => '01234567', 'gerant_associe' => false, 'gerant_nomination_duree' => null]);
+        $c->associes()->create(['nom' => 'A', 'parts' => 300]);
+        $c->associes()->create(['nom' => 'B', 'parts' => 200]);
+        $h = Statuts::html($c, ['type' => 'sarl', 'date' => '2026-10-01', 'duree' => 50], '');
+
+        $this->assertStringContainsString('300 parts numérotées de 1 à 300 inclus à A.', $h);      // numéros déduits de l'ordre des associés
+        $this->assertStringContainsString('200 parts numérotées de 301 à 500 inclus à B.', $h);
+        $this->assertStringContainsString('Sami Gharbi, titulaire de la CIN n° 01234567 a été désigné(e) gérant(e) statutaire de la société pour toute la durée de la société', $h);
+        $this->assertStringContainsString('La nomination du gérant est faite pour une durée de 50 ans', $h);
+        $this->assertStringContainsString('Fait à TUNIS en autant', $h);
+        $this->assertStringContainsString('<li>[objet social à préciser].</li>', $h);
     }
 
     public function test_suarl_et_informations_manquantes(): void
