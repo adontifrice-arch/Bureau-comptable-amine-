@@ -143,7 +143,7 @@ class DeclarationAnnuelle
     /** Champs d'entête enregistrés (e[...]) par modèle. */
     public const ENTETE = [
         'is' => ['acte', 'nature', 'ouv', 'clo', 'activite', 'forme', 'nationalite', 'privilege'],
-        'ir' => ['acte', 'ouv', 'clo', 'activite', 'privilege', 'nom', 'prenom', 'naissance', 'nationalite', 'pays_naissance', 'telephone', 'situation', 'enf_handicap', 'enf1', 'enf2', 'enf3', 'enf4', 'id_code', 'id_num', 'id_date'],
+        'ir' => ['acte', 'ouv', 'clo', 'activite', 'privilege', 'nom', 'prenom', 'naissance', 'nationalite', 'pays_naissance', 'telephone', 'situation', 'enf_handicap', 'enf1', 'enf2', 'enf3', 'enf4', 'id_code', 'id_num', 'id_date', 'priv_id', 'cgi', 'cgi_annee', 'cgi_mf'],
     ];
 
     /** [rubriques, tableaux, cases des impôts, champs d'entête] d'un modèle. */
@@ -359,10 +359,14 @@ class DeclarationAnnuelle
             'ded_bons' => ['Intérêts des bons du Trésor assimilables (limite commune de 10 000 D)', 'فوائد رقاع الخزينة القابلة للتنظير في حدود مبلغ سنوي يساوي 10.000 د', 'm'],
             'ded_rentes' => ['Rentes payées à titre obligatoire et gratuit', 'إيرادات مدفوعة بصفة وجوبية ومجانية', 'm'],
             'ded_verts' => ['Intérêts des emprunts obligataires verts, sociaux et durables (limite de 10 000 D)', 'فوائد القروض الرقاعية الخضراء والقروض الرقاعية المسؤولة اجتماعيا والقروض الرقاعية المستدامة في حدود 10.000 د', 'm'],
+            'ded_assur' => ['Primes d’assurance-vie et des contrats de capitalisation (limite annuelle de 10 000 D)', 'أقساط عقود التأمين على الحياة وعقود الرسملة في حدود مبلغ سنوي قدره 10.000 د', 'm'],
+            'ded_fne' => ['Dons au profit du fonds national de l’emploi', 'الهبات لفائدة الصندوق الوطني للتشغيل', 'm'],
             'chef' => ['Chef de famille (300 D)', 'رئيس العائلة', 'x'],
             'parents' => ['Nombre de parents à charge (5 % du revenu net imposable, 450 D au plus par parent)', 'والدين في الكفالة', 't'],
             'ded_univ' => ['Remboursement des prêts universitaires (principal et intérêts)', 'إرجاع القروض الجامعية أصلا وفائدة', 'm'],
             'ded_coti' => ['Cotisations sociales des non-salariés', 'الاشتراكات المدفوعة من قبل العملة غير الأجراء المنخرطين بأحد الأنظمة القانونية للضمان الاجتماعي', 'm'],
+            'ded_hab_sociale' => ['Intérêts des prêts relatifs à l’acquisition ou à la construction d’une habitation sociale', 'الفوائض المدفوعة بعنوان القروض المتعلقة باقتناء أو بناء مسكن اجتماعي', 'm'],
+            'ded_primes' => ['Rémunérations et primes occasionnelles et irrégulières', 'المكافآت والمنح العرضية وغير المنتظمة', 'm'],
             'ded_logement' => ['Intérêts des prêts pour l’acquisition ou la construction d’un logement (coût ≤ 200 000 D)', 'الفوائض المدفوعة بعنوان القروض المتعلقة باقتناء أو بناء مسكن واحد لا تتعدى كلفة اقتنائه أو بنائه 200.000 دينار دون اعتبار الأداء على القيمة المضافة وكذلك هامش الربح المدفوع في إطار عقود بيع مرابحة', 'm'],
         ]],
         'calc' => ['Calcul de l’impôt et minimum d’impôt', 'احتســـاب الضريبـــة', [
@@ -371,7 +375,7 @@ class DeclarationAnnuelle
             'min_exp_02' => ['Chiffre d’affaires à l’export soumis à 0,2 %', 'الخاضع للضريبة الدنيا بنسبة 0.2%', 'm'],
             'min_exp_01' => ['Chiffre d’affaires à l’export soumis à 0,1 %', 'الخاضع للضريبة الدنيا بنسبة 0.1%', 'm'],
             'min_qp' => ['Quote-part de l’associé dans le minimum des sociétés de personnes', 'مناب الشريك في شركات الأشخاص وما شابهها في الضريبة الدنيا', 'm'],
-            'min_30' => ['Minimum de 30 % ou 45 %', 'الضريبة الدنيا بنسبة 30% أو/و 45%', 'm'],
+            'min_30' => ['Minimum d’impôt au taux de 30 % ou 60 %', 'الضريبة الدنيا بنسبة 30% أو/و 60%', 'm'],
             'exo_min' => ['Non soumis au minimum d’impôt (déduction totale des revenus d’exploitation)', '', 'x'],
         ]],
         'liq' => ['Liquidation de l’impôt', 'التســوية', [
@@ -384,6 +388,8 @@ class DeclarationAnnuelle
             'ded_1pc' => ['Avance de 1 % sur les ventes des industriels et grossistes aux personnes physiques', 'التسبقة بنسبة 1% الموظفة على بيوعات المؤسسات الصناعية ومؤسسات تجارة الجملة إلى الأشخاص الطبيعيين', 'm'],
             'ded_div' => ['Retenue sur dividendes ne dépassant pas 10 000 D par an', 'الخصم من المورد بعنوان حصص الأسهم إذا لم يتجاوز مبلغها 10.000 دينار سنويا', 'm'],
             'ded_reduc' => ['Réduction d’impôt (acquisition d’un logement 2021–2022, 200 D par mois)', 'التخفيض في الضريبة على الدخل المستوجبة في حدود 200 دينار شهريا للأشخاص الذين يقومون خلال سنتي 2021 و2022 باقتناء مسكن يتم تمويله عن طريق قرض أو عقد بيع مرابحة', 'm'],
+            'ded_bnc_forf' => ['Avance exigible sur les personnes physiques soumises à l’impôt sur le revenu sur la base d’une assiette forfaitaire dans la catégorie BNC', 'التسبقة المستوجبة على الأشخاص الطبيعيين الخاضعين للضريبة على الدخل على أساس قاعدة تقديرية في صنف الأرباح غير التجارية', 'm'],
+            'ded_recrut' => ['Déduction de 10 % des traitements, salaires et primes (majorés des avantages en nature) des nouveaux recrutés pendant trois années', 'طرح 10% من مبلغ الأجور والمرتبات والمنح مضافا إليها قيمة الامتيازات العينية الراجعة للانتدابات الجديدة خلال ثلاث سنوات', 'm'],
             'ded_aut' => ['Autres montants déductibles', 'مبالغ أخرى قابلة للطرح', 'm'],
             'restit' => ['Montants restitués (déclarations rectificatives)', 'المبالغ المسترجعة', 'm'],
         ]],
@@ -508,9 +514,12 @@ class DeclarationAnnuelle
         $enf += 2000 * (int) ($f['enf_handicap'] ?? 0) * (empty($f['enfants']) ? 1 : 0);
         $o['ded_enf'] = r3($enf);
         $o['ded_chef'] = ! empty($f['chef']) ? 300.0 : 0.0;
-        $avant = max(0, $o['rng_net'] - $o['ded_act'] - $o['reinv'] - $ep - $ob - $verts - $n('ded_rentes') - $o['ded_chef'] - $enf - $n('ded_univ') - $n('ded_coti') - $n('ded_logement'));
+        $assur = min($n('ded_assur'), 10000);
+        // Autres déductions sans plafond propre (modèle officiel) : dons au fonds national de l'emploi, habitation sociale, primes occasionnelles
+        $autres = $n('ded_fne') + $n('ded_hab_sociale') + $n('ded_primes');
+        $avant = max(0, $o['rng_net'] - $o['ded_act'] - $o['reinv'] - $ep - $ob - $verts - $assur - $autres - $n('ded_rentes') - $o['ded_chef'] - $enf - $n('ded_univ') - $n('ded_coti') - $n('ded_logement'));
         $o['ded_parents'] = r3(min($avant * 0.05, 450) * min(2, (int) ($f['parents'] ?? 0)));
-        $o['ded_communes'] = r3($ep + $ob + $verts + $n('ded_rentes') + $o['ded_chef'] + $enf + $o['ded_parents'] + $n('ded_univ') + $n('ded_coti') + $n('ded_logement'));
+        $o['ded_communes'] = r3($ep + $ob + $verts + $assur + $autres + $n('ded_rentes') + $o['ded_chef'] + $enf + $o['ded_parents'] + $n('ded_univ') + $n('ded_coti') + $n('ded_logement'));
 
         // Revenu net imposable (fraction de dinar comptée pour un dinar entier) et impôt
         $o['rni'] = r3(max(0, $o['rng_net'] - $o['ded_act'] - $o['reinv'] - $o['ded_communes']));
@@ -527,7 +536,8 @@ class DeclarationAnnuelle
 
         // Liquidation
         $o['acomptes'] = self::somme($f, 'acomptes', 'montant');
-        $o['II'] = r3($n('ded_rs') + $o['acomptes'] + $n('ded_exc') + $n('ded_imp') + $n('ded_qp') + $n('ded_alc') + $n('ded_1pc') + $n('ded_div') + $n('ded_reduc') + $n('ded_aut'));
+        $o['II'] = r3($n('ded_rs') + $o['acomptes'] + $n('ded_exc') + $n('ded_imp') + $n('ded_qp') + $n('ded_alc') + $n('ded_1pc') + $n('ded_div') + $n('ded_reduc')
+            + $n('ded_bnc_forf') + $n('ded_recrut') + $n('ded_aut'));
         $o['solde'] = r3($o['impot'] - $o['II'] + $n('restit'));
 
         // Contribution sociale de solidarité : taux du paramétrage (sauf salariés et retraités dont le revenu net ne dépasse pas 5 000 D)

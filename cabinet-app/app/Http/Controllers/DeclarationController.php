@@ -413,6 +413,14 @@ class DeclarationController extends Controller
         return view('declarations.mensuelle_ar', ['client' => $client, 'periode' => $periode, 'd' => $d]);
     }
 
+    /** Déclaration de l'impôt sur le revenu des personnes physiques, édition officielle DGI en français (1re et 2e partie), à imprimer. */
+    public function officielle(Request $r)
+    {
+        [$client, $type, $periode, $d] = $this->ctx($r);
+        abort_unless($type === 'ann' && DeclarationAnnuelle::modele($client) === 'ir', 404);
+        return view('declarations.annuelle_ir_fr', ['client' => $client, 'periode' => $periode, 'd' => $d]);
+    }
+
     public function print(Request $r)
     {
         [$client, $type, $periode, $d] = $this->ctx($r);

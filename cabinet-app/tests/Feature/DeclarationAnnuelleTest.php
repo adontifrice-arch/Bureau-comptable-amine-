@@ -175,6 +175,34 @@ class DeclarationAnnuelleTest extends TestCase
         $this->assertArrayHasKey('bnc_res_fiscal', $f);
     }
 
+    public function test_edition_officielle_en_francais_conforme_a_la_dgi(): void
+    {
+        // Montants d'une déclaration IRPP 2025 validée par la DGI (BNC, régime réel) : le calcul doit retrouver l'édition officielle
+        $c = Client::create(['nom' => 'Contribuable BNC', 'type_personne' => 'physique', 'forme' => 'Libéral (BNC)', 'categories_revenus' => ['bnc'], 'matricule_fiscal' => '1234567/R/A/P/000']);
+        session(['dossier' => $c->id]);
+        $this->post(route('declarations.save'), $this->q(['imp_saisie' => 1, 'imp' => ['ir'], 'e' => ['acte' => '0', 'situation' => '2', 'cgi' => '1', 'cgi_annee' => '2024', 'cgi_mf' => '7654321A', 'privilege' => '1', 'priv_id' => '01234567'],
+            'f' => ['bnc_ca_loc' => '52546.708', 'bnc_ca_ttc' => '62530.580', 'bnc_res_compta' => '12587.223', 'bnc_res_fiscal' => '14546.708', 'min_loc_02' => '62530.580', 'ded_rs' => '1875.911']]))->assertSessionHas('ok');
+        $f = Declaration::where('client_id', $c->id)->sole()->champs;
+        $C = A::calculIr($f);
+        $this->assertSame([14546.708, 14547.0, 1886.75, 300.0, 1886.75, 10.839, 72.735], [$C['rng_net'], $C['rni_arrondi'], $C['impot_bareme'], $C['min'], $C['impot'], $C['solde'], $C['css_du']]);
+        $this->assertSame(['1', '2024', '7654321A', '01234567'], [$f['cgi'], $f['cgi_annee'], $f['cgi_mf'], $f['priv_id']]);
+
+        $this->get(route('declarations.officielle', $this->q()))->assertOk()
+            ->assertSee('Déclaration de l’impôt sur le revenu des personnes physiques', false)->assertSee('Édition (1ère partie)')->assertSee('Édition (2ème partie)')
+            ->assertSee('2- Bénéfices des professions non commerciales')->assertDontSee('1- Bénéfices industriels et commerciaux')
+            ->assertSee('12587.223')->assertSee('14546.708')->assertSee('14547.000')->assertSee('1886.750')->assertSee('1875.911')->assertSee('10.839')->assertSee('72.735')
+            ->assertSee('centre de gestion intégré', false)->assertSee('7654321A')->assertSee('Minimum d’impôt au taux de 30 % ou 60 %', false);
+
+        // Nouvelles rubriques du modèle officiel : déductions communes et imputations
+        $C = A::calculIr(['modele' => 'ir', 'bnc_res_fiscal' => 50000, 'ded_assur' => 12000, 'ded_fne' => 500, 'ded_hab_sociale' => 300, 'ded_primes' => 200, 'ded_bnc_forf' => 40, 'ded_recrut' => 60]);
+        $this->assertSame([11000.0, 39000.0, 100.0], [$C['ded_communes'], $C['rni'], $C['II']]);   // assurance-vie plafonnée à 10 000
+
+        // Société : pas d'édition IRPP
+        $s = Client::create(['nom' => 'Alpha SARL', 'type_personne' => 'morale', 'forme' => 'SARL']);
+        session(['dossier' => $s->id]);
+        $this->get(route('declarations.officielle', $this->q()))->assertNotFound();
+    }
+
     public function test_declaration_des_personnes_physiques(): void
     {
         $c = Client::create(['nom' => 'Ben Salah Karim', 'type_personne' => 'physique', 'forme' => 'Libéral (BNC)', 'matricule_fiscal' => '1234567/R/A/P/000', 'adresse' => '5 rue de Rome 1000 Tunis', 'paie_activite' => 'Avocat']);

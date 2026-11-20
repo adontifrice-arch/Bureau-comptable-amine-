@@ -44,6 +44,16 @@
             <div><div class="label">Impôts et taxes payés sur la base de cette déclaration</div>
                 <div class="grid gap-1.5 sm:grid-cols-2">@foreach($IMP as $k => [$fr, $ar])<label class="flex items-start gap-2"><input type="checkbox" name="imp[]" value="{{ $k }}" @checked(in_array($k, $coches, true)) class="mt-0.5 rounded border-slate-300 text-brand-600" @disabled($lock)> {{ $fr }}</label>@endforeach</div></div>
             <label class="flex items-center gap-2"><input type="hidden" name="e[privilege]" value="0"><input type="checkbox" name="e[privilege]" value="1" @checked(! empty($f['privilege'])) class="rounded border-slate-300" @disabled($lock)> Poursuite de l’exploitation d’une entreprise transmise, dans le cadre des avantages fiscaux</label>
+            @unless($is)
+                <div class="grid gap-3 md:grid-cols-3">
+                    <div><label class="label">Entreprise transmise : CIN ou matricule fiscal</label><input name="e[priv_id]" value="{{ $f['priv_id'] ?? '' }}" class="input font-mono" @disabled($lock)></div>
+                    <div><label class="label">Tenue des comptes par un centre de gestion intégré</label>
+                        <select name="e[cgi]" class="input" @disabled($lock)><option value="0" @selected(empty($f['cgi']))>Non</option><option value="1" @selected(! empty($f['cgi']))>Oui</option></select></div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><label class="label">1re année d’adhésion</label><input name="e[cgi_annee]" value="{{ $f['cgi_annee'] ?? '' }}" class="input" inputmode="numeric" @disabled($lock)></div>
+                        <div><label class="label">MF du centre</label><input name="e[cgi_mf]" value="{{ $f['cgi_mf'] ?? '' }}" class="input font-mono" @disabled($lock)></div></div>
+                </div>
+            @endunless
         </div>
 
         @foreach($DEF as $s => [$titre, $titreAr, $L])
@@ -102,6 +112,7 @@
                 @foreach($C['synthese'] as $k => $x)<tr class="{{ $x['tot'] ? '' : 'text-slate-400' }}"><td>{{ $A::LIB_SYNTHESE[$k] }}</td><td class="num">{{ tnd($x['III'], false) }}</td><td class="num">{{ tnd($x['pen'], false) }}</td><td class="num">{{ tnd($x['tot'], false) }}</td></tr>@endforeach
             </tbody><tfoot><tr><td>Total à payer</td><td></td><td></td><td class="num">{{ tnd($C['tot'], false) }}</td></tr></tfoot></table></div>
         @unless($lock)<button class="btn-primary w-full justify-center">Enregistrer</button>@endunless
+        @unless($is)<a href="{{ route('declarations.officielle', $q) }}" class="btn-secondary w-full justify-center"><x-icon name="printer" class="h-4 w-4"/> Édition officielle (français)</a>@endunless
         <a href="{{ route('declarations.arabe', $q) }}" class="btn-secondary w-full justify-center"><x-icon name="printer" class="h-4 w-4"/> Formulaire officiel (arabe)</a>
         <div class="card card-b text-xs text-slate-500">Le modèle dépend de la fiche client : {{ $is ? 'personne morale → impôt sur les sociétés' : 'personne physique → impôt sur le revenu' }}.
             « Pré-remplir » reprend les états financiers, la liasse fiscale (résultat fiscal), le tableau de passage, les acomptes et retenues ; les montants restent modifiables.</div>

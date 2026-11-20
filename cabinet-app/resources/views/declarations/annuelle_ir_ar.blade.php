@@ -165,10 +165,10 @@
         </tbody><tfoot><tr><td colspan="2">المجمـــــوع</td><td class="mt">{{ $dn($C['ded_act']) }}</td></tr></tfoot></table>
         <div class="mt-3 font-bold">2) تخفيضات مشتركة</div>
         <table class="g mt-1"><thead><tr><th>التخفيض</th><th>المبلغ (د)</th></tr></thead><tbody>
-            @foreach(['ded_ep_bq', 'ded_ep_cent', 'ded_oblig', 'ded_bons', 'ded_rentes', 'ded_verts'] as $k){!! $L('– '.$A::IR['ded'][2][$k][1], $n($k)) !!}@endforeach
+            @foreach(['ded_ep_bq', 'ded_ep_cent', 'ded_oblig', 'ded_bons', 'ded_rentes', 'ded_verts', 'ded_assur', 'ded_fne'] as $k){!! $L('– '.$A::IR['ded'][2][$k][1], $n($k)) !!}@endforeach
             {!! $L('– رئيس العائلة', $C['ded_chef']) !!}{!! $L('– أطفال في الكفالة', $C['ded_enf']) !!}
             <tr><td class="lib">– والدين في الكفالة {!! $cases($f['parents'] ?? '', 1) !!}</td><td class="mt">{{ $dn($C['ded_parents']) }}</td></tr>
-            @foreach(['ded_univ', 'ded_coti', 'ded_logement'] as $k){!! $L('– '.$A::IR['ded'][2][$k][1], $n($k)) !!}@endforeach
+            @foreach(['ded_univ', 'ded_coti', 'ded_hab_sociale', 'ded_primes', 'ded_logement'] as $k){!! $L('– '.$A::IR['ded'][2][$k][1], $n($k)) !!}@endforeach
         </tbody><tfoot><tr><td>المجمـــوع</td><td class="mt">{{ $dn($C['ded_communes']) }}</td></tr></tfoot></table>
         <h2 class="bande">طرح المداخيل المعاد استثمارها</h2>
         <table class="g text-xs"><thead><tr><th rowspan="2">الرمز</th><th rowspan="2">الإطار القانوني للطرح</th><th rowspan="2">المبالغ المستثمرة</th><th colspan="2">الشركة التي تم الاستثمار لديها</th><th rowspan="2">المبالغ المطروحة (د)</th></tr><tr><th>المعرف الجبائي</th><th>الاسم الاجتماعي</th></tr></thead><tbody>
@@ -187,7 +187,7 @@
             @endforeach
             <tr class="font-bold"><td class="lib">الضريبة المستوجبة حسب الجدول</td><td colspan="2" class="mt">{{ $dn($C['impot_bareme']) }}</td></tr></table>
         <div class="mt-3 font-bold">3) ضبط الضريبة الدنيا <span class="text-xs font-normal">(المبالغ بالدينار)</span></div>
-        <table class="g mt-1 text-[10px]"><tr><th colspan="5">احتساب الضريبة الدنيا على رقم المعاملات</th><th rowspan="3">مناب الشريك في شركات الأشخاص وما شابهها في الضريبة الدنيا</th><th rowspan="3">الضريبة الدنيا بنسبة 30% أو/و 45%</th></tr>
+        <table class="g mt-1 text-[10px]"><tr><th colspan="5">احتساب الضريبة الدنيا على رقم المعاملات</th><th rowspan="3">مناب الشريك في شركات الأشخاص وما شابهها في الضريبة الدنيا</th><th rowspan="3">الضريبة الدنيا بنسبة 30% أو/و 60%</th></tr>
             <tr><th colspan="2">رقم المعاملات المحلي بـما في ذلك الأداءات</th><th colspan="2">رقم المعاملات المتأتي من التصدير</th><th rowspan="2">الضريبة الدنيا المحتسبة على أساس رقم المعاملات أو الحدّ الأدنى للضريبة</th></tr>
             <tr><th>الخاضع للضريبة الدنيا بنسبة 0.2%</th><th>الخاضع للضريبة الدنيا بنسبة 0.1%</th><th>الخاضع للضريبة الدنيا بنسبة 0.2%</th><th>الخاضع للضريبة الدنيا بنسبة 0.1%</th></tr>
             <tr>@foreach(['min_loc_02', 'min_loc_01', 'min_exp_02', 'min_exp_01'] as $k)<td class="mt">{{ $dn($n($k)) }}</td>@endforeach<td class="mt">{{ $dn($C['min_ca']) }}</td><td class="mt">{{ $dn($n('min_qp')) }}</td><td class="mt">{{ $dn($n('min_30')) }}</td></tr></table>
@@ -201,7 +201,7 @@
         <table class="g"><tbody>
             {!! $L('– الضريبة على الدخل المستوجبة أو الضريبة الدنيا', $C['impot'], 0, false, true) !!}
             {!! $titre('– الخصم من المورد والأقساط والفوائض والتسبقات القابلة للطرح:') !!}
-            @foreach(['ded_rs', 'ded_acp', 'ded_exc', 'ded_imp', 'ded_qp', 'ded_alc', 'ded_1pc', 'ded_div', 'ded_reduc', 'ded_aut'] as $k){!! $L('• '.$A::IR['liq'][2][$k][1], $k === 'ded_acp' ? $C['acomptes'] : $n($k), 1) !!}@endforeach
+            @foreach(['ded_rs', 'ded_acp', 'ded_exc', 'ded_imp', 'ded_qp', 'ded_alc', 'ded_1pc', 'ded_div', 'ded_reduc', 'ded_bnc_forf', 'ded_recrut', 'ded_aut'] as $k){!! $L('• '.$A::IR['liq'][2][$k][1], $k === 'ded_acp' ? $C['acomptes'] : $n($k), 1) !!}@endforeach
             {!! $L('– المبالغ المسترجعة', $n('restit')) !!}
             <tr><td class="lib font-bold">– فــائض أو مستوجب: ف = فائض &nbsp; م = مستوجب {!! $cases($C['solde'] >= 0 ? 'م' : 'ف', 1) !!}</td><td class="mt font-bold">{{ $dn(abs($C['solde'])) }}</td></tr>
         </tbody></table>
