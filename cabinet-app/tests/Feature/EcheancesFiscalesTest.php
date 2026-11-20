@@ -129,17 +129,27 @@ class EcheancesFiscalesTest extends TestCase
         $this->assertNull(Echeance::where('client_id', Client::where('nom', 'Nouveau')->sole()->id)->where('auto', 'dm')->first());   // le 16/11 est passé
     }
 
-    public function test_acomptes_reportes_au_jour_ouvrable(): void
+    public function test_acompte_exigible_seulement_dans_son_mois_de_paiement(): void
     {
         $pp = $this->client(['type_personne' => 'physique']);
-        \App\Http\Controllers\EcheanceController::acomptesProvisionnels($pp);
-        $date = fn ($i) => Echeance::where(['client_id' => $pp->id, 'intitule' => $i])->sole()->date_echeance->format('Y-m-d');
-        $this->assertSame('2027-12-27', $date('3e acompte provisionnel 2027'));   // 25/12/2027 = samedi
-        $this->assertSame('2026-12-25', $date('3e acompte provisionnel 2026'));   // vendredi : inchangé
+        $pm = $this->client(['type_personne' => 'morale']);
 
-        // Jour férié saisi au paramétrage : les acomptes non cochés suivent
-        $this->post(route('parametres.fiscal'), ['css' => 0.5, 'feries' => '25/12/2026'])->assertSessionHasNoErrors();
-        $this->assertSame('2026-12-28', $date('3e acompte provisionnel 2026'));
+        $this->assertSame(['2027-12-27', '3e acompte provisionnel 2027'], $this->du($pp, 2027, 12)['ap']);   // 25/12/2027 = samedi
+        $this->assertSame(['2026-09-28', '2e acompte provisionnel 2026'], $this->du($pm, 2026, 9)['ap']);
+        $this->assertSame(['2026-06-29', '1er acompte provisionnel 2026'], $this->du($pm, 2026, 6)['ap']);   // 28/06/2026 = dimanche
+        foreach ([1, 2, 3, 4, 5, 7, 8, 10, 11] as $m) $this->assertArrayNotHasKey('ap', $this->du($pp, 2026, $m));
+
+        // Acomptes futurs créés à l'avance (ancienne génération sur 5 ans) : retirés s'ils ne sont pas cochés
+        $creer = fn ($i, $d, $fait = null) => Echeance::create(['client_id' => $pp->id, 'auto' => 'ap', 'intitule' => $i, 'date_echeance' => $d, 'categorie' => E::CATEGORIE_FISCALE, 'accomplie_le' => $fait]);
+        $creer('3e acompte provisionnel 2026', '2026-12-25');
+        $creer('1er acompte provisionnel 2027', '2027-06-25', '2026-09-30');
+        E::genererMois($pp, 2026, 10);
+        $this->assertSame(['1er acompte provisionnel 2027'], Echeance::where('client_id', $pp->id)->where('auto', 'ap')->pluck('intitule')->all());
+
+        // Entrée de décembre : l'acompte est ajouté, reporté si le 25 est un jour férié saisi au paramétrage
+        Setting::put('fiscal', ['css' => 0.5, 'feries' => '25/12/2026']);
+        E::genererMois($pp, 2026, 12);
+        $this->assertSame('2026-12-28', Echeance::where(['client_id' => $pp->id, 'intitule' => '3e acompte provisionnel 2026'])->sole()->date_echeance->format('Y-m-d'));
     }
 
     public function test_commande_mensuelle(): void

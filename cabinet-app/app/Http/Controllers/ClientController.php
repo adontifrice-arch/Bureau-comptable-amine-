@@ -35,7 +35,6 @@ class ClientController extends Controller
         $client = DB::transaction(function () use ($r) {
             $c = Client::create($r->client());
             $this->syncAssocies($c, $r->associes());
-            EcheanceController::acomptesProvisionnels($c);
             \App\Services\EcheancesFiscales::genererMois($c, now()->year, now()->month);
             return $c;
         });
@@ -48,7 +47,7 @@ class ClientController extends Controller
             }
             return redirect()->route('compta.balance-n1')->with('ok', 'Client créé. Contrôlez la balance '.($annee - 1).' lue avant de l’enregistrer.');
         }
-        return redirect()->route('clients.show', $client)->with('ok', 'Client créé. Les acomptes provisionnels ont été ajoutés aux échéances.');
+        return redirect()->route('clients.show', $client)->with('ok', 'Client créé. Les échéances du mois ont été ajoutées.');
     }
 
     public function show(Request $r, Client $client)
@@ -70,12 +69,9 @@ class ClientController extends Controller
     public function update(ClientRequest $r, Client $client)
     {
         DB::transaction(function () use ($r, $client) {
-            $etaitPhysique = $client->estPhysique();
             $client->update($r->client());
             $this->syncAssocies($client, $r->associes());
-            // Changement de nature (personne morale ↔ physique) : les acomptes non cochés passent au 25 ou au 28.
-            if ($client->estPhysique() !== $etaitPhysique) EcheanceController::acomptesProvisionnels($client);
-            // Nature ou mode de dépôt modifiés : échéances non cochées du mois remises au bon jour
+            // Nature ou mode de dépôt modifiés : échéances non cochées du mois (acompte compris) remises au bon jour
             \App\Services\EcheancesFiscales::genererMois($client->fresh(), now()->year, now()->month);
         });
         $this->log('Modification du client '.$client->nom, $client->id);

@@ -66,15 +66,16 @@ class ClientTest extends TestCase
         $this->get(route('clients.index', ['q' => 'Alpha']))->assertOk()->assertSee('Alpha Conseil');
     }
 
-    public function test_acomptes_provisionnels_sur_cinq_ans_le_28_pour_une_personne_morale(): void
+    public function test_acompte_provisionnel_ajoute_seulement_a_l_entree_du_mois_de_paiement(): void
     {
         $this->post(route('clients.store'), $this->fiche())->assertRedirect();
-        $ap = Echeance::where('auto', 'ap')->orderBy('date_echeance')->get();
+        $this->assertSame(0, Echeance::where('auto', 'ap')->count());   // janvier : aucun acompte exigible
 
-        $this->assertCount(15, $ap);                                  // 3 par an, 2026 à 2030
-        $this->assertSame('2026-06-29', $ap->first()->date_echeance->format('Y-m-d'));   // 28/06/2026 = dimanche → lundi
-        $this->assertSame('2030-12-30', $ap->last()->date_echeance->format('Y-m-d'));    // 28/12/2030 = samedi → lundi
-        $this->assertSame('2026-09-28', $ap[1]->date_echeance->format('Y-m-d'));
+        Carbon::setTestNow('2026-06-01 08:00:00');
+        $this->get(route('echeances.index'))->assertOk()->assertSee('1er acompte provisionnel 2026');
+        $ap = Echeance::where('auto', 'ap')->get();
+        $this->assertCount(1, $ap);
+        $this->assertSame('2026-06-29', $ap->sole()->date_echeance->format('Y-m-d'));   // le 28 (PM) ; 28/06/2026 = dimanche → lundi
     }
 
     public function test_le_type_de_personne_est_obligatoire(): void
@@ -187,29 +188,32 @@ class ClientTest extends TestCase
 
     public function test_acomptes_au_25_pour_une_personne_physique(): void
     {
+        Carbon::setTestNow('2026-09-01 08:00:00');
         $this->post(route('clients.store'), ['nom' => 'Dr Karim Jaziri', 'forme' => 'Libéral (BNC)', 'type_personne' => 'physique', 'categories_revenus' => ['bnc']])->assertSessionHasNoErrors();
 
         $this->assertTrue(Client::sole()->estPhysique());
-        // Le 25, reporté au jour ouvrable suivant s'il tombe un samedi, un dimanche ou un jour férié
-        foreach (Echeance::where('auto', 'ap')->get() as $e) {
-            $this->assertSame(\App\Services\EcheancesFiscales::jourOuvrable($e->date_echeance->copy()->day(25))->format('Y-m-d'), $e->date_echeance->format('Y-m-d'));
-        }
+        $this->assertSame(['2e acompte provisionnel 2026' => '2026-09-25'], Echeance::where('auto', 'ap')->get()->mapWithKeys(fn ($e) => [$e->intitule => $e->date_echeance->format('Y-m-d')])->all());
     }
 
-    public function test_changement_de_nature_regenere_les_acomptes_non_coches_sans_recreer_les_supprimes(): void
+    public function test_changement_de_nature_deplace_l_acompte_non_coche_sans_recreer_un_supprime(): void
     {
+        Carbon::setTestNow('2026-06-01 08:00:00');
         $this->post(route('clients.store'), $this->fiche())->assertRedirect();
         $c = Client::sole();
-        $fait = Echeance::where('intitule', '1er acompte provisionnel 2026')->sole();
-        $fait->update(['accomplie_le' => '2026-06-20']);
-        Echeance::where('intitule', '2e acompte provisionnel 2026')->sole()->delete();
+        $this->assertSame('2026-06-29', Echeance::where('intitule', '1er acompte provisionnel 2026')->sole()->date_echeance->format('Y-m-d'));
 
+        // Passage en personne physique : acompte non coché ramené au 25
         $this->put(route('clients.update', $c), $this->fiche(['type_personne' => 'physique', 'categories_revenus' => ['bic']]))->assertSessionHasNoErrors();
+        $ap = Echeance::where('intitule', '1er acompte provisionnel 2026')->sole();
+        $this->assertSame('2026-06-25', $ap->date_echeance->format('Y-m-d'));
 
-        $this->assertSame('2026-06-29', $fait->fresh()->date_echeance->format('Y-m-d'));      // cochée : inchangée (28/06 = dimanche)
-        $this->assertSame('2026-12-25', Echeance::where('intitule', '3e acompte provisionnel 2026')->sole()->date_echeance->format('Y-m-d'));
-        $this->assertNull(Echeance::where('intitule', '2e acompte provisionnel 2026')->first()); // suppression définitive
-        $this->assertSame(14, Echeance::where('auto', 'ap')->count());
+        // Coché : inchangé ; supprimé : jamais recréé
+        $ap->update(['accomplie_le' => '2026-06-20']);
+        $this->put(route('clients.update', $c), $this->fiche())->assertSessionHasNoErrors();
+        $this->assertSame('2026-06-25', $ap->fresh()->date_echeance->format('Y-m-d'));
+        $ap->delete();
+        $this->put(route('clients.update', $c), $this->fiche())->assertSessionHasNoErrors();
+        $this->assertSame(0, Echeance::where('auto', 'ap')->count());
     }
 
     public function test_capital_incoherent_refuse(): void

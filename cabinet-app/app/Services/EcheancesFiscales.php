@@ -13,8 +13,8 @@ use Carbon\Carbon;
  * Échéances fiscales et sociales générées automatiquement à l'entrée de chaque mois, pour chaque client :
  * déclaration mensuelle du mois précédent (le 15 pour une personne physique, le 20 pour une personne morale en télé-déclaration,
  * le 28 à la recette des finances, reportés au jour ouvrable suivant), déclarations annuelles, déclaration d'employeur,
- * déclarations CNSS trimestrielles et dépôt des états financiers au RNE. Les acomptes provisionnels restent générés par
- * EcheanceController::acomptesProvisionnels. Une échéance supprimée n'est jamais recréée ; une échéance cochée n'est pas modifiée.
+ * acompte provisionnel exigible dans le mois, déclarations CNSS trimestrielles et dépôt des états financiers au RNE.
+ * Toutes les dates sont reportées au jour ouvrable suivant. Une échéance supprimée n'est jamais recréée ; une échéance cochée n'est pas modifiée.
  */
 class EcheancesFiscales
 {
@@ -94,6 +94,11 @@ class EcheancesFiscales
         $jour = $pp ? 15 : ($c->mode_depot === 'teledeclaration' ? 20 : 28);
         $e[] = ['dm', $date($jour),'Déclaration mensuelle '.(in_array(mb_substr(self::MOIS[$prec->month], 0, 1), ['a', 'o'], true) ? 'd’' : 'de ').self::MOIS[$prec->month].' '.$prec->year, self::CATEGORIE_FISCALE];
 
+        // 4 et 5 : acompte provisionnel exigible ce mois-ci (juin, septembre, décembre), le 25 (PP) ou le 28 (PM)
+        if ($rang = [6 => '1er', 9 => '2e', 12 => '3e'][$mois] ?? null) {
+            $e[] = ['ap', $date($pp ? 25 : 28), "$rang acompte provisionnel $annee", self::CATEGORIE_FISCALE];
+        }
+
         $n = $annee - 1;
         // 6 à 8 : déclarations annuelles de l'année précédente
         if (! $pp && $mois === 3) $e[] = ['da', $date(25), "Déclaration annuelle de l’impôt sur les sociétés $n (initiale ou définitive)", self::CATEGORIE_FISCALE];
@@ -124,7 +129,11 @@ class EcheancesFiscales
     public static function genererMois(Client $c, int $annee, int $mois, ?array $feries = null): int
     {
         $feries ??= self::joursFeries();
-        $existants = Echeance::withTrashed()->where('client_id', $c->id)->whereIn('auto', ['dm', 'da', 'dad', 'de', 'cn', 'ci', 'rne'])->get()
+        // Acomptes provisionnels : seul l'acompte exigible dans le mois est affiché ; les acomptes futurs non cochés créés
+        // à l'avance sont retirés (ils reviendront à l'entrée de leur mois de paiement)
+        Echeance::where('client_id', $c->id)->where('auto', 'ap')->whereNull('accomplie_le')
+            ->where('date_echeance', '>', Carbon::create($annee, $mois, 1)->endOfMonth())->forceDelete();
+        $existants = Echeance::withTrashed()->where('client_id', $c->id)->whereIn('auto', ['dm', 'ap', 'da', 'dad', 'de', 'cn', 'ci', 'rne'])->get()
             ->keyBy(fn ($x) => $x->auto.'|'.$x->intitule);
         $debut = $c->created_at?->copy()->startOfDay();
         $n = 0;
@@ -144,11 +153,7 @@ class EcheancesFiscales
     public static function genererCabinet(int $annee, int $mois): int
     {
         $feries = self::joursFeries();
-        return Client::all()->sum(function ($c) use ($annee, $mois, $feries) {
-            // Acomptes provisionnels non cochés : dates remises à jour (jours fériés saisis, report au jour ouvrable)
-            \App\Http\Controllers\EcheanceController::acomptesProvisionnels($c, $feries);
-            return self::genererMois($c, $annee, $mois, $feries);
-        });
+        return Client::all()->sum(fn ($c) => self::genererMois($c, $annee, $mois, $feries));
     }
 
     /**
