@@ -24,14 +24,25 @@ class AuthController extends Controller
         }
         if (! Auth::attempt($data, $r->boolean('remember'))) {
             RateLimiter::hit($key, 60);
+            $connu = User::where('email', $data['email'])->first();
+            if ($connu?->cabinet_id) \App\Models\JournalOperation::evenement($connu, 'auth.echec', 'Échec de connexion (mot de passe incorrect)', $r->ip());
             return back()->withInput()->with('err', 'Identifiants incorrects.');
         }
         RateLimiter::clear($key);
-        if (Auth::user()->status !== 'active') {
+        $u = Auth::user();
+        if ($u->status !== 'active') {
+            \App\Models\JournalOperation::evenement($u, 'auth.refus', 'Connexion refusée (compte '.($u->status === 'disabled' ? 'bloqué' : 'en attente').')', $r->ip());
             Auth::logout();
-            return back()->with('err', 'Votre compte est en attente de validation par le chef comptable.');
+            return back()->with('err', \App\Http\Middleware\EnsureActive::messageInactif($u));
+        }
+        if (! \App\Support\Droits::reseauAutorise($u, $r->ip())) {
+            \App\Models\JournalOperation::evenement($u, 'auth.refus_reseau', 'Connexion refusée hors du réseau du cabinet', $r->ip());
+            Auth::logout();
+            return back()->with('err', 'Votre compte n’est autorisé que depuis le réseau du cabinet.');
         }
         $r->session()->regenerate();
+        $u->forceFill(['derniere_connexion_at' => now(), 'derniere_ip' => $r->ip()])->saveQuietly();
+        \App\Models\JournalOperation::evenement($u, 'auth.connexion', 'Connexion', $r->ip());
         return redirect()->intended(route('dashboard'));
     }
 
@@ -72,6 +83,7 @@ class AuthController extends Controller
 
     public function logout(Request $r)
     {
+        if ($r->user()?->cabinet_id) \App\Models\JournalOperation::evenement($r->user(), 'auth.deconnexion', 'Déconnexion', $r->ip());
         Auth::logout();
         $r->session()->invalidate();
         $r->session()->regenerateToken();

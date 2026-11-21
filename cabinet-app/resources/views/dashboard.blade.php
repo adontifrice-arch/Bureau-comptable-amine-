@@ -1,17 +1,19 @@
 <x-layouts.app title="Tableau de bord">
+    @php $peut = fn ($k) => auth()->user()->peutModule($k); @endphp
     <x-page-header title="Bonjour {{ explode(' ', auth()->user()->name)[0] }}" subtitle="{{ ucfirst(now()->locale('fr')->translatedFormat('l j F Y')) }} — voici l’essentiel du cabinet.">
-        <a href="{{ route('factures.create') }}" class="btn-secondary"><x-icon name="invoice" class="h-4 w-4"/> Nouvelle facture</a>
-        <a href="{{ route('clients.create') }}" class="btn-primary"><x-icon name="plus" class="h-4 w-4"/> Nouveau client</a>
+        @if($peut('facturation'))<a href="{{ route('factures.create') }}" class="btn-secondary"><x-icon name="invoice" class="h-4 w-4"/> Nouvelle facture</a>@endif
+        @if($peut('clients'))<a href="{{ route('clients.create') }}" class="btn-primary"><x-icon name="plus" class="h-4 w-4"/> Nouveau client</a>@endif
     </x-page-header>
 
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <x-stat label="Échéances en retard" :value="$retard" icon="alert" :tone="$retard ? 'red' : 'green'" hint="{{ $ouvertes }} échéance(s) ouverte(s)"/>
         <x-stat label="Clients suivis" :value="$nbClients" icon="users"/>
-        <x-stat label="Honoraires à encaisser" :value="tnd($aEncaisser, true, 0)" icon="clock" tone="amber"/>
-        <x-stat label="Encaissé" :value="tnd($encaisse, true, 0)" icon="check" tone="green"/>
+        @if($peut('facturation'))<x-stat label="Honoraires à encaisser" :value="tnd($aEncaisser, true, 0)" icon="clock" tone="amber"/>
+        <x-stat label="Encaissé" :value="tnd($encaisse, true, 0)" icon="check" tone="green"/>@endif
     </div>
 
     <div class="mt-6 grid gap-6 lg:grid-cols-3">
+        @if($peut('echeances'))
         <div class="card lg:col-span-2">
             <div class="card-h"><h2 class="card-t">À traiter en priorité</h2><a href="{{ route('echeances.index') }}" class="text-xs font-medium text-brand-700 hover:underline">Toutes les échéances →</a></div>
             @forelse($prioritaires as $e)
@@ -31,7 +33,9 @@
                 <x-empty icon="check" title="Aucune échéance ouverte">Tout est à jour.</x-empty>
             @endforelse
         </div>
+        @endif
 
+        @if($peut('facturation'))
         <div class="card">
             <div class="card-h"><h2 class="card-t">Chiffre d’affaires HT</h2><span class="text-xs text-slate-400">12 derniers mois</span></div>
             <div class="card-b">
@@ -49,9 +53,11 @@
                 <a href="{{ route('ca.index') }}" class="mt-4 block text-xs font-medium text-brand-700 hover:underline">Récapitulatif du chiffre d’affaires →</a>
             </div>
         </div>
+        @endif
     </div>
 
     <div class="mt-6 grid gap-6 lg:grid-cols-3">
+        @if($peut('facturation'))
         <div class="card">
             <div class="card-h"><h2 class="card-t">Factures en retard de paiement</h2></div>
             @forelse($impayees as $f)
@@ -63,6 +69,8 @@
                 <x-empty icon="check" title="Aucun impayé en retard"/>
             @endforelse
         </div>
+        @endif
+        @if($peut('compta'))
         <div class="card">
             <div class="card-h"><h2 class="card-t">Factures reçues à valider</h2><a href="{{ route('compta.index') }}" class="text-xs font-medium text-brand-700 hover:underline">Comptabilité →</a></div>
             @forelse($aValider as $f)
@@ -74,6 +82,8 @@
                 <x-empty icon="check" title="Rien à valider"/>
             @endforelse
         </div>
+        @endif
+        @if($peut('interne'))
         <div class="card">
             <div class="card-h"><h2 class="card-t">Agenda & rappels</h2><a href="{{ route('interne.index') }}" class="text-xs font-medium text-brand-700 hover:underline">Interne →</a></div>
             @foreach($rdv as $r)
@@ -90,5 +100,6 @@
             @endforeach
             @if($rdv->isEmpty() && $rappels->isEmpty())<x-empty icon="calendar" title="Agenda libre"/>@endif
         </div>
+        @endif
     </div>
 </x-layouts.app>

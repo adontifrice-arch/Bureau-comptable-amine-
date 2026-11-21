@@ -17,3 +17,13 @@ Artisan::command('echeances:generer {--mois= : mois au format AAAA-MM (par défa
 })->purpose('Génère les échéances fiscales et sociales du mois');
 
 \Illuminate\Support\Facades\Schedule::command('echeances:generer')->monthlyOn(1, '06:00');
+
+// Sauvegardes automatiques programmées dans Paramètres → Sauvegardes (vérifiées chaque minute, chaque cabinet)
+Artisan::command('sauvegardes:auto', function () {
+    foreach (\App\Models\Cabinet::pluck('id') as $cab) {
+        $s = \App\Services\Sauvegardes::executerSiEchue($cab);
+        if ($s) $this->info("Cabinet $cab : sauvegarde {$s->fichier} ({$s->statut}).");
+    }
+})->purpose('Fait les sauvegardes automatiques arrivées à échéance');
+
+\Illuminate\Support\Facades\Schedule::command('sauvegardes:auto')->everyMinute()->withoutOverlapping();

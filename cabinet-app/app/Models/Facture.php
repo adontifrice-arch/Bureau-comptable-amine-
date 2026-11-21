@@ -44,7 +44,7 @@ class Facture extends Model
     {
         $pre = $type === 'devis' ? 'DEV' : 'FAC';
         $y = now()->year;
-        $max = static::where('type', $type)->where('numero', 'like', "$pre-$y-%")->pluck('numero')
+        $max = static::withoutGlobalScope('dossiers')->where('type', $type)->where('numero', 'like', "$pre-$y-%")->pluck('numero')
             ->map(fn ($n) => (int) explode('-', $n)[2])->max() ?? 0;
         return sprintf('%s-%d-%03d', $pre, $y, $max + 1);
     }

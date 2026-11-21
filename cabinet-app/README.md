@@ -46,6 +46,20 @@ La base SQLite (`database/database.sqlite`) est livrée avec un jeu de démonstr
 
 Pensez à changer ces mots de passe (Paramètres → Mon compte).
 
+### Utilisateurs, droits et sauvegardes (Paramètres, chef comptable)
+
+Le menu **Paramètres** n’apparaît qu’au chef comptable (un collaborateur garde « Mon compte » dans le menu de son avatar).
+
+- **Utilisateurs** : « Ajouter un utilisateur » crée un compte avec sa fonction, son rôle, les **modules** qu’il voit et les **dossiers** qu’il peut saisir. Ces droits sont vérifiés sur chaque page : un module ou un dossier non autorisé est refusé même par son adresse. Chaque utilisateur a une page « Droits & suivi » : blocage (avec motif) et déblocage, nouveau mot de passe, et **suivi des opérations** (ajouts, modifications, suppressions, validations, exports, connexions, avec le dossier et l’adresse IP).
+- **Accès à distance** : déclarez les adresses IP publiques du cabinet (Paramètres → Utilisateurs → Réseau du cabinet) ; un utilisateur sans « accès à distance » ne peut alors se connecter que depuis ces adresses. Derrière un proxy ou un hébergeur, configurez les proxys de confiance de Laravel pour que l’adresse réelle soit lue.
+- **Sauvegardes** : programmation quotidienne, hebdomadaire, mensuelle ou annuelle à l’heure choisie, choix des éléments (base complète, clients, dossiers comptables, paie, liasse, immobilisations, déclarations, audit, facturation, notes de frais), sauvegarde immédiate et historique. Une archive ZIP par sauvegarde dans `storage/app/sauvegardes` (ou le dossier indiqué par `SAUVEGARDE_DOSSIER` dans `.env`, par exemple un disque externe ou un dossier OneDrive).
+
+Pour que les sauvegardes partent **à l’heure prévue**, le planificateur de Laravel doit tourner chaque minute. Sous Windows (invite de commandes en administrateur) :
+```bat
+schtasks /Create /SC MINUTE /MO 1 /TN "Cabinet - planificateur" /TR "\"C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe\" C:\laragon\www\cabinet\cabinet-app\artisan schedule:run"
+```
+Sans planificateur, une sauvegarde en retard est faite dès qu’un utilisateur ouvre l’application.
+
 ### Espace client et e-mails
 
 Le chef comptable invite un client depuis sa fiche (onglet **Espace client**) : la personne reçoit un e-mail pour choisir son mot de passe, puis se connecte sur `/espace-client`. Elle ne voit que ses propres envois et les documents de son dossier que le cabinet partage avec elle.

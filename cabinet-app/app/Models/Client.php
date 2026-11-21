@@ -13,6 +13,18 @@ class Client extends Model
     protected $table = 'clients';
     protected $guarded = [];
 
+    protected static function booted(): void
+    {
+        // Un utilisateur limité à certains dossiers garde l'accès au client qu'il crée
+        static::created(function (Client $c) {
+            $u = \App\Support\Droits::utilisateur();
+            if ($u && \App\Support\Droits::dossiers() !== null) {
+                \Illuminate\Support\Facades\DB::table('user_dossiers')->insertOrIgnore(['user_id' => $u->id, 'client_id' => $c->id]);
+                \App\Support\Droits::oublier();
+            }
+        });
+    }
+
     /** Catégories de revenus de l'impôt sur le revenu des personnes physiques. */
     public const CATEGORIES_REVENUS = [
         'bic' => 'Bénéfices industriels et commerciaux (BIC)',

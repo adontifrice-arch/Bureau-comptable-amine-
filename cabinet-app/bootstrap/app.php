@@ -12,7 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['chef' => \App\Http\Middleware\EnsureChef::class, 'actif' => \App\Http\Middleware\EnsureActive::class,
-            'espace-client' => \App\Http\Middleware\EspaceClient::class]);
+            'espace-client' => \App\Http\Middleware\EspaceClient::class,
+            'droits' => \App\Http\Middleware\VerifierDroits::class, 'tracer' => \App\Http\Middleware\TracerOperations::class]);
         $middleware->redirectGuestsTo('/connexion');
     })
     ->withExceptions(function (Exceptions $exceptions): void {

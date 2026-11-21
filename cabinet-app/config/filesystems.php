@@ -77,4 +77,8 @@ return [
         public_path('storage') => storage_path('app/public'),
     ],
 
+    // Dossier des sauvegardes du cabinet (Paramètres → Sauvegardes) : par défaut storage/app/sauvegardes.
+    // Indiquez un autre disque (ex. D:\Sauvegardes ou un dossier OneDrive) pour garder une copie hors du serveur.
+    'sauvegardes' => env('SAUVEGARDE_DOSSIER'),
+
 ];

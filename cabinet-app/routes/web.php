@@ -34,7 +34,7 @@ Route::prefix('espace-client')->name('espace.')->group(function () {
 // Accès à l'espace client vus du cabinet : uniquement ceux du cabinet courant (404 sinon)
 Route::bind('acces', fn ($id) => \App\Models\ClientUser::duCabinet()->findOrFail((int) $id));
 
-Route::middleware(['auth', 'actif'])->group(function () {
+Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::get('/', C\DashboardController::class)->name('dashboard');
 
     // ---------- Clients ----------
@@ -308,4 +308,18 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::patch('parametres/utilisateurs/{user}', [C\ParametreController::class, 'user'])->middleware('chef')->name('parametres.user');
     Route::delete('parametres/utilisateurs/{user}', [C\ParametreController::class, 'userDestroy'])->middleware('chef')->name('parametres.user.destroy');
     Route::post('parametres/invitation', [C\ParametreController::class, 'invitation'])->middleware('chef')->name('parametres.invitation');
+    // Utilisateurs, réseau du cabinet et sauvegardes : chef comptable
+    Route::middleware('chef')->group(function () {
+        Route::post('parametres/utilisateurs', [C\UtilisateurController::class, 'store'])->name('parametres.utilisateurs.store');
+        Route::get('parametres/utilisateurs/{user}', [C\UtilisateurController::class, 'show'])->name('parametres.utilisateurs.show');
+        Route::put('parametres/utilisateurs/{user}', [C\UtilisateurController::class, 'update'])->name('parametres.utilisateurs.update');
+        Route::post('parametres/utilisateurs/{user}/bloquer', [C\UtilisateurController::class, 'bloquer'])->name('parametres.utilisateurs.bloquer');
+        Route::post('parametres/utilisateurs/{user}/debloquer', [C\UtilisateurController::class, 'debloquer'])->name('parametres.utilisateurs.debloquer');
+        Route::post('parametres/utilisateurs/{user}/mot-de-passe', [C\UtilisateurController::class, 'motDePasse'])->name('parametres.utilisateurs.mot-de-passe');
+        Route::post('parametres/reseau', [C\UtilisateurController::class, 'reseau'])->name('parametres.reseau');
+        Route::post('parametres/sauvegardes', [C\SauvegardeController::class, 'reglages'])->name('parametres.sauvegardes');
+        Route::post('parametres/sauvegardes/maintenant', [C\SauvegardeController::class, 'maintenant'])->name('parametres.sauvegardes.maintenant');
+        Route::get('parametres/sauvegardes/{sauvegarde}', [C\SauvegardeController::class, 'telecharger'])->name('parametres.sauvegardes.telecharger');
+        Route::delete('parametres/sauvegardes/{sauvegarde}', [C\SauvegardeController::class, 'supprimer'])->name('parametres.sauvegardes.destroy');
+    });
 });

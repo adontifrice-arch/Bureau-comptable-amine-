@@ -15,9 +15,15 @@ class ParametreController extends Controller
     public function index(Request $r)
     {
         $cabinet = $r->user()->cabinet;
-        return view('parametres.index', ['tab' => $r->input('tab', $r->user()->estChef() ? 'cabinet' : 'compte'), 'c' => Setting::cabinet(),
+        // Paramètres réservés au chef comptable : un collaborateur n'a que « Mon compte »
+        $tab = $r->user()->estChef() ? $r->input('tab', 'cabinet') : 'compte';
+        return view('parametres.index', ['tab' => $tab, 'c' => Setting::cabinet(),
             'users' => User::where('cabinet_id', $r->user()->cabinet_id)->orderByRaw("status = 'pending' desc")->orderBy('name')->get(),
-            'invitation' => $cabinet ? route('register.invitation', $cabinet->code_invitation) : null]);
+            'invitation' => $cabinet ? route('register.invitation', $cabinet->code_invitation) : null,
+            'clients' => $tab === 'users' ? \App\Models\Client::orderBy('nom')->get(['id', 'nom']) : collect(),
+            'reseau' => \App\Support\Droits::adressesReseau(), 'ip' => $r->ip(),
+            'sauvegarde' => \App\Services\Sauvegardes::reglages(),
+            'sauvegardes' => $tab === 'sauvegardes' ? \App\Models\Sauvegarde::with('user')->latest('id')->limit(50)->get() : collect()]);
     }
 
     public function cabinet(Request $r)
@@ -70,8 +76,8 @@ class ParametreController extends Controller
         if (in_array($a, ['desactiver', 'role'], true) && $user->estChef() && $this->dernierChef($user)) {
             return back()->with('err', 'Le cabinet doit garder au moins un chef comptable actif.');
         }
-        if ($a === 'activer') $user->update(['status' => 'active']);
-        if ($a === 'desactiver') $user->update(['status' => 'disabled']);
+        if ($a === 'activer') $user->forceFill(['status' => 'active', 'motif_blocage' => null, 'bloque_le' => null])->save();
+        if ($a === 'desactiver') $user->forceFill(['status' => 'disabled', 'bloque_le' => now()])->save();
         if ($a === 'role') $user->update(['role' => $user->role === 'chef' ? 'collaborateur' : 'chef']);
         // Droit de modifier et de supprimer les écritures comptables (un chef comptable l'a toujours)
         if ($a === 'droit_ecritures') $user->forceFill(['droit_ecritures' => ! $user->droit_ecritures])->save();

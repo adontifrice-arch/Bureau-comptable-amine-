@@ -37,6 +37,9 @@
             ['ged.index', 'GED', 'folder', 'ged.*'],
         ]],
     ];
+    // Modules autorisés de l'utilisateur (Paramètres → Utilisateurs) ; sections vides retirées
+    $menu = collect($menu)->map(fn ($s) => [$s[0], array_values(array_filter($s[1], fn ($i) => $u->peutModule(\App\Support\Droits::moduleDeRoute($i[0]))))])
+        ->filter(fn ($s) => $s[1])->values()->all();
 @endphp
 
 {{-- Barre latérale --}}
@@ -69,9 +72,11 @@
             </div>
         @endforeach
     </nav>
-    <div class="border-t border-white/5 p-3">
-        <a href="{{ route('parametres.index') }}" class="nav-link {{ request()->routeIs('parametres.*') ? 'nav-link-active' : '' }}"><x-icon name="settings" class="h-[18px] w-[18px] text-brand-200/50"/> Paramètres</a>
-    </div>
+    @if($u->estChef())
+        <div class="border-t border-white/5 p-3">
+            <a href="{{ route('parametres.index') }}" class="nav-link {{ request()->routeIs('parametres.*') ? 'nav-link-active' : '' }}"><x-icon name="settings" class="h-[18px] w-[18px] text-brand-200/50"/> Paramètres</a>
+        </div>
+    @endif
 </aside>
 <div x-show="nav" x-cloak @click="nav=false" class="fixed inset-0 z-30 bg-slate-900/50 lg:hidden"></div>
 
@@ -79,7 +84,7 @@
     {{-- Barre supérieure --}}
     <header class="no-print sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200/70 bg-[#f3f6f7]/80 px-4 backdrop-blur-md sm:px-6 dark:border-slate-800 dark:bg-slate-950/80">
         <button class="btn-icon lg:hidden" @click="nav = true"><x-icon name="menu"/></button>
-        <form action="{{ route('clients.index') }}" method="GET" class="relative hidden max-w-md flex-1 sm:block">
+        <form action="{{ route('clients.index') }}" method="GET" class="relative hidden max-w-md flex-1 {{ $u->peutModule('clients') ? 'sm:block' : '' }}">
             <x-icon name="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/>
             <input name="q" value="{{ request('q') }}" placeholder="Rechercher un client, un matricule fiscal…" class="input !rounded-full !bg-white/80 pl-9 dark:!bg-slate-900">
         </form>

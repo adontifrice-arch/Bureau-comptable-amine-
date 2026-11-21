@@ -73,7 +73,7 @@ class FraisController extends Controller
             foreach ((array) ($d['lignes'] ?? []) as $l) if (! empty($l['designation']) && (float) ($l['montant'] ?? 0)) $lignes[] = ['date' => $l['date'] ?? $d['date'], 'designation' => $l['designation'], 'montant' => (float) $l['montant']];
             if (! $lignes) abort(back()->with('err', 'Ajoutez au moins une ligne.'));
             $y = now()->year;
-            $max = NoteFraisDocument::where('numero', 'like', "NF-$y-%")->pluck('numero')->map(fn ($n) => (int) explode('-', $n)[2])->max() ?? 0;
+            $max = NoteFraisDocument::withoutGlobalScope('dossiers')->where('numero', 'like', "NF-$y-%")->pluck('numero')->map(fn ($n) => (int) explode('-', $n)[2])->max() ?? 0;
             $doc = NoteFraisDocument::create(['numero' => sprintf('NF-%d-%03d', $y, $max + 1), 'client_id' => $d['client_id'], 'date' => $d['date'], 'observations' => $d['observations'] ?? null, 'lignes' => $lignes]);
             NoteFrais::whereIn('id', $notes->pluck('id'))->update(['document_id' => $doc->id]);
             return $doc;

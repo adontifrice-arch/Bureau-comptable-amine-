@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Droits;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -10,21 +11,40 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
-    protected $fillable = ['cabinet_id', 'name', 'email', 'password', 'role', 'status'];
+    protected $fillable = ['cabinet_id', 'name', 'email', 'password', 'role', 'status', 'fonction'];
     protected $hidden = ['password', 'remember_token'];
 
     protected function casts(): array
     {
-        return ['email_verified_at' => 'datetime', 'password' => 'hashed', 'cabinet_id' => 'integer', 'droit_ecritures' => 'boolean'];
+        return ['email_verified_at' => 'datetime', 'password' => 'hashed', 'cabinet_id' => 'integer', 'droit_ecritures' => 'boolean',
+            'modules' => 'array', 'tous_dossiers' => 'boolean', 'acces_distant' => 'boolean', 'bloque_le' => 'datetime', 'derniere_connexion_at' => 'datetime'];
     }
 
     public function cabinet() { return $this->belongsTo(Cabinet::class); }
+
+    /** Dossiers autorisés (quand tous_dossiers est faux). */
+    public function dossiers() { return $this->belongsToMany(Client::class, 'user_dossiers'); }
 
     /** Même cabinet que l'utilisateur donné : les utilisateurs ne sont pas filtrés automatiquement (l'authentification les charge avant de connaître le cabinet). */
     public function memeCabinet(?User $u): bool { return $u !== null && $this->cabinet_id !== null && $this->cabinet_id === $u->cabinet_id; }
 
     public function estChef(): bool { return $this->role === 'chef'; }
     public function roleLibelle(): string { return $this->role === 'chef' ? 'Chef comptable' : 'Collaborateur'; }
+
+    public function estBloque(): bool { return $this->status === 'disabled'; }
+
+    /** Modules autorisés : tous pour le chef comptable ou si aucune liste n'est fixée. */
+    public function modulesAutorises(): array
+    {
+        if ($this->estChef() || $this->modules === null) return array_keys(Droits::MODULES);
+        return array_values(array_intersect(array_keys(Droits::MODULES), $this->modules));
+    }
+
+    public function peutModule(?string $module): bool
+    {
+        return $module === null || in_array($module, $this->modulesAutorises(), true);
+    }
+
     public function initiales(): string
     {
         $w = preg_split('/\s+/u', trim($this->name));

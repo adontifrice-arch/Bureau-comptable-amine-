@@ -17,6 +17,12 @@ class CabinetCourant
         return self::$force ?? auth()->user()?->cabinet_id;
     }
 
+    /** Vrai quand le cabinet est fixé explicitement (commande, tâche, espace client) plutôt que lu sur l'utilisateur connecté. */
+    public static function estFixe(): bool
+    {
+        return self::$force !== null;
+    }
+
     /** Exige un cabinet : à utiliser là où agir sans cabinet serait une fuite de données. */
     public static function exiger(): int
     {
