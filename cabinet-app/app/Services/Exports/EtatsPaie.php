@@ -669,6 +669,45 @@ class EtatsPaie
             'code' => $code, 'codes' => array_keys($codes), 'assures' => count($lignes), 'total' => $total, 'anomalies' => $anomalies];
     }
 
+    /**
+     * Fichier des salaires du régime complémentaire de retraite (tracé CNSS) pour le trimestre de $mois : une ligne de 59 caractères
+     * par salarié affilié (case « CNSS régime complémentaire » de la fiche) — n° employeur (10), n° d'assuré (10), salaire déclaré,
+     * salaire plafonné et salaire différentiel du trimestre (13 chacun), en millimes complétés de zéros à gauche. Plafond et
+     * différentiel sont établis mois par mois : part du salaire jusqu'au plafond (6 × SMIG, Renseignements employeur) et au-delà.
+     * Nom du fichier : RC + n° employeur (10) + « . » + trimestre + année (même forme que le fichier DS).
+     * @return array{nom: string, contenu: string, assures: int, totaux: array{declare: float, plafonne: float, differentiel: float}, anomalies: list<string>}
+     */
+    public static function fichierRc(Client $client, string $mois): array
+    {
+        $mm = self::trimestre($mois);
+        $d = Carbon::parse($mm[0].'-01');
+        $plafond = (float) (($client->paie_config ?? [])['plafond_rc'] ?? 0);
+        $employeur = self::matriculeCnss10($client->matricule_cnss);
+        $affilies = self::salaries($client)->filter(fn ($s) => (bool) $s->cnss_rc);
+        $mil = fn (float $v) => str_pad((string) (int) round($v * 1000), 13, '0', STR_PAD_LEFT);
+        $anomalies = [];
+        if (! trim((string) $client->matricule_cnss)) $anomalies[] = 'N° d’affiliation CNSS de l’employeur non renseigné.';
+        if ($plafond <= 0) $anomalies[] = 'Plafond du régime complémentaire (6 × SMIG) non renseigné dans les renseignements employeur.';
+        $lignes = []; $tot = ['declare' => 0.0, 'plafonne' => 0.0, 'differentiel' => 0.0];
+        foreach (self::parSalarie($client, $mm, 'base_cnss', 'decl_cnss') as $id => $p) {
+            if (! $affilies->has($id)) continue;
+            $declare = $plafonne = 0.0;
+            foreach ($mm as $m) {
+                $s = (float) ($p['mois'][$m] ?? 0);
+                $declare += $s;
+                $plafonne += $plafond > 0 ? min($s, $plafond) : $s;
+            }
+            [$declare, $plafonne] = [r3($declare), r3($plafonne)];
+            if ($declare == 0.0) continue;
+            $diff = r3($declare - $plafonne);
+            if (! trim((string) $p['cnss'])) $anomalies[] = $affilies[$id]->nomComplet().' : n° d’assuré social CNSS non renseigné.';
+            $lignes[] = $employeur.self::matriculeCnss10($p['cnss']).$mil($declare).$mil($plafonne).$mil($diff);
+            $tot = ['declare' => r3($tot['declare'] + $declare), 'plafonne' => r3($tot['plafonne'] + $plafonne), 'differentiel' => r3($tot['differentiel'] + $diff)];
+        }
+        return ['nom' => 'RC'.$employeur.'.'.$d->quarter.$d->year, 'contenu' => $lignes ? implode("\r\n", $lignes)."\r\n" : '',
+            'assures' => count($lignes), 'totaux' => $tot, 'anomalies' => $anomalies];
+    }
+
     /** Récapitulatif des cotisations CNSS du trimestre (mois par mois). */
     public static function recapCnss(Client $client, string $mois): Etat
     {

@@ -269,7 +269,8 @@
                     // Un fichier DS par code d'exploitation (archive .zip s'il y en a plusieurs)
                     ['l' => 'Fichier de télédéclaration (DS)', 'i' => 'download', 'href' => route('paie.cnss.fichier', ['mois' => $mois])],
                 ]],
-                ['l' => 'Déclaration du régime complémentaire', 'i' => 'file-text', 'sub' => $fmt('drc')],
+                ['l' => 'Déclaration du régime complémentaire', 'i' => 'file-text', 'sub' => [...$fmt('drc'),
+                    ['l' => 'Fichier de télédéclaration (RC)', 'i' => 'download', 'href' => route('paie.rc.fichier', ['mois' => $mois])]]],
                 ['l' => 'Déclaration Employeur', 'i' => 'file-text', 'sub' => [
                     ['l' => 'Annexe 1 : traitements et salaires', 'i' => 'settings', 'sub' => $fmt('demp')],
                     ['l' => 'Récapitulatif annuel des paies', 'i' => 'settings', 'sub' => $fmt('annuel')],

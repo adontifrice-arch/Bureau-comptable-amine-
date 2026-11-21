@@ -467,6 +467,15 @@ class PaieMenuPaieTest extends TestCase
         $this->assertSame([400.0, 400.0, 0.0, 800.0, 24.0, 32.0], array_slice($e->lignes[0]['cellules'], 4));
         foreach (['imprimer', 'pdf', 'xlsx'] as $f) $this->get(route('paie.edition', ['drc', $f, 'mois' => '2026-10']))->assertOk();
 
+        // Fichier RC (tracé CNSS) : 59 caractères — employeur, assuré, salaire déclaré, plafonné et différentiel du trimestre en millimes.
+        $this->client->update(['matricule_cnss' => '123456-72']);
+        $this->karim->update(['cnss' => '1705988-02']);
+        $f = EtatsPaie::fichierRc($this->client->fresh(), '2026-10');
+        $this->assertSame('RC0012345672.42026', $f['nom']);
+        $this->assertSame('0012345672'.'0170598802'.'0000002000000'.'0000001200000'.'0000000800000'."\r\n", $f['contenu']);
+        $this->assertSame(['declare' => 2000.0, 'plafonne' => 1200.0, 'differentiel' => 800.0], $f['totaux']);
+        $this->get(route('paie.rc.fichier', ['mois' => '2026-10']))->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="RC0012345672.42026"');
+
         // Envoi par mail : journal global et bulletins en pièces jointes.
         \Illuminate\Support\Facades\Mail::fake();
         $this->post(route('paie.envoi-mail'), ['mois' => '2026-10', 'email' => 'employeur@example.tn', 'pieces' => ['journal', 'bulletins']])->assertSessionHas('ok');

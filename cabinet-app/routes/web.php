@@ -179,6 +179,7 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::post('paie/supprimer', [C\PaieController::class, 'supprimer'])->name('paie.supprimer');
     Route::get('paie/virement/fichier/{format}', [C\PaieController::class, 'fichierVirement'])->name('paie.virement.fichier');
     Route::get('paie/cnss/fichier', [C\PaieController::class, 'fichierCnss'])->name('paie.cnss.fichier');
+    Route::get('paie/cnss/fichier-rc', [C\PaieController::class, 'fichierRc'])->name('paie.rc.fichier');
     Route::get('paie/virement/banque/{modele}', [C\PaieController::class, 'fichierBanque'])->name('paie.virement.banque');
     Route::get('paie/virement/employes', [C\PaieController::class, 'virementEmployes'])->name('paie.virement.employes');
     Route::get('paie/stc/{paie}/quittance', [C\PaieController::class, 'quittance'])->name('paie.stc.quittance');

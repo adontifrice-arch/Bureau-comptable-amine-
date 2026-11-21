@@ -461,7 +461,7 @@ class PaieController extends Controller
         $codes = $v['code'] ?? null ? [$v['code']] : array_keys(EtatsPaie::codesCnss($client, $mois));
         $F = array_map(fn ($c) => EtatsPaie::fichierCnss($client, $mois, $c), $codes);
         $F = array_values(array_filter($F, fn ($f) => $f['assures'] > 0));
-        if (! $F) return back()->with('error', 'Aucun salaire à déclarer à la CNSS pour ce trimestre.');
+        if (! $F) return redirect()->route('paie.index', ['mois' => $mois])->with('err', 'Aucun salaire à déclarer à la CNSS pour ce trimestre.');
         if (count($F) === 1) {
             return response($F[0]['contenu'], 200, ['Content-Type' => 'text/plain; charset=US-ASCII', 'Content-Disposition' => 'attachment; filename="'.$F[0]['nom'].'"']);
         }
@@ -472,6 +472,17 @@ class PaieController extends Controller
         $zip->close();
         $nom = 'teledeclaration-cnss-'.\Illuminate\Support\Str::slug($client->nom).'-'.substr($F[0]['nom'], -5).'.zip';
         return response()->download($tmp, $nom, ['Content-Type' => 'application/zip'])->deleteFileAfterSend();
+    }
+
+    /** Fichier des salaires du régime complémentaire de retraite (CNSS) du trimestre. */
+    public function fichierRc(Request $r)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        $mois = $r->validate(['mois' => 'nullable|date_format:Y-m'])['mois'] ?? now()->format('Y-m');
+        $f = EtatsPaie::fichierRc($client, $mois);
+        if (! $f['assures']) return redirect()->route('paie.index', ['mois' => $mois])->with('err', 'Aucun salarié affilié au régime complémentaire n’a de salaire ce trimestre.');
+        return response($f['contenu'], 200, ['Content-Type' => 'text/plain; charset=US-ASCII', 'Content-Disposition' => 'attachment; filename="'.$f['nom'].'"']);
     }
 
     /**
