@@ -21,7 +21,7 @@
             <td class="whitespace-nowrap text-right">
                 @if($f->fichier)<a href="{{ route('compta.ventes.fichier', $f) }}" target="_blank" class="btn-icon" title="Pièce jointe"><x-icon name="eye" class="h-4 w-4"/></a>@endif
                 @if($f->statut !== 'val')
-                    @if($chef && $f->statut === 'prop')
+                    @if($valideur && $f->statut === 'prop')
                         <form method="POST" action="{{ route('compta.ventes.valider', $f) }}" class="inline">@csrf<button class="btn-success btn-sm">Valider</button></form>
                         <form method="POST" action="{{ route('compta.ventes.rejeter', $f) }}" class="inline" onsubmit="this.motif.value = prompt('Motif du rejet ?') || ''">@csrf<input type="hidden" name="motif"><button class="btn-secondary btn-sm !text-rose-600">Rejeter</button></form>
                     @endif

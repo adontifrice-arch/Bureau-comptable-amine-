@@ -21,7 +21,7 @@ Application Laravel 12 de gestion d’un cabinet d’expertise comptable (Tunisi
 | **Échanges clients** | Espace client séparé (`/espace-client`) : le client envoie ses pièces au cabinet et télécharge les documents partagés ; côté cabinet, envois à traiter, partage depuis la GED ou la fiche client, accès des clients (invitation par e-mail), avis par e-mail |
 | **Rédaction juridique** | Statuts SARL / SUARL, PV d’AGO / AGE / mixte, PV de cessation, contrat de cession de parts — brouillons éditables et imprimables |
 
-Rôles : **chef comptable** (valide les pièces, les paies et les écritures, gère les utilisateurs et les paramètres) et **collaborateur** (saisit). Le premier compte créé devient chef comptable ; les suivants sont validés par un chef comptable.
+Rôles : **chef comptable** (tous les droits, gère les utilisateurs et les paramètres) et **collaborateur** (saisit **et valide** les écritures : OD, factures reçues et de vente, paies, relevés bancaires, immobilisations ; le chef comptable peut lui retirer ce droit, et lui accorder celui de modifier ou supprimer des écritures déjà passées). Le premier compte créé devient chef comptable ; les suivants sont validés par un chef comptable.
 
 ## Installation sous Windows (Laragon recommandé)
 

@@ -139,10 +139,11 @@ class ParametresDroitsTest extends TestCase
     public function test_modification_des_droits(): void
     {
         $u = $this->creerCollaborateur();
+        $this->assertTrue($u->peutValider());                                     // droit de saisir et valider accordé par défaut
         $this->actingAs($this->chef)->put(route('parametres.utilisateurs.update', $u), ['name' => 'Sana Saisie', 'email' => 'sana@cabinet.tn', 'role' => 'collaborateur',
-            'fonction' => 'Assistante paie', 'modules' => ['paie'], 'dossiers_tous' => '1', 'acces_distant' => '0'])->assertSessionHas('ok');
+            'fonction' => 'Assistante paie', 'modules' => ['paie'], 'dossiers_tous' => '1', 'acces_distant' => '0', 'droit_validation' => '0'])->assertSessionHas('ok');
         $u->refresh();
-        $this->assertSame(['Assistante paie', ['paie'], true, false], [$u->fonction, $u->modules, $u->tous_dossiers, $u->acces_distant]);
+        $this->assertSame(['Assistante paie', ['paie'], true, false, false], [$u->fonction, $u->modules, $u->tous_dossiers, $u->acces_distant, $u->peutValider()]);
         $this->assertSame(0, \Illuminate\Support\Facades\DB::table('user_dossiers')->where('user_id', $u->id)->count());
     }
 

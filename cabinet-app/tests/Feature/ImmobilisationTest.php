@@ -54,7 +54,8 @@ class ImmobilisationTest extends TestCase
         $this->get(route('immobilisations.index'))->assertOk()->assertSee('Serveur Dell')->assertSee('Matériel informatique')->assertSee('2 166,750');   // VNC fin 2026
         $this->get(route('immobilisations.index', ['tab' => 'dotations', 'exercice' => 2026]))->assertOk()->assertSee('833,250');
 
-        // Le collaborateur ne comptabilise pas.
+        // Un collaborateur sans le droit de valider ne comptabilise pas.
+        $this->collab->forceFill(['droit_validation' => false])->save();
         $this->post(route('immobilisations.comptabiliser'), ['exercice' => 2026])->assertSessionHas('err');
         $this->assertSame(0, Ecriture::count());
     }

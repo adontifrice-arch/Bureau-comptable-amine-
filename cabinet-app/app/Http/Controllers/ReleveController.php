@@ -86,7 +86,7 @@ class ReleveController extends Controller
                 $n = ReleveLigne::whereKey($sel->pluck('id'))->where('statut', 'ign')->update(['statut' => 'att']);
                 return back()->with('ok', $n.' ligne(s) rétablie(s).');
             case 'comptabiliser':
-                if (! auth()->user()->estChef()) return back()->with('err', 'Action réservée au chef comptable.');
+                if (! auth()->user()->peutValider()) return back()->with('err', 'Vous n’avez pas le droit de saisir et valider les écritures. Adressez-vous au chef comptable.');
                 $aPasser = $sel->where('statut', 'att');
                 $sansCompte = $aPasser->filter(fn ($l) => ! $l->compte)->count();
                 $incertains = $aPasser->filter(fn ($l) => $l->compte && $l->sens_incertain)->count();

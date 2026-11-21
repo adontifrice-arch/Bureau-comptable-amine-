@@ -1,6 +1,6 @@
 @php
     use App\Services\Amortissement as A;
-    $chef = auth()->user()->estChef();
+    $chef = auth()->user()->peutValider();   // saisie et validation des écritures (chef, ou collaborateur autorisé)
     $u = fn ($t, $x = []) => route('immobilisations.index', ['tab' => $t, 'exercice' => $exercice] + $x);
     $natures = collect(A::NATURES)->map(fn ($n) => ['libelle' => $n[0], 'compte' => $n[1], 'amort' => $n[2], 'taux' => $n[3]]);
     $aComptabiliser = $etat->filter(fn ($l) => $l['ecart'] > 0.0005 && $l['immo']->amortissable());
@@ -11,7 +11,7 @@
         <x-client-picker :clients="$clients" :current="$client" :route="route('immobilisations.index')" :params="['tab' => $tab, 'exercice' => $exercice]"/>
         <form><input type="hidden" name="tab" value="{{ $tab }}"><label class="sr-only" for="exo">Exercice</label><input id="exo" type="number" name="exercice" value="{{ $exercice }}" class="input w-24" onchange="this.form.submit()"></form>
     </x-page-header>
-    @unless($chef)<div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"><x-icon name="lock" class="h-4 w-4"/> Vous saisissez en tant que collaborateur : la comptabilisation des dotations et des acquisitions est réservée au chef comptable.</div>@endunless
+    @unless($chef)<div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"><x-icon name="lock" class="h-4 w-4"/> Vous saisissez sans droit de validation : vous n’avez pas le droit de comptabiliser les dotations et les acquisitions.</div>@endunless
 
     <x-tabs :active="$tab" :items="['registre' => ['Registre ('.$biens->count().')', $u('registre')], 'dotations' => ['Dotations '.$exercice, $u('dotations')], 'etats' => ['États imprimables', $u('etats')]]"/>
 

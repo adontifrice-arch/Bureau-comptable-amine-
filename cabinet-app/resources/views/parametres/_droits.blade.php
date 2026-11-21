@@ -50,7 +50,11 @@
             </div>
         </div>
 
-        <div class="grid gap-2 sm:grid-cols-2">
+        <div class="grid gap-2 sm:grid-cols-3">
+            <label class="flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
+                <input type="hidden" name="droit_validation" value="0">
+                <input type="checkbox" name="droit_validation" value="1" @checked(old('droit_validation', $x ? (int) ($x->droit_validation ?? 1) : 1)) class="mt-0.5 rounded border-slate-300 text-brand-600">
+                <span><span class="font-medium">Saisir et valider les écritures</span><span class="block text-xs text-slate-500">OD, factures reçues et de vente, paies, banque, immobilisations.</span></span></label>
             <label class="flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
                 <input type="hidden" name="acces_distant" value="0">
                 <input type="checkbox" name="acces_distant" value="1" @checked(old('acces_distant', $x ? (int) $x->acces_distant : 1)) class="mt-0.5 rounded border-slate-300 text-brand-600">

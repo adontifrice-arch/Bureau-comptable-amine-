@@ -150,9 +150,12 @@ class SaisieRapideTest extends TestCase
         $fv = FactureVente::sole();
         $this->assertSame([190.0, 'prop'], [$fv->tva, $fv->statut]);
         $this->assertSame('vente', ModeleSaisie::sole()->type);
-        $this->post(route('compta.ventes.valider', $fv))->assertSessionHas('err', 'Action réservée au chef comptable.');                         // collaborateur
+        $this->collab->forceFill(['droit_validation' => false])->save();                                   // collaborateur sans droit de valider
+        $this->post(route('compta.ventes.valider', $fv))->assertSessionHas('err');
 
-        $this->actingAs($this->chef)->post(route('compta.ventes.valider', $fv))->assertSessionHas('ok');
+        $this->collab->forceFill(['droit_validation' => true])->save();                                    // droit par défaut des collaborateurs
+        $this->post(route('compta.ventes.valider', $fv))->assertSessionHas('ok');
+        $this->actingAs($this->chef);
         $e = Ecriture::where('source', 'fv:'.$fv->id)->sole();
         $this->assertSame('VTE', $e->journal);
         $this->assertSame([['411', 1191.0, 0.0], ['705', 0.0, 1000.0], ['4367', 0.0, 190.0], ['437', 0.0, 1.0]], $this->lignes($e));
@@ -180,9 +183,10 @@ class SaisieRapideTest extends TestCase
         $this->post(route('compta.releves.importer'), ['fichier' => $fichier()])->assertSessionHas('ok');
         $this->assertSame(5, ReleveLigne::count());
 
-        // Le collaborateur affecte, le chef comptabilise
+        // Un collaborateur sans droit de valider affecte, le chef comptabilise
         $sel = $l->take(2)->pluck('id')->all();
-        $this->post(route('compta.releves.lignes'), ['action' => 'comptabiliser', 'sel' => $sel])->assertSessionHas('err', 'Action réservée au chef comptable.');
+        $this->collab->forceFill(['droit_validation' => false])->save();
+        $this->post(route('compta.releves.lignes'), ['action' => 'comptabiliser', 'sel' => $sel])->assertSessionHas('err');
         $this->post(route('compta.releves.lignes'), ['action' => 'enregistrer', 'comptes' => [$l[0]->id => '4111']])->assertSessionHas('ok');
         $this->actingAs($this->chef)->post(route('compta.releves.lignes'), ['action' => 'comptabiliser', 'sel' => $sel])->assertSessionHas('ok');
 

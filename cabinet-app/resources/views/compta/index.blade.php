@@ -1,4 +1,4 @@
-@php $chef = auth()->user()->estChef(); $u = fn($t, $x = []) => route('compta.index', ['tab' => $t, 'annee' => $annee] + $x); @endphp
+@php $chef = auth()->user()->estChef(); $valideur = auth()->user()->peutValider(); $u = fn($t, $x = []) => route('compta.index', ['tab' => $t, 'annee' => $annee] + $x); @endphp
 <x-layouts.app title="Comptabilité">
     {{-- Plan comptable pour les champs de compte : un numéro absent propose la création du sous-compte (resources/js/comptes.js) --}}
     <script>window.PLAN = @js((object) $plan); window.URL_COMPTES = @js(route('compta.comptes.store'));</script>
@@ -11,7 +11,7 @@
         <button class="btn-secondary" x-data @click="$dispatch('open-modal', 'sauvegarde')"><x-icon name="download" class="h-4 w-4"/> Sauvegarde</button>
         <button class="btn-primary" x-data @click="$dispatch('open-modal', 'releve')"><x-icon name="upload" class="h-4 w-4"/> Importer un relevé bancaire</button>
     </x-page-header>
-    @unless($chef)<div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"><x-icon name="lock" class="h-4 w-4"/> Vous saisissez en tant que collaborateur : seule la validation du chef comptable comptabilise les pièces.</div>@endunless
+    @unless($valideur)<div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"><x-icon name="lock" class="h-4 w-4"/> Vous n’avez pas le droit de valider : vos saisies seront comptabilisées après validation par un utilisateur autorisé.</div>@endunless
     <x-tabs :active="$tab" :items="['ach' => ['Factures d’achat', $u('ach')], 'vte' => ['Factures de vente', $u('vte')], 'bq' => ['Banque'.($aTraiter ? ' ('.$aTraiter.')' : ''), $u('bq')], 'pai' => ['Paie à comptabiliser', $u('pai')], 'jnl' => ['Journal & écritures', $u('jnl')], 'bal' => ['Balance générale', $u('bal')], 'gl' => ['Grand livre', $u('gl')], 'plan' => ['Plan comptable', $u('plan')], 'corb' => ['Pièces supprimées'.($nbSupprimees ? ' ('.$nbSupprimees.')' : ''), $u('corb')], 'param' => ['Paramétrage', $u('param')]]"/>
 
     @if(in_array($tab, ['ach', 'vte', 'bq', 'jnl'], true))@include('compta._recherche')@endif
@@ -36,7 +36,7 @@
                     <td class="whitespace-nowrap text-right">
                         @if($f->fichier)<a href="{{ route('compta.factures.fichier', $f) }}" target="_blank" class="btn-icon" title="Pièce jointe"><x-icon name="eye" class="h-4 w-4"/></a>@endif
                         @if($f->statut !== 'val')
-                            @if($chef && $f->statut === 'prop')
+                            @if($valideur && $f->statut === 'prop')
                                 <form method="POST" action="{{ route('compta.factures.valider', $f) }}" class="inline">@csrf<button class="btn-success btn-sm">Valider</button></form>
                                 <form method="POST" action="{{ route('compta.factures.rejeter', $f) }}" class="inline" onsubmit="this.motif.value = prompt('Motif du rejet ?') || ''">@csrf<input type="hidden" name="motif"><button class="btn-secondary btn-sm !text-rose-600">Rejeter</button></form>
                             @endif
@@ -92,7 +92,7 @@
         @if($ia)
         <x-modal name="ia" title="Lecture d’une facture par l’IA">
             <form method="POST" action="{{ route('compta.factures.store') }}" enctype="multipart/form-data" class="space-y-4">@csrf <input type="hidden" name="ia" value="1">
-                <p class="text-sm text-slate-500">Les propositions de l’IA sont des suggestions : seule la validation du chef comptable comptabilise la facture.</p>
+                <p class="text-sm text-slate-500">Les propositions de l’IA sont des suggestions : seule la validation comptabilise la facture.</p>
                 <div><label class="label">Photo ou PDF de la facture</label><input type="file" name="fichier" accept=".pdf,image/*" class="input"></div>
                 <div><label class="label">ou texte de la facture</label><textarea name="texte" rows="5" class="input"></textarea></div>
                 <div class="flex justify-end"><button class="btn-primary"><x-icon name="sparkles" class="h-4 w-4"/> Analyser</button></div>
@@ -107,7 +107,7 @@
                     <div class="min-w-0 flex-1"><div class="font-medium">{{ $p->libelle() }}</div><div class="text-xs text-slate-500">{{ count($p->resultats ?? []) }} salarié(s) · brut {{ tnd($p->totaux['brut'] ?? 0) }} · net {{ tnd($p->totaux['net'] ?? 0) }}</div></div>
                     @if($p->statut === 'val')<span class="badge-green">Comptabilisée</span>
                     @else <span class="badge-amber">Transmise</span>
-                        @if($chef)<form method="POST" action="{{ route('compta.paies.valider', $p) }}">@csrf<button class="btn-success btn-sm">Valider et comptabiliser</button></form>@endif
+                        @if($valideur)<form method="POST" action="{{ route('compta.paies.valider', $p) }}">@csrf<button class="btn-success btn-sm">Valider et comptabiliser</button></form>@endif
                     @endif
                 </div>
             @empty <x-empty icon="wallet" title="Aucune paie transmise">Clôturez une paie dans l’onglet Paie pour la transmettre à la comptabilité.</x-empty> @endforelse
@@ -133,7 +133,7 @@
             <div class="flex flex-wrap gap-1">@foreach(['' => 'Tous'] + $journaux as $k => $l)<a href="{{ $u('jnl', ['journal' => $k] + $rech->parametres()) }}" class="{{ request('journal', '') === (string) $k ? 'badge-blue' : 'badge-gray' }} !py-1" title="{{ $k }}">{{ $l }}</a>@endforeach</div>
             <div class="flex gap-2">
                 <button class="btn-secondary" x-data @click="$dispatch('open-modal', 'journaux')"><x-icon name="book" class="h-4 w-4"/> Journaux</button>
-                @if($chef)<button class="btn-primary" x-data @click="$dispatch('open-modal', 'od')"><x-icon name="plus" class="h-4 w-4"/> Saisir une écriture</button>@endif
+                @if($valideur)<button class="btn-primary" x-data @click="$dispatch('open-modal', 'od')"><x-icon name="plus" class="h-4 w-4"/> Saisir une écriture</button>@endif
             </div>
         </div>
         <div class="space-y-3">

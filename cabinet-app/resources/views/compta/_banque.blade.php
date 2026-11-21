@@ -1,4 +1,4 @@
-{{-- Relevés bancaires importés : contrepartie de chaque opération, puis comptabilisation au journal BQ (chef comptable) --}}
+{{-- Relevés bancaires importés : contrepartie de chaque opération, puis comptabilisation au journal BQ (utilisateurs autorisés à valider) --}}
 @php $ub = fn ($x = []) => route('compta.index', $x + array_filter(['tab' => 'bq', 'annee' => $annee, 'releve' => $releve?->id, 'statut' => $filtre], fn ($v) => $v !== null) + $rech->parametres()); @endphp
 
 <div class="grid gap-6 lg:grid-cols-4">
@@ -72,7 +72,7 @@
                     <button name="action" value="confirmer" class="btn-secondary btn-sm">Confirmer le sens (sélection)</button>
                     @if($filtre === 'ign')<button name="action" value="retablir" class="btn-secondary btn-sm">Rétablir la sélection</button>
                     @else<button name="action" value="ignorer" class="btn-secondary btn-sm">Ignorer la sélection</button>@endif
-                    @if($chef)
+                    @if($valideur)
                         <button name="action" value="comptabiliser" class="btn-primary btn-sm"><x-icon name="check" class="h-3.5 w-3.5"/> Comptabiliser la sélection</button>
                         @if($filtre === 'att' && $lignes->total() > 0)<input type="hidden" name="releve" value="{{ $releve?->id }}"><button name="action" value="comptabiliser_tout" class="btn-success btn-sm" onclick="return confirm('Comptabiliser les {{ $lignes->total() }} ligne(s) à traiter {{ $releve ? "de ce relevé" : "du dossier" }} qui ont une contrepartie ?')">Comptabiliser tout {{ $releve ? 'le relevé' : '' }} ({{ $lignes->total() }})</button>@endif
                     @endif

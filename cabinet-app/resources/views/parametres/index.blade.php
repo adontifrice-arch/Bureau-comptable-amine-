@@ -86,6 +86,7 @@
                     @if($x->modules !== null)<span class="badge-gray" title="{{ collect($x->modulesAutorises())->map(fn ($m) => \App\Support\Droits::libelleModule($m))->implode(', ') }}">{{ count($x->modulesAutorises()) }} module(s)</span>@endif
                     @unless($x->tous_dossiers)<span class="badge-gray">Dossiers limités</span>@endunless
                     @unless($x->acces_distant)<span class="badge-gray">Réseau du cabinet</span>@endunless
+                    @if(! ($x->droit_validation ?? true))<span class="badge-gray">Saisie sans validation</span>@endif
                     @if($x->droit_ecritures)<span class="badge-amber" title="Autorisé par le chef comptable">Modifie / supprime les écritures</span>@endif
                 @endunless
                 <span class="badge-{{ ['active' => 'green', 'pending' => 'amber', 'disabled' => 'red'][$x->status] }}" @if($x->motif_blocage) title="{{ $x->motif_blocage }}" @endif>{{ ['active' => 'Actif', 'pending' => 'En attente', 'disabled' => 'Bloqué'][$x->status] }}</span>

@@ -120,10 +120,10 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::put('comptabilite/ecritures/{ecriture}', [C\ComptaController::class, 'ecritureUpdate'])->name('compta.ecritures.update');
     Route::post('comptabilite/ecritures/{ecriture}/extourner', [C\ComptaController::class, 'annuler'])->name('compta.ecritures.annuler');
     Route::post('comptabilite/ecritures/{ecriture}/restaurer', [C\ComptaController::class, 'restaurer'])->withTrashed()->name('compta.ecritures.restaurer');
-    Route::post('comptabilite/factures/{fr}/valider', [C\ComptaController::class, 'valider'])->middleware('chef')->name('compta.factures.valider');
-    Route::post('comptabilite/factures/{fr}/rejeter', [C\ComptaController::class, 'rejeter'])->middleware('chef')->name('compta.factures.rejeter');
-    Route::post('comptabilite/paies/{paie}/valider', [C\ComptaController::class, 'validerPaie'])->middleware('chef')->name('compta.paies.valider');
-    Route::post('comptabilite/od', [C\ComptaController::class, 'odStore'])->middleware('chef')->name('compta.od.store');
+    Route::post('comptabilite/factures/{fr}/valider', [C\ComptaController::class, 'valider'])->middleware('valideur')->name('compta.factures.valider');
+    Route::post('comptabilite/factures/{fr}/rejeter', [C\ComptaController::class, 'rejeter'])->middleware('valideur')->name('compta.factures.rejeter');
+    Route::post('comptabilite/paies/{paie}/valider', [C\ComptaController::class, 'validerPaie'])->middleware('valideur')->name('compta.paies.valider');
+    Route::post('comptabilite/od', [C\ComptaController::class, 'odStore'])->middleware('valideur')->name('compta.od.store');
     Route::post('comptabilite/journaux', [C\ComptaController::class, 'journaux'])->middleware('chef')->name('compta.journaux');
     Route::get('comptabilite/balance-n1', [C\BalanceN1Controller::class, 'index'])->name('compta.balance-n1');
     Route::post('comptabilite/balance-n1/lire', [C\BalanceN1Controller::class, 'lire'])->name('compta.balance-n1.lire');
@@ -160,8 +160,8 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::put('comptabilite/ventes/{fv}', [C\SaisieController::class, 'venteUpdate'])->name('compta.ventes.update');
     Route::delete('comptabilite/ventes/{fv}', [C\SaisieController::class, 'venteDestroy'])->name('compta.ventes.destroy');
     Route::get('comptabilite/ventes/{fv}/fichier', [C\SaisieController::class, 'venteFichier'])->name('compta.ventes.fichier');
-    Route::post('comptabilite/ventes/{fv}/valider', [C\SaisieController::class, 'venteValider'])->middleware('chef')->name('compta.ventes.valider');
-    Route::post('comptabilite/ventes/{fv}/rejeter', [C\SaisieController::class, 'venteRejeter'])->middleware('chef')->name('compta.ventes.rejeter');
+    Route::post('comptabilite/ventes/{fv}/valider', [C\SaisieController::class, 'venteValider'])->middleware('valideur')->name('compta.ventes.valider');
+    Route::post('comptabilite/ventes/{fv}/rejeter', [C\SaisieController::class, 'venteRejeter'])->middleware('valideur')->name('compta.ventes.rejeter');
 
     // ---------- Relevés bancaires ----------
     Route::post('comptabilite/releves', [C\ReleveController::class, 'importer'])->name('compta.releves.importer');
@@ -173,12 +173,12 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::get('immobilisations', [C\ImmobilisationController::class, 'index'])->name('immobilisations.index');
     Route::post('immobilisations', [C\ImmobilisationController::class, 'store'])->name('immobilisations.store');
     Route::post('immobilisations/import', [C\ImmobilisationController::class, 'importer'])->name('immobilisations.importer');
-    Route::post('immobilisations/dotations', [C\ImmobilisationController::class, 'comptabiliser'])->middleware('chef')->name('immobilisations.comptabiliser');
-    Route::post('immobilisations/dotations/annuler', [C\ImmobilisationController::class, 'annuler'])->middleware('chef')->name('immobilisations.annuler');
+    Route::post('immobilisations/dotations', [C\ImmobilisationController::class, 'comptabiliser'])->middleware('valideur')->name('immobilisations.comptabiliser');
+    Route::post('immobilisations/dotations/annuler', [C\ImmobilisationController::class, 'annuler'])->middleware('valideur')->name('immobilisations.annuler');
     Route::get('immobilisations/etats/{etat}/{format}', [C\ImmobilisationController::class, 'etat'])->name('immobilisations.etat');
     Route::put('immobilisations/{immobilisation}', [C\ImmobilisationController::class, 'update'])->name('immobilisations.update');
     Route::delete('immobilisations/{immobilisation}', [C\ImmobilisationController::class, 'destroy'])->name('immobilisations.destroy');
-    Route::post('immobilisations/{immobilisation}/acquisition', [C\ImmobilisationController::class, 'acquisition'])->middleware('chef')->name('immobilisations.acquisition');
+    Route::post('immobilisations/{immobilisation}/acquisition', [C\ImmobilisationController::class, 'acquisition'])->middleware('valideur')->name('immobilisations.acquisition');
 
     // ---------- Paie ----------
     Route::get('paie', [C\PaieController::class, 'index'])->name('paie.index');

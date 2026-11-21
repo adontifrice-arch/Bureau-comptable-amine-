@@ -129,6 +129,7 @@ class UtilisateurController extends Controller
             'dossiers' => 'nullable|array', 'dossiers.*' => 'integer|'.existe_cab('clients'),
             'acces_distant' => 'nullable|boolean',
             'droit_ecritures' => 'nullable|boolean',
+            'droit_validation' => 'nullable|boolean',
         ];
     }
 
@@ -146,6 +147,7 @@ class UtilisateurController extends Controller
             'tous_dossiers' => $chef || $r->boolean('dossiers_tous'),
             'acces_distant' => $chef || $r->boolean('acces_distant'),
             'droit_ecritures' => ! $chef && $r->boolean('droit_ecritures'),
+            'droit_validation' => $chef || $r->boolean('droit_validation', true),
         ])->save();
         $u->dossiers()->sync($u->tous_dossiers ? [] : array_map('intval', $d['dossiers'] ?? []));
         Droits::oublier();

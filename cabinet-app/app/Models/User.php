@@ -16,7 +16,7 @@ class User extends Authenticatable
 
     protected function casts(): array
     {
-        return ['email_verified_at' => 'datetime', 'password' => 'hashed', 'cabinet_id' => 'integer', 'droit_ecritures' => 'boolean',
+        return ['email_verified_at' => 'datetime', 'password' => 'hashed', 'cabinet_id' => 'integer', 'droit_ecritures' => 'boolean', 'droit_validation' => 'boolean',
             'modules' => 'array', 'tous_dossiers' => 'boolean', 'acces_distant' => 'boolean', 'bloque_le' => 'datetime', 'derniere_connexion_at' => 'datetime'];
     }
 
@@ -32,6 +32,9 @@ class User extends Authenticatable
     public function roleLibelle(): string { return $this->role === 'chef' ? 'Chef comptable' : 'Collaborateur'; }
 
     public function estBloque(): bool { return $this->status === 'disabled'; }
+
+    /** Saisir et valider les écritures (OD, pièces, paies, banque, immobilisations) : accordé par défaut, retirable par le chef. */
+    public function peutValider(): bool { return $this->estChef() || ($this->droit_validation ?? true); }
 
     /** Modules autorisés : tous pour le chef comptable ou si aucune liste n'est fixée. */
     public function modulesAutorises(): array
