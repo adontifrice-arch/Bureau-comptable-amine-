@@ -75,5 +75,9 @@ class DemoSeeder extends Seeder
         RendezVous::create(['client_id' => $C[0]->id, 'objet' => 'Revue de la clôture annuelle', 'date' => $d(2), 'heure' => '10:00', 'lieu' => 'Au cabinet']);
         RendezVous::create(['client_id' => $C[1]->id, 'objet' => 'Point paie et CNSS', 'date' => $d(6), 'heure' => '15:30', 'lieu' => 'Visio']);
         NoteInterne::create(['type' => 'note', 'titre' => 'Relancer la banque pour les relevés de septembre', 'rappel_le' => $d(1)]);
+
+        // Espace client de démonstration : accès du premier client
+        \App\Models\ClientUser::firstOrCreate(['email' => 'client@cabinet.tn'], ['cabinet_id' => $C[0]->cabinet_id, 'client_id' => $C[0]->id,
+            'name' => 'Client de démonstration', 'password' => 'Cabinet2026!', 'actif' => true, 'invite_par' => $chef->id]);
     }
 }

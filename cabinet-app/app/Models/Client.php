@@ -91,6 +91,8 @@ class Client extends Model
     public function exigences() { return $this->hasMany(Exigence::class); }
     public function factures() { return $this->hasMany(Facture::class); }
     public function documents() { return $this->hasMany(Document::class); }
+    /** Comptes d'accès du client à l'espace client. */
+    public function accesEspace() { return $this->hasMany(ClientUser::class)->orderBy('name'); }
     public function salaries() { return $this->hasMany(Salarie::class); }
     public function ecritures() { return $this->hasMany(Ecriture::class); }
 

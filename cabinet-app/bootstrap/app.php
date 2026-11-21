@@ -11,7 +11,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->alias(['chef' => \App\Http\Middleware\EnsureChef::class, 'actif' => \App\Http\Middleware\EnsureActive::class]);
+        $middleware->alias(['chef' => \App\Http\Middleware\EnsureChef::class, 'actif' => \App\Http\Middleware\EnsureActive::class,
+            'espace-client' => \App\Http\Middleware\EspaceClient::class]);
         $middleware->redirectGuestsTo('/connexion');
     })
     ->withExceptions(function (Exceptions $exceptions): void {

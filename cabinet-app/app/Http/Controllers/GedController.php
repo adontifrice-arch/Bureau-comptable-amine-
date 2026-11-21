@@ -28,13 +28,15 @@ class GedController extends Controller
     public function store(Request $r)
     {
         $d = $r->validate(['client_id' => 'nullable|'.existe_cab('clients'), 'categorie' => 'required|max:100', 'description' => 'nullable|max:1000', 'date' => 'nullable|date',
-            'fichiers' => 'required|array', 'fichiers.*' => 'file|max:20480|mimes:pdf,jpg,jpeg,png,webp,txt,csv,doc,docx,xls,xlsx,odt,ods,zip']);
-        foreach ($r->file('fichiers') as $f) {
-            Document::create(['client_id' => $d['client_id'] ?: null, 'categorie' => $d['categorie'], 'description' => $d['description'] ?? null, 'date' => $d['date'] ?? now(),
-                'nom' => $f->getClientOriginalName(), 'chemin' => $f->store('ged/'.\App\Support\CabinetCourant::exiger().'/'.($d['client_id'] ?: 'cabinet')), 'taille' => $f->getSize(), 'mime' => $f->getMimeType(), 'user_id' => auth()->id()]);
-        }
-        $this->log(count($r->file('fichiers')).' document(s) ajouté(s) en GED ('.$d['categorie'].')', $d['client_id'] ?: null);
-        return back()->with('ok', count($r->file('fichiers')).' document(s) classé(s).');
+            'fichiers' => 'required|array', 'fichiers.*' => Document::REGLE_FICHIER]);
+        // Partage avec le client : seulement pour un document de dossier client (pas un document interne au cabinet)
+        $partager = $r->boolean('partager') && ! empty($d['client_id']);
+        $docs = collect($r->file('fichiers'))->map(fn ($f) => Document::create(['client_id' => $d['client_id'] ?: null, 'categorie' => $d['categorie'], 'description' => $d['description'] ?? null, 'date' => $d['date'] ?? now(),
+            'nom' => $f->getClientOriginalName(), 'chemin' => $f->store('ged/'.\App\Support\CabinetCourant::exiger().'/'.($d['client_id'] ?: 'cabinet')), 'taille' => $f->getSize(), 'mime' => $f->getMimeType(), 'user_id' => auth()->id(),
+            'partage' => $partager, 'partage_at' => $partager ? now() : null]));
+        $this->log($docs->count().' document(s) ajouté(s) en GED ('.$d['categorie'].')'.($partager ? ' et partagé(s) avec le client' : ''), $d['client_id'] ?: null);
+        if ($partager) \App\Services\EspaceClientAvis::documentsPartages(Client::find($d['client_id']), $docs);
+        return back()->with('ok', $docs->count().' document(s) classé(s)'.($partager ? ' et partagé(s) avec le client' : '').'.');
     }
 
     public function update(Request $r, Document $document)

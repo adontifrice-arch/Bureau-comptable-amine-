@@ -21,7 +21,7 @@
     </div>
 
     @php $u = fn($t) => route('clients.show', [$client, 'tab' => $t]); @endphp
-    <x-tabs :active="$tab" :items="['fiche' => ['Fiche', $u('fiche')], 'echeances' => ['Échéances ('.$echeances->whereNull('accomplie_le')->count().')', $u('echeances')], 'exigences' => ['Exigences ('.$client->exigences->count().')', $u('exigences')], 'factures' => ['Factures ('.$factures->count().')', $u('factures')], 'documents' => ['Documents ('.$documents->count().')', $u('documents')], 'actes' => ['Actes juridiques ('.$actes->count().')', $u('actes')]]"/>
+    <x-tabs :active="$tab" :items="['fiche' => ['Fiche', $u('fiche')], 'echeances' => ['Échéances ('.$echeances->whereNull('accomplie_le')->count().')', $u('echeances')], 'exigences' => ['Exigences ('.$client->exigences->count().')', $u('exigences')], 'factures' => ['Factures ('.$factures->count().')', $u('factures')], 'documents' => ['Documents ('.$documents->count().')', $u('documents')], 'actes' => ['Actes juridiques ('.$actes->count().')', $u('actes')], 'espace' => ['Espace client'.(($n = $documents->where('origine', 'client')->whereNull('traite_at')->count()) ? ' ('.$n.' à traiter)' : ''), $u('espace')]]"/>
 
     @if($tab === 'fiche')
         @php
@@ -153,7 +153,9 @@
                 @forelse($documents as $doc)
                     <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-3 text-sm last:border-0 dark:border-slate-800">
                         <x-icon name="file-text" class="h-5 w-5 text-brand-600"/>
-                        <div class="min-w-0 flex-1"><div class="truncate font-medium">{{ $doc->nom }}</div><div class="text-xs text-slate-500">{{ $doc->categorie }} · {{ dfr($doc->date) }}</div></div>
+                        <div class="min-w-0 flex-1"><div class="truncate font-medium">{{ $doc->nom }}
+                            @if($doc->envoiClient())<span class="badge-amber">Envoyé par le client</span>@elseif($doc->partage)<span class="badge-blue">Partagé</span>@endif</div>
+                            <div class="text-xs text-slate-500">{{ $doc->categorie }} · {{ dfr($doc->date) }}</div></div>
                         <a href="{{ route('ged.download', $doc) }}" class="btn-icon"><x-icon name="download" class="h-4 w-4"/></a>
                     </div>
                 @empty <x-empty icon="folder" title="Aucun document"/> @endforelse
@@ -170,6 +172,101 @@
                     <x-confirm-delete :action="route('actes.destroy', $a)"/>
                 </div>
             @empty <x-empty icon="file-text" title="Aucun acte rédigé">Générez des statuts SARL/SUARL, des PV d’assemblée ou un contrat de cession de parts.</x-empty> @endforelse
+        </div>
+
+    @elseif($tab === 'espace')
+        @php
+            $chef = auth()->user()->estChef();
+            $recus = $documents->filter->envoiClient();
+            $partages = $documents->filter(fn ($d) => $d->partage && ! $d->envoiClient());
+        @endphp
+        <div class="grid gap-6 lg:grid-cols-5">
+            <div class="space-y-6 lg:col-span-2">
+                <div class="card">
+                    <div class="card-h"><h2 class="card-t">Accès à l’espace client</h2><span class="badge-gray">{{ $acces->count() }}</span></div>
+                    @forelse($acces as $a)
+                        <div class="border-b border-slate-100 px-5 py-3 text-sm last:border-0 dark:border-slate-800">
+                            <div class="flex items-center gap-2">
+                                <div class="min-w-0 flex-1"><div class="truncate font-medium">{{ $a->name }}</div><div class="truncate text-xs text-slate-500">{{ $a->email }}</div></div>
+                                @php $st = $a->statut(); @endphp
+                                <span class="{{ ['Actif' => 'badge-green', 'Invitation envoyée' => 'badge-blue', 'Invitation expirée' => 'badge-amber'][$st] ?? 'badge-gray' }}">{{ $st }}</span>
+                            </div>
+                            <div class="mt-1 text-xs text-slate-400">{{ $a->derniere_connexion_at ? 'Dernière connexion '.$a->derniere_connexion_at->diffForHumans() : 'Jamais connecté' }}</div>
+                            @if($chef)
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    @if($a->actif)
+                                        <form method="POST" action="{{ route('echanges.acces.lien', $a) }}">@csrf<button class="btn-secondary btn-sm">{{ $a->estActive() ? 'Envoyer un lien de mot de passe' : 'Renvoyer l’invitation' }}</button></form>
+                                    @endif
+                                    <form method="POST" action="{{ route('echanges.acces.basculer', $a) }}">@csrf @method('PATCH')<button class="btn-secondary btn-sm">{{ $a->actif ? 'Désactiver' : 'Réactiver' }}</button></form>
+                                    <x-confirm-delete :action="route('echanges.acces.destroy', $a)" :icon="false" label="Supprimer" message="Supprimer cet accès ? Les documents déjà envoyés restent dans la GED."/>
+                                </div>
+                            @endif
+                        </div>
+                    @empty
+                        <x-empty icon="users" title="Aucun accès">Invitez le client : il recevra un e-mail pour choisir son mot de passe et accéder à son espace.</x-empty>
+                    @endforelse
+                    @if($chef)
+                        <form method="POST" action="{{ route('echanges.acces.store', $client) }}" class="grid gap-3 border-t border-slate-100 p-5 dark:border-slate-800">@csrf
+                            <div class="text-sm font-semibold">Inviter une personne</div>
+                            <x-field label="Nom" name="name" :value="$acces->isEmpty() ? ($client->gerant_nom ?: ($client->estPhysique() ? $client->nom : '')) : ''" required/>
+                            <x-field label="Adresse e-mail" name="email" type="email" :value="$acces->isEmpty() ? $client->email : ''" required/>
+                            <div class="flex justify-end"><button class="btn-primary btn-sm"><x-icon name="plus" class="h-3.5 w-3.5"/> Envoyer l’invitation</button></div>
+                        </form>
+                    @else
+                        <p class="border-t border-slate-100 px-5 py-3 text-xs text-slate-500 dark:border-slate-800">Les accès sont gérés par le chef comptable.</p>
+                    @endif
+                </div>
+            </div>
+
+            <div class="space-y-6 lg:col-span-3">
+                <div class="card">
+                    <div class="card-h"><h2 class="card-t">Partager des documents avec le client</h2></div>
+                    <form method="POST" action="{{ route('echanges.partager', $client) }}" enctype="multipart/form-data" class="card-b grid gap-4 md:grid-cols-2">@csrf
+                        <div><label class="label">Catégorie (GED)</label><select name="categorie" class="input">@foreach(config('cabinet.GC') as $g)<option @selected($g === 'États financiers et déclarations')>{{ $g }}</option>@endforeach</select></div>
+                        <x-field label="Date du document" name="date" type="date" :value="now()->format('Y-m-d')"/>
+                        <x-field label="Note pour le client (facultatif)" name="description" span="md:col-span-2"/>
+                        <div class="md:col-span-2"><label class="label">Fichiers (20 Mo max. chacun)</label><input type="file" name="fichiers[]" multiple required class="input"></div>
+                        <div class="flex items-center justify-between gap-3 md:col-span-2">
+                            <p class="text-xs text-slate-500">Classés dans la GED du dossier et visibles dans l’espace client{{ $acces->where('actif', true)->filter->estActive()->isNotEmpty() ? ' ; le client est prévenu par e-mail' : '' }}.</p>
+                            <button class="btn-primary"><x-icon name="upload" class="h-4 w-4"/> Partager</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <div class="card-h"><h2 class="card-t">Reçus du client</h2><span class="badge-amber">{{ $recus->whereNull('traite_at')->count() }} à traiter</span></div>
+                    @forelse($recus as $d)
+                        <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-3 text-sm last:border-0 dark:border-slate-800">
+                            <div class="min-w-0 flex-1">
+                                <div class="truncate font-medium">{{ $d->nom }}</div>
+                                <div class="text-xs text-slate-500">{{ $d->categorie }} · {{ $d->created_at->format('d/m/Y H:i') }}{{ $d->deposant ? ' · '.$d->deposant->name : '' }}</div>
+                                @if($d->description)<div class="text-xs text-slate-600 dark:text-slate-400">« {{ $d->description }} »</div>@endif
+                            </div>
+                            <a href="{{ route('ged.download', $d) }}" class="btn-icon" title="Télécharger"><x-icon name="download" class="h-4 w-4"/></a>
+                            <form method="POST" action="{{ route('echanges.traiter', $d) }}">@csrf @method('PATCH')
+                                @if($d->traite_at)<button class="badge-green" title="Remettre à traiter"><x-icon name="check" class="h-3 w-3"/> Traité</button>
+                                @else<button class="btn-primary btn-sm">Marquer traité</button>@endif
+                            </form>
+                        </div>
+                    @empty <x-empty icon="upload" title="Rien reçu pour le moment"/> @endforelse
+                </div>
+
+                <div class="card">
+                    <div class="card-h"><h2 class="card-t">Partagés avec le client</h2><a href="{{ route('ged.index', ['client' => $client->id]) }}" class="btn-secondary btn-sm">Partager depuis la GED</a></div>
+                    @forelse($partages as $d)
+                        <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-3 text-sm last:border-0 dark:border-slate-800">
+                            <div class="min-w-0 flex-1">
+                                <div class="truncate font-medium">{{ $d->nom }}</div>
+                                <div class="text-xs text-slate-500">{{ $d->categorie }} · partagé le {{ optional($d->partage_at)->format('d/m/Y') }}</div>
+                            </div>
+                            @if($d->consulte_at)<span class="badge-green" title="Téléchargé le {{ $d->consulte_at->format('d/m/Y H:i') }}">Ouvert</span>@else<span class="badge-gray">Non ouvert</span>@endif
+                            <form method="POST" action="{{ route('echanges.partage', $d) }}" onsubmit="return confirm('Retirer ce document de l’espace client ? Il reste dans la GED.')">@csrf @method('PATCH')
+                                <button class="btn-icon" title="Retirer de l’espace client"><x-icon name="x" class="h-4 w-4"/></button>
+                            </form>
+                        </div>
+                    @empty <x-empty icon="folder" title="Aucun document partagé"/> @endforelse
+                </div>
+            </div>
         </div>
     @endif
 </x-layouts.app>

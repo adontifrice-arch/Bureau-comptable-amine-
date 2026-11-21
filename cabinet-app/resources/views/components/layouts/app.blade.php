@@ -19,6 +19,7 @@
         ['Pilotage', [
             ['dashboard', 'Tableau de bord', 'home', 'dashboard'],
             ['clients.index', 'Clients', 'users', 'clients.*|actes.*'],
+            ['echanges.index', 'Échanges clients', 'upload', 'echanges.*', \App\Models\Document::aTraiter()->count()],
             ['echeances.index', 'Échéances', 'calendar', 'echeances.*'],
         ]],
         ['Cabinet', [
@@ -56,11 +57,12 @@
             <div>
                 <div class="px-3 pb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-brand-200/40">{{ $section }}</div>
                 <div class="space-y-0.5">
-                    @foreach($items as [$route, $label, $icon, $pattern])
-                        @php $active = collect(explode('|', $pattern))->contains(fn($p) => request()->routeIs($p)); @endphp
+                    @foreach($items as $item)
+                        @php [$route, $label, $icon, $pattern] = $item; $pastille = $item[4] ?? 0; $active = collect(explode('|', $pattern))->contains(fn($p) => request()->routeIs($p)); @endphp
                         <a href="{{ route($route) }}" class="nav-link {{ $active ? 'nav-link-active' : '' }}">
                             <x-icon :name="$icon" class="h-[18px] w-[18px] {{ $active ? 'text-brand-300' : 'text-brand-200/50' }}"/>
                             {{ $label }}
+                            @if($pastille)<span class="ml-auto rounded-full bg-amber-400 px-1.5 text-[11px] font-semibold leading-5 text-amber-950" title="Envois de clients à traiter">{{ $pastille }}</span>@endif
                         </a>
                     @endforeach
                 </div>

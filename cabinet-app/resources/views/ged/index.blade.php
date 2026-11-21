@@ -19,10 +19,16 @@
             @forelse($docs as $d)
                 <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-3 last:border-0 dark:border-slate-800">
                     <div class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-[10px] font-bold uppercase text-brand-700 dark:bg-brand-500/10">{{ pathinfo($d->nom, PATHINFO_EXTENSION) ?: 'doc' }}</div>
-                    <div class="min-w-0 flex-1"><div class="truncate text-sm font-medium">{{ $d->nom }}</div>
+                    <div class="min-w-0 flex-1"><div class="truncate text-sm font-medium">{{ $d->nom }}
+                            @if($d->envoiClient())<span class="badge-amber">{{ $d->traite_at ? 'Envoyé par le client' : 'Envoyé par le client · à traiter' }}</span>@elseif($d->partage)<span class="badge-blue" title="Visible dans l’espace client{{ $d->consulte_at ? ' · ouvert le '.$d->consulte_at->format('d/m/Y') : '' }}">Partagé</span>@endif</div>
                         <div class="text-xs text-slate-500">{{ $d->client?->nom ?? 'Cabinet (interne)' }} · {{ $d->categorie }} · {{ dfr($d->date) }} · {{ $kb($d->taille) }}{{ $d->user ? ' · '.$d->user->name : '' }}</div>
                         @if($d->description)<div class="text-xs text-slate-400">{{ $d->description }}</div>@endif</div>
                     <a href="{{ route('ged.download', $d) }}" class="btn-icon" title="Télécharger"><x-icon name="download" class="h-4 w-4"/></a>
+                    @if($d->client_id && ! $d->envoiClient())
+                        <form method="POST" action="{{ route('echanges.partage', $d) }}">@csrf @method('PATCH')
+                            <button class="btn-icon {{ $d->partage ? '!text-brand-600' : '' }}" title="{{ $d->partage ? 'Retirer de l’espace client' : 'Partager avec le client (espace client)' }}"><x-icon name="{{ $d->partage ? 'eye' : 'users' }}" class="h-4 w-4"/></button>
+                        </form>
+                    @endif
                     <button class="btn-icon" x-data @click="$dispatch('ged-edit', @js($d->only(['id','client_id','categorie','description']) + ['date' => optional($d->date)->format('Y-m-d')])); $dispatch('open-modal', 'edit')"><x-icon name="edit" class="h-4 w-4"/></button>
                     <x-confirm-delete :action="route('ged.destroy', $d)" message="Supprimer définitivement ce document ?"/>
                 </div>
@@ -46,6 +52,7 @@
             <x-field label="Date du document" name="date" type="date" :value="now()->format('Y-m-d')"/>
             <x-field label="Description" name="description"/>
             <div class="md:col-span-2"><label class="label">Fichiers (20 Mo max. chacun)</label><input type="file" name="fichiers[]" multiple required class="input"></div>
+            <label class="flex items-center gap-2 text-sm text-slate-600 md:col-span-2"><input type="checkbox" name="partager" value="1" class="rounded border-slate-300 text-brand-600"> Partager avec le client (visible dans son espace client, avis par e-mail)</label>
             <div class="flex justify-end md:col-span-2"><button class="btn-primary">Classer</button></div>
         </form>
     </x-modal>

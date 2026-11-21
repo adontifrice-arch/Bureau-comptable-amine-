@@ -56,9 +56,10 @@ class ClientController extends Controller
         $client->load(['associes', 'exigences' => fn ($q) => $q->orderByRaw('date_limite is null')->orderBy('date_limite')]);
         $echeances = $client->echeances()->orderByRaw('accomplie_le is not null')->orderBy('date_echeance')->limit(50)->get();
         $factures = $client->factures()->with('lignes')->latest('date')->get();
-        $documents = $client->documents()->latest()->get();
+        $documents = $client->documents()->with('deposant')->latest()->get();
         $actes = \App\Models\Acte::where('client_id', $client->id)->latest()->get();
-        return view('clients.show', compact('client', 'tab', 'echeances', 'factures', 'documents', 'actes'));
+        $acces = $client->accesEspace()->get();
+        return view('clients.show', compact('client', 'tab', 'echeances', 'factures', 'documents', 'actes', 'acces'));
     }
 
     public function edit(Client $client)

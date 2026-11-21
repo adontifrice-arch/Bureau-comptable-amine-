@@ -18,6 +18,7 @@ Application Laravel 12 de gestion d’un cabinet d’expertise comptable (Tunisi
 | **Déclarations** | Mensuelle (TVA, retenues, CSS, TFP…), annuelle (IS / IRPP), employeur (annexes 1 à 7) — pré-remplissage depuis la comptabilité et la paie, validation, export |
 | **Audit & CAC** | Missions, questionnaire de contrôle interne (OECT), programme de travail, contrôles automatiques, constats, honoraires au barème, projet de rapport éditable, piste d’audit |
 | **GED** | Classement des documents par client et catégorie, complétude des 9 pièces de base, recherche |
+| **Échanges clients** | Espace client séparé (`/espace-client`) : le client envoie ses pièces au cabinet et télécharge les documents partagés ; côté cabinet, envois à traiter, partage depuis la GED ou la fiche client, accès des clients (invitation par e-mail), avis par e-mail |
 | **Rédaction juridique** | Statuts SARL / SUARL, PV d’AGO / AGE / mixte, PV de cessation, contrat de cession de parts — brouillons éditables et imprimables |
 
 Rôles : **chef comptable** (valide les pièces, les paies et les écritures, gère les utilisateurs et les paramètres) et **collaborateur** (saisit). Le premier compte créé devient chef comptable ; les suivants sont validés par un chef comptable.
@@ -41,8 +42,21 @@ La base SQLite (`database/database.sqlite`) est livrée avec un jeu de démonstr
 **Comptes de démonstration** (mot de passe `Cabinet2026!`) :
 - `admin@cabinet.tn` — chef comptable
 - `collaborateur@cabinet.tn` — collaborateur
+- `client@cabinet.tn` — espace client de démonstration (Boulangerie Dupain), sur http://127.0.0.1:8000/espace-client
 
 Pensez à changer ces mots de passe (Paramètres → Mon compte).
+
+### Espace client et e-mails
+
+Le chef comptable invite un client depuis sa fiche (onglet **Espace client**) : la personne reçoit un e-mail pour choisir son mot de passe, puis se connecte sur `/espace-client`. Elle ne voit que ses propres envois et les documents de son dossier que le cabinet partage avec elle.
+
+Les avis (invitation, document partagé, envoi d’un client) partent avec la configuration mail de Laravel. Par défaut (`MAIL_MAILER=log`), ils sont seulement écrits dans `storage/logs/laravel.log`. Pour les voir en local avec Mailpit (fourni par Laragon), mettre dans `.env` :
+```
+MAIL_MAILER=smtp
+MAIL_HOST=127.0.0.1
+MAIL_PORT=1025
+```
+puis ouvrir http://localhost:8025. En production, indiquer le serveur SMTP du cabinet et mettre dans `APP_URL` l’adresse publique de l’application : les liens des e-mails en dépendent. Les envois des clients sont signalés à l’adresse e-mail du cabinet (Paramètres) ou, à défaut, aux chefs comptables.
 
 ### Repartir d’une base vide
 

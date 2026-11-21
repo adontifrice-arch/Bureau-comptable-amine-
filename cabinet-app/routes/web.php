@@ -13,6 +13,27 @@ Route::middleware('guest')->group(function () {
 });
 Route::post('/deconnexion', [C\AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
+// ---------- Espace client (comptes des clients, garde « client ») ----------
+Route::prefix('espace-client')->name('espace.')->group(function () {
+    Route::get('connexion', [C\EspaceClientController::class, 'showLogin'])->name('login');
+    Route::post('connexion', [C\EspaceClientController::class, 'login']);
+    Route::get('mot-de-passe-oublie', [C\EspaceClientController::class, 'showOubli'])->name('oubli');
+    Route::post('mot-de-passe-oublie', [C\EspaceClientController::class, 'oubli'])->middleware('throttle:5,10');
+    Route::get('activer/{jeton}', [C\EspaceClientController::class, 'showActiver'])->name('activer');
+    Route::post('activer/{jeton}', [C\EspaceClientController::class, 'activer'])->middleware('throttle:10,1');
+    Route::post('deconnexion', [C\EspaceClientController::class, 'logout'])->name('logout');
+    Route::middleware('espace-client')->group(function () {
+        Route::get('/', [C\EspaceClientController::class, 'index'])->name('index');
+        Route::post('documents', [C\EspaceClientController::class, 'envoyer'])->middleware('throttle:30,1')->name('envoyer');
+        Route::get('documents/{document}', [C\EspaceClientController::class, 'telecharger'])->whereNumber('document')->name('telecharger');
+        Route::delete('documents/{document}', [C\EspaceClientController::class, 'retirer'])->whereNumber('document')->name('retirer');
+        Route::put('mot-de-passe', [C\EspaceClientController::class, 'motDePasse'])->name('mot-de-passe');
+    });
+});
+
+// Accès à l'espace client vus du cabinet : uniquement ceux du cabinet courant (404 sinon)
+Route::bind('acces', fn ($id) => \App\Models\ClientUser::duCabinet()->findOrFail((int) $id));
+
 Route::middleware(['auth', 'actif'])->group(function () {
     Route::get('/', C\DashboardController::class)->name('dashboard');
 
@@ -268,6 +289,16 @@ Route::middleware(['auth', 'actif'])->group(function () {
     Route::put('ged/{document}', [C\GedController::class, 'update'])->name('ged.update');
     Route::get('ged/{document}/telecharger', [C\GedController::class, 'download'])->name('ged.download');
     Route::delete('ged/{document}', [C\GedController::class, 'destroy'])->name('ged.destroy');
+
+    // ---------- Échanges avec les clients (espace client) ----------
+    Route::get('echanges', [C\EchangeController::class, 'index'])->name('echanges.index');
+    Route::post('clients/{client}/partager', [C\EchangeController::class, 'partager'])->name('echanges.partager');
+    Route::patch('ged/{document}/partage', [C\EchangeController::class, 'basculerPartage'])->name('echanges.partage');
+    Route::patch('ged/{document}/traite', [C\EchangeController::class, 'traiter'])->name('echanges.traiter');
+    Route::post('clients/{client}/acces', [C\EchangeController::class, 'inviter'])->middleware('chef')->name('echanges.acces.store');
+    Route::post('acces-clients/{acces}/lien', [C\EchangeController::class, 'renvoyer'])->middleware('chef')->name('echanges.acces.lien');
+    Route::patch('acces-clients/{acces}/basculer', [C\EchangeController::class, 'basculer'])->middleware('chef')->name('echanges.acces.basculer');
+    Route::delete('acces-clients/{acces}', [C\EchangeController::class, 'supprimer'])->middleware('chef')->name('echanges.acces.destroy');
 
     // ---------- Paramètres ----------
     Route::get('parametres', [C\ParametreController::class, 'index'])->name('parametres.index');
