@@ -461,7 +461,8 @@ class PaieController extends Controller
         $codes = $v['code'] ?? null ? [$v['code']] : array_keys(EtatsPaie::codesCnss($client, $mois));
         $F = array_map(fn ($c) => EtatsPaie::fichierCnss($client, $mois, $c), $codes);
         $F = array_values(array_filter($F, fn ($f) => $f['assures'] > 0));
-        if (! $F) return redirect()->route('paie.index', ['mois' => $mois])->with('err', 'Aucun salaire à déclarer à la CNSS pour ce trimestre.');
+        // Aucun salaire ce trimestre : pas de fichier, la déclaration néant s'affiche.
+        if (! $F) return redirect()->route('paie.edition', ['dcnss', 'imprimer', 'mois' => $mois]);
         if (count($F) === 1) {
             return response($F[0]['contenu'], 200, ['Content-Type' => 'text/plain; charset=US-ASCII', 'Content-Disposition' => 'attachment; filename="'.$F[0]['nom'].'"']);
         }
@@ -481,7 +482,7 @@ class PaieController extends Controller
         abort_unless($client, 404);
         $mois = $r->validate(['mois' => 'nullable|date_format:Y-m'])['mois'] ?? now()->format('Y-m');
         $f = EtatsPaie::fichierRc($client, $mois);
-        if (! $f['assures']) return redirect()->route('paie.index', ['mois' => $mois])->with('err', 'Aucun salarié affilié au régime complémentaire n’a de salaire ce trimestre.');
+        if (! $f['assures']) return redirect()->route('paie.edition', ['drc', 'imprimer', 'mois' => $mois]);   // déclaration néant
         return response($f['contenu'], 200, ['Content-Type' => 'text/plain; charset=US-ASCII', 'Content-Disposition' => 'attachment; filename="'.$f['nom'].'"']);
     }
 

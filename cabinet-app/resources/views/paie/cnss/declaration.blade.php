@@ -97,6 +97,10 @@
                         <td class="n g">{{ n3($l['brut'][3]) }}</td>
                     </tr>
                 @endforeach
+                @if(! empty($neant))
+                    {{-- Déclaration néant : aucun salaire versé ce trimestre --}}
+                    <tr><td colspan="8" class="c g" style="font-size: 16pt; letter-spacing: 6pt; height: 60pt">NÉANT</td></tr>
+                @endif
                 <tr class="total">
                     <td></td><td></td><td class="n g">Total page</td><td></td>
                     @foreach(array_slice($page['total'], 0, 3) as $v)<td class="n">{{ n3($v) }}</td>@endforeach

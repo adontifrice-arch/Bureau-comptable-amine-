@@ -56,6 +56,7 @@ class EtatsPaie
             $e->ligne([++$n, $p['cnss'], $p['nom'], $p['cin'], ...$v]);
             foreach ($v as $i => $x) $tot[$i] += $x;
         }
+        if (! $n) $e->ligne(['', '', 'NÉANT', '', ...array_fill(0, 6, null)]);   // déclaration néant : aucun salaire d'affilié ce trimestre
         $e->ligne(['', '', 'TOTAL ('.$n.' affilié(s))', '', ...array_map('r3', $tot)], 'total');
         return $e;
     }
@@ -481,6 +482,7 @@ class EtatsPaie
             $e->ligne([++$n, $p['cnss'], $p['nom'], $p['cin'], ...$v]);
             foreach ($v as $k => $x) $tot[$k] += $x;
         }
+        if (! $n) $e->ligne(['', '', 'NÉANT', '', ...array_fill(0, count($mm) + 1, null)]);   // déclaration néant : pas de paie ce trimestre
         $e->ligne(['', '', 'TOTAL', '', ...array_map('r3', $tot)], 'total');
         return $e;
     }
@@ -595,7 +597,9 @@ class EtatsPaie
             'pages' => $pages, 'totaux' => $tot, 'effectif' => count($lignes),
             'permanents' => $permanents, 'occasionnels' => count($lignes) - $permanents,
             'base' => $base, 'taux_ss' => $tauxSs, 'ss' => $ss, 'taux_at' => $tauxAt, 'at' => $at, 'total' => $total,
-            'lettres_salaires' => montant_lettres($tot[3]), 'lettres_total' => montant_lettres($total), 'date' => now()->format('d/m/Y'),
+            // Déclaration néant : aucun salaire déclaré ce trimestre (pas de paie), la déclaration reste due.
+            'neant' => ! $lignes,
+            'lettres_salaires' => $lignes ? montant_lettres($tot[3]) : 'NÉANT', 'lettres_total' => $lignes ? montant_lettres($total) : 'NÉANT', 'date' => now()->format('d/m/Y'),
         ];
     }
 
@@ -742,6 +746,7 @@ class EtatsPaie
                 foreach ($v as $k => $x) $tot[$k] += $x;
             }
         }
+        if (! array_filter($tot)) $e->ligne(['NÉANT', '', '', '0', null, null, null, null]);   // déclaration néant : pas de paie ce trimestre
         $e->ligne(['TOTAL DU TRIMESTRE', '', '', '', ...array_map('r3', $tot)], 'total');
         return $e;
     }

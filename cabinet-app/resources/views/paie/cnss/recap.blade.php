@@ -133,7 +133,9 @@
     </tr>
 
     <tr>
-        <td class="br c g p" style="height: 78pt; padding-top: 14pt">OBSERVATIONS</td>
+        <td class="br c g p" style="height: 78pt; padding-top: 14pt">OBSERVATIONS
+            @if(! empty($neant))<div style="font-size: 14pt; letter-spacing: 4pt; margin-top: 16pt">DÉCLARATION NÉANT</div>@endif
+        </td>
         <td class="p" style="padding-top: 14pt">
             <span class="g">Fait à :</span>&nbsp; {{ $ville_maj }} <span style="margin-left: 70pt"><b>le</b>&nbsp; {{ $date }}</span>
             <div class="c g" style="margin-top: 22pt">Signature de l'Employeur</div>
