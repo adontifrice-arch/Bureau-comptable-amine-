@@ -496,12 +496,35 @@ class EtatsPaie
     /** Code d'exploitation CNSS d'une ligne de paie (profil de l'employé ; régime général 0000 par défaut). */
     private static function codeCnss(array $x): string
     {
-        return trim((string) ($x['code_exploitant'] ?? '')) ?: '0000';
+        return trim((string) ($x['code_exploitant'] ?? '')) ?: PaieCalc::CODE_REGIME_GENERAL;
+    }
+
+    /**
+     * Ventilation CNSS d'une ligne de paie par code d'exploitation : [{code, salaire, cnssS, cnssP}]. Contrats aidés (Dignité 0334,
+     * Exo 2 ans 0337) : 600 DT par mois sous le code du contrat, l'excédent sous le régime général (0000). Paies figées avant la
+     * ventilation : tout le salaire sous le code du profil, sauf un contrat Dignité, scindé selon son assiette cotisée.
+     */
+    private static function tranchesCnss(array $x, array $P): array
+    {
+        if (isset($x['cnss_tranches'])) return $x['cnss_tranches'];
+        $code = self::codeCnss($x);
+        $base = (float) ($x['base_cnss'] ?? $x['brut']);
+        $tS = (float) ($x['taux_cnssS'] ?? $P['cnssS']);
+        $tP = (float) ($x['taux_cnssP'] ?? $P['cnssP']);
+        $T = [['code' => $code, 'salaire' => $base, 'cnssS' => $tS, 'cnssP' => $tP]];
+        if ($code === '0334' && isset($x['base_cotisee'])) {
+            $exc = (float) $x['base_cotisee'];
+            $T = [['code' => $code, 'salaire' => r3($base - $exc), 'cnssS' => 0.0, 'cnssP' => 0.0],
+                ['code' => PaieCalc::CODE_REGIME_GENERAL, 'salaire' => $exc, 'cnssS' => $tS, 'cnssP' => $tP]];
+        }
+        return array_values(array_filter($T, fn ($t) => abs($t['salaire']) > 0.0005));
     }
 
     /**
      * Codes d'exploitation CNSS du trimestre de $mois (régime général 0000, Dignité 0334, Exo 2 ans 0337…), chacun avec ses taux
      * salarial et patronal : chaque code fait l'objet de sa propre déclaration trimestrielle et de son propre état récapitulatif.
+     * Un salarié sous contrat aidé figure sur la déclaration de son contrat pour ses 600 premiers dinars du mois et, au-delà,
+     * sur celle du régime général.
      * @return array<string, array{cnssS: float, cnssP: float, profil: ?string}>
      */
     public static function codesCnss(Client $client, string $mois): array
@@ -510,7 +533,13 @@ class EtatsPaie
         $codes = [];
         foreach (self::trimestre($mois) as $m) {
             foreach (self::declares(PaieCalc::moisDeclares($client, $m), 'decl_cnss') as $x) {
-                $codes[self::codeCnss($x)] ??= ['cnssS' => (float) ($x['taux_cnssS'] ?? $P['cnssS']), 'cnssP' => (float) ($x['taux_cnssP'] ?? $P['cnssP']), 'profil' => $x['profil'] ?? null];
+                foreach (self::tranchesCnss($x, $P) as $t) {
+                    $c = $codes[$t['code']] ?? null;
+                    // Taux du code : ceux de la première tranche cotisée (un salarié non assujetti n'en donne pas).
+                    if (! $c || ($c['cnssS'] + $c['cnssP'] == 0 && $t['cnssS'] + $t['cnssP'] > 0)) $c = ['cnssS' => (float) $t['cnssS'], 'cnssP' => (float) $t['cnssP'], 'profil' => $c['profil'] ?? null];
+                    if ($t['code'] === self::codeCnss($x)) $c['profil'] ??= $x['profil'] ?? null;
+                    $codes[$t['code']] = $c;
+                }
             }
         }
         ksort($codes);
@@ -553,7 +582,7 @@ class EtatsPaie
         $taux = $codes[$code];
         $tauxAt = min((float) ($P['at'] ?? 0), $taux['cnssP']);
         $tauxSs = r3($taux['cnssS'] + $taux['cnssP'] - $tauxAt);
-        // Assiette des cotisations : salaires déclarés, moins pour un contrat Dignité la fraction prise en charge par l'État (600 DT / mois).
+        // Assiette des cotisations : salaires déclarés sous ce code, hors ceux d'un contrat Dignité (cotisations prises en charge par l'État).
         $base = r3(array_sum(array_map(fn ($p) => array_sum($p['mois']), self::parSalarie($client, $mm, 'base_cotisee', 'decl_cnss', $code))));
         $ss = r3($base * $tauxSs / 100);
         $at = r3($base * $tauxAt / 100);
@@ -582,20 +611,32 @@ class EtatsPaie
     {
         // Une ligne par mois et par code d'exploitation, chacun à ses taux (régime général, contrats aidés)
         $codes = self::codesCnss($client, $mois);
+        $P = PaieCalc::parametres($client);
         $taux = fn ($c) => $c['cnssS'].' % + '.$c['cnssP'].' %';
         $e = new Etat('Récapitulatif CNSS', $client->nom, self::libelleTrimestre($mois), [
             ['Mois', 'text'], ['Code d’exploitation', 'text'], ['Taux (salarial + patronal)', 'text'], ['Effectif', 'text'], ['Masse salariale', 'num'], ['Part salariale', 'num'], ['Part patronale', 'num'], ['Total à payer', 'num'],
         ], false);
         $tot = [0, 0, 0, 0];
         foreach (self::trimestre($mois) as $m) {
-            $parCode = collect(self::declares(PaieCalc::moisDeclares($client, $m), 'decl_cnss'))->groupBy(fn ($x) => self::codeCnss($x));
+            // Masse salariale soumise à cotisation (hors gains non cotisables) et cotisations, ventilées par code (contrats aidés :
+            // 600 DT sous le code du contrat, l'excédent au régime général).
+            $parCode = [];
+            foreach (self::declares(PaieCalc::moisDeclares($client, $m), 'decl_cnss') as $x) {
+                foreach (self::tranchesCnss($x, $P) as $t) {
+                    $g = $parCode[$t['code']] ?? ['ids' => [], 'masse' => 0.0, 's' => 0.0, 'p' => 0.0];
+                    $g['ids'][$x['salarie_id']] = true;
+                    $g['masse'] += $t['salaire'];
+                    $g['s'] += $t['salaire'] * $t['cnssS'] / 100;
+                    $g['p'] += $t['salaire'] * $t['cnssP'] / 100;
+                    $parCode[$t['code']] = $g;
+                }
+            }
             foreach ($codes as $code => $c) {
-                $R = $parCode->get($code, collect())->all();
-                if (! $R && count($codes) > 1) continue;
-                $T = PaieCalc::totaux($R);
-                // Masse salariale soumise à cotisation (hors gains non cotisables)
-                $v = [r3(array_sum(array_map(fn ($x) => $x['base_cnss'] ?? $x['brut'], $R))), $T['cnssS'], $T['cnssP'], r3($T['cnssS'] + $T['cnssP'])];
-                $e->ligne([ucfirst(mois_fr($m)), $code, $taux($c), (string) count(array_unique(array_column($R, 'salarie_id'))), ...$v]);
+                $g = $parCode[$code] ?? null;
+                if (! $g && count($codes) > 1) continue;
+                $g ??= ['ids' => [], 'masse' => 0.0, 's' => 0.0, 'p' => 0.0];
+                $v = [r3($g['masse']), r3($g['s']), r3($g['p']), r3($g['s'] + $g['p'])];
+                $e->ligne([ucfirst(mois_fr($m)), $code, $taux($c), (string) count($g['ids']), ...$v]);
                 foreach ($v as $k => $x) $tot[$k] += $x;
             }
         }
@@ -768,9 +809,18 @@ class EtatsPaie
     private static function parSalarie(Client $client, array $mois, string $cle, ?string $decl = null, ?string $code = null): array
     {
         $par = [];
+        $P = $code !== null ? PaieCalc::parametres($client) : null;
         foreach ($mois as $m) {
             foreach (self::declares(PaieCalc::moisDeclares($client, $m), $decl) as $x) {
-                if ($code !== null && self::codeCnss($x) !== $code) continue;   // autre code d'exploitation CNSS
+                if ($code !== null) {
+                    // Part du salaire déclarée sous ce code d'exploitation (base_cotisee : la part soumise à cotisation)
+                    $T = array_filter(self::tranchesCnss($x, $P), fn ($t) => $t['code'] === $code);
+                    if (! $T) continue;   // autre code d'exploitation CNSS
+                    if ($cle === 'base_cotisee') $T = array_filter($T, fn ($t) => $t['cnssS'] + $t['cnssP'] > 0);
+                    $par[$x['salarie_id']] ??= ['nom' => $x['nom'], 'cin' => $x['cin'] ?? null, 'cnss' => $x['cnss'] ?? null, 'matricule' => $x['matricule'] ?? null, 'mois' => []];
+                    $par[$x['salarie_id']]['mois'][$m] = r3(($par[$x['salarie_id']]['mois'][$m] ?? 0) + array_sum(array_column($T, 'salaire')));
+                    continue;
+                }
                 $par[$x['salarie_id']] ??= ['nom' => $x['nom'], 'cin' => $x['cin'] ?? null, 'cnss' => $x['cnss'] ?? null, 'matricule' => $x['matricule'] ?? null, 'mois' => []];
                 $v = $x[$cle] ?? ($cle === 'base_cotisee' ? ($x['base_cnss'] ?? $x['brut']) : $x['brut']);   // paies figées avant l'assiette cotisée
                 $par[$x['salarie_id']]['mois'][$m] = r3(($par[$x['salarie_id']]['mois'][$m] ?? 0) + $v);

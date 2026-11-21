@@ -90,16 +90,17 @@ class PaieProfilsTest extends TestCase
         $x = $this->resultat($civp);
         $this->assertEquals(0, $x['cnssS'] + $x['cnssP'] + $x['tfp'] + $x['fop']);
 
-        // Contrat Dignité : CNSS sur la fraction au-delà de 600 DT, aux taux du régime général ; 400 DT exonérés d'IRPP.
+        // Contrat Dignité : CNSS au taux du régime général au-delà de 600 DT, 0,5 % patronal plus l'accident du travail jusqu'à 600 DT ; 400 DT exonérés d'IRPP.
         $x = $this->resultat($dig);
         $this->assertEqualsWithDelta(r3(400 * $P['cnssS'] / 100), $x['cnssS'], 0.001);
-        $this->assertEqualsWithDelta(r3(400 * $P['cnssP'] / 100), $x['cnssP'], 0.001);
+        $this->assertEqualsWithDelta(r3(400 * $P['cnssP'] / 100 + 600 * (0.5 + $P['at']) / 100), $x['cnssP'], 0.001);
         $this->assertEquals(0, $x['tfp'] + $x['fop']);
         $this->assertEquals(600.0, $x['brut_imp']);
         $this->assertEquals(400.0, $x['base_cotisee']);
 
         $x = $this->resultat($exo);
-        $this->assertEqualsWithDelta(10, $x['cnssP'], 0.001);
+        // Exo 2 ans : 1 % sur les 600 premiers dinars, taux ordinaire (17,07 %) sur les 400 DT au-delà.
+        $this->assertEqualsWithDelta(6 + 400 * $P['cnssP'] / 100, $x['cnssP'], 0.001);
         $this->assertGreaterThan(0, $x['tfp']);
 
         // Écriture de paie toujours équilibrée.

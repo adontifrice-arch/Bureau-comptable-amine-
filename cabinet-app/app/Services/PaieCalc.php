@@ -18,6 +18,41 @@ class PaieCalc
     public const DIGNITE_PLAFOND_CNSS = 600.0;
     /** Contrat Dignité : quote-part mensuelle de l'État, exonérée d'IRPP. */
     public const DIGNITE_SUBVENTION = 400.0;
+    /** Contrat Dignité : cotisation patronale due sur la part déclarée sous le code 0334, en plus du taux d'accident du travail. */
+    public const DIGNITE_TAUX_PATRONAL = 0.5;
+    /** Contrats aidés (Dignité 0334, Exo 2 ans 0337) : salaire mensuel déclaré sous le code du contrat ; l'excédent relève du régime général. */
+    public const PLAFOND_AVANTAGE_CNSS = 600.0;
+    public const CODE_REGIME_GENERAL = '0000';
+
+    /**
+     * Ventilation CNSS d'un salaire par code d'exploitation : [{code, salaire, cnssS, cnssP}] (taux en %).
+     * Contrat aidé ($P avantage) : jusqu'au plafond mensuel (600 DT, diminué de $dejaAvantage déjà déclaré le mois sous ce code)
+     * sous le code du contrat à ses taux (Dignité : 0,5 % patronal plus l'accident du travail), l'excédent sous le régime général (0000)
+     * aux taux ordinaires, chaque partie sur sa propre déclaration CNSS. Autres profils : tout le salaire sous le code du profil.
+     */
+    public static function tranchesCnss(array $P, float $base, bool $assujetti = true, float $dejaAvantage = 0.0): array
+    {
+        $code = trim((string) ($P['profil']['code_exploitant'] ?? '')) ?: self::CODE_REGIME_GENERAL;
+        $k = $assujetti ? 1.0 : 0.0;
+        $tranche = fn ($code, $salaire, $s, $p) => ['code' => $code, 'salaire' => r3($salaire), 'cnssS' => (float) $s * $k, 'cnssP' => (float) $p * $k];
+        if ($a = $P['avantage'] ?? null) {
+            $part = min($base, max(0.0, $a['plafond'] - $dejaAvantage));
+            $T = [$tranche($code, $part, $a['cnssS'], $a['cnssP']), $tranche(self::CODE_REGIME_GENERAL, $base - $part, $P['cnssS'], $P['cnssP'])];
+        } else $T = [$tranche($code, $base, $P['cnssS'], $P['cnssP'])];
+        return array_values(array_filter($T, fn ($t) => abs($t['salaire']) > 0.0005));
+    }
+
+    /** Cotisations d'une ventilation CNSS : [assiette de la retenue salariale, part salariale, part patronale] (avant arrondi). */
+    public static function cotisationsCnss(array $tranches): array
+    {
+        $b = $s = $p = 0.0;
+        foreach ($tranches as $t) {
+            if ($t['cnssS'] > 0) $b += $t['salaire'];
+            $s += $t['salaire'] * $t['cnssS'] / 100;
+            $p += $t['salaire'] * $t['cnssP'] / 100;
+        }
+        return [r3($b), $s, $p];
+    }
 
     public static function bareme(float $base, string $bareme): float
     {
@@ -173,7 +208,11 @@ class PaieCalc
         // Prime non cotisable (fiche rubrique) : ni CNSS salariale ni patronale ; non imposable : ni IRPP ni CSS.
         $assujetti = ($e->cnss_assujetti ?? true) && ($extra['cotisable'] ?? true);
         $imposable = $extra['imposable'] ?? true;
-        $cs = $assujetti ? $ar($taxable * $P['cnssS'] / 100) : 0.0;
+        // Contrat aidé : la part du plafond de 600 DT non utilisée par la paie du mois reste sous le code du contrat.
+        $tranches = static::tranchesCnss($P, $taxable, $assujetti, $normal ? (float) ($normal['base_cnss'] ?? $normal['brut']) : 0.0);
+        [, $cs, $cp] = static::cotisationsCnss($tranches);
+        $cs = $ar($cs);
+        $cp = $ar($cp);
         $cumul = $extra['cumul'] ?? null;
         if ($cumul !== null && $imposable) {
             // Régularisation sur les primes / autres / rappel (case RegP du salarié) : l'élément entre dans le cumul imposable de l'année
@@ -199,14 +238,13 @@ class PaieCalc
         $ras = r3($ir + $css);
         $acompte = r3(max(0, $acompte));
         $net = r3($brut - $cs - $ras - $acompte - $retenues - $pretS - $pretC);
-        $cp = $assujetti ? $ar($taxable * $P['cnssP'] / 100) : 0.0;
         $tfp = $ar($taxable * $P['tfp'] / 100);
         $fop = $ar($taxable * $P['fop'] / 100);
         return ['salarie_id' => $e->id, 'nom' => $e->nomComplet(), 'regime' => $e->regime === 'horaire' ? 'horaire' : 'mensuel', 'poste' => $e->poste,
             'cin' => $e->cin, 'cnss' => $e->cnss, 'matricule' => $e->matricule, 'special' => $libelle, 'methode_ir' => $methode,
             'base' => (float) ($extra['base'] ?? $e->salaire_base), 'jours' => null, 'jours_mois' => null, 'salaire' => r3($montant), 'hs' => 0.0, 'hs_montant' => 0.0,
             'prime' => r3($prime), 'rubriques' => [], 'gains' => 0.0, 'ded_brut' => 0.0,
-            'brut' => $brut, 'base_cnss' => $taxable, 'brut_imp' => $taxable, 'exonere' => $exonere, 'stc_lignes' => $extra['lignes'] ?? null, 'cnssS' => $cs, 'fp' => 0.0, 'fam' => 0.0, 'autres_deductions' => 0.0, 'bi' => r3($apres),
+            'brut' => $brut, 'base_cnss' => $taxable, 'cnss_tranches' => $tranches, 'brut_imp' => $taxable, 'exonere' => $exonere, 'stc_lignes' => $extra['lignes'] ?? null, 'cnssS' => $cs, 'fp' => 0.0, 'fam' => 0.0, 'autres_deductions' => 0.0, 'bi' => r3($apres),
             'ir' => $ir, 'css' => $css, 'ras' => $ras, 'retenues' => $retenues, 'nature' => 0.0, 'acompte' => $acompte, 'pret_societe' => $pretS, 'pret_cnss' => $pretC, 'net' => $net,
             'cnssP' => $cp, 'tfp' => $tfp, 'fop' => $fop, 'cout' => r3($brut + $cp + $tfp + $fop),
             'taux_cnssS' => (float) $P['cnssS'], 'taux_cnssP' => (float) $P['cnssP'], 'taux_h' => $extra['taux_h'] ?? null, 'taux_j' => $extra['taux_j'] ?? null,
@@ -551,12 +589,15 @@ class PaieCalc
         // Contrat Dignité (KARAMA) : cotisations salariale et patronale prises en charge par l'État (FNE) jusqu'au plafond mensuel
         // (600 DT), dues aux taux du régime général sur la fraction excédentaire ; quote-part de l'État (400 DT) exonérée d'IRPP.
         $dignite = ! empty($P['dignite']);
-        $baseCot = $dignite ? r3(max(0, $baseCnss - $P['dignite_plafond'])) : $baseCnss;
         // La quote-part de l'État est versée à l'employeur : le salarié perçoit son salaire complet, le coût employeur en est diminué.
         $etat = $dignite ? r3(min($P['dignite_subvention'], $brut)) : 0.0;
         if ($dignite) $brutImp = r3(max(0, $brutImp - $P['dignite_subvention']));
         $assujetti = $e->cnss_assujetti ?? true;
-        $cs = $assujetti ? $ar($baseCot * $P['cnssS'] / 100) : 0.0;
+        // Contrats aidés (Dignité 0334, Exo 2 ans 0337) : 600 DT sous le code du contrat, l'excédent au régime général (0000).
+        $tranches = static::tranchesCnss($P, $baseCnss, $assujetti);
+        [$baseCot, $cs, $cp] = static::cotisationsCnss($tranches);
+        $cs = $ar($cs);
+        $cp = $ar($cp);
         $regul = ! empty($P['regul_irpp']) && $cumul !== null;
         $n = $regul ? $cumul['n'] + 1 : 12;
         $bAn = $regul ? ($cumul['brut'] + $brutImp) * 12 / $n : $brutImp * 12;
@@ -573,14 +614,13 @@ class PaieCalc
         // L'acompte déjà versé dans le mois est déduit du net à payer.
         // Échéances des prêts (société, CNSS) retenues sur le net.
         $net = r3($brut - $cs - $ras - $retenues - $nature - ($f['acompte'] ?? 0) - ($f['pret_societe'] ?? 0) - ($f['pret_cnss'] ?? 0));
-        $cp = $assujetti ? $ar($baseCot * $P['cnssP'] / 100) : 0.0;
         $tfp = $ar($brut * $P['tfp'] / 100);
         $fop = $ar($brut * $P['fop'] / 100);
         return ['salarie_id' => $e->id, 'nom' => $e->nomComplet(), 'regime' => $f['horaire'] ? 'horaire' : 'mensuel', 'poste' => $e->poste,
             'cin' => $e->cin, 'cnss' => $e->cnss, 'matricule' => $e->matricule,
             'base' => $f['base'], 'jours' => $f['jours'], 'jours_mois' => $f['J'], 'salaire' => $f['salaire'], 'hs' => $f['hs'], 'hs_montant' => $f['hs_montant'],
             'prime' => $f['prime'], 'rubriques' => $L, 'gains' => $gains, 'ded_brut' => $dedBrut,
-            'brut' => $brut, 'base_cnss' => $baseCnss, 'base_cotisee' => $assujetti ? $baseCot : 0.0, 'brut_imp' => $brutImp,
+            'brut' => $brut, 'base_cnss' => $baseCnss, 'base_cotisee' => $baseCot, 'cnss_tranches' => $tranches, 'brut_imp' => $brutImp,
             'cnssS' => $cs, 'fp' => r3($fp), 'fam' => r3($fam), 'autres_deductions' => r3($autres), 'bi' => r3($bi),
             'ir' => $ir, 'css' => $css, 'ras' => $ras, 'retenues' => $retenues, 'nature' => $nature, 'acompte' => $f['acompte'] ?? 0.0, 'pret_societe' => $f['pret_societe'] ?? 0.0, 'pret_cnss' => $f['pret_cnss'] ?? 0.0, 'net' => $net,
             'taux_h' => $f['taux_h'] ?? null, ...($f['pointage'] ?? []),
@@ -670,6 +710,7 @@ class PaieCalc
     public static function pourProfil(array $P, ?PaieProfil $profil): array
     {
         if (! $profil) return $P;
+        if (! $profil->decl_cnss) $P['cnssS'] = 0.0;
         if ($profil->contrat_dignite) {
             // Contrat Dignité : taux du régime général sur la fraction du salaire excédant le plafond pris en charge par l'État ;
             // ni TFP ni FOPROLOS.
@@ -677,8 +718,14 @@ class PaieCalc
             $P['dignite_plafond'] = (float) ($P['dignite_plafond'] ?? self::DIGNITE_PLAFOND_CNSS);
             $P['dignite_subvention'] = (float) ($P['dignite_subvention'] ?? self::DIGNITE_SUBVENTION);
             $P['tfp'] = 0.0; $P['fop'] = 0.0;
+            // Code 0334 : pas de CNSS salariale ; patronale de 0,5 % plus l'accident du travail (ou taux du profil s'il est renseigné).
+            $P['avantage'] = ['plafond' => $P['dignite_plafond'], 'cnssS' => 0.0,
+                'cnssP' => $profil->cnss_patronale !== null ? (float) $profil->cnss_patronale : r3(self::DIGNITE_TAUX_PATRONAL + (float) ($P['at'] ?? 0))];
+        } elseif ($profil->contrat_exo2ans) {
+            // Exo 2 ans : CNSS patronale du profil sur les 600 premiers dinars (code 0337), taux ordinaires au-delà (0000).
+            $P['avantage'] = ['plafond' => self::PLAFOND_AVANTAGE_CNSS, 'cnssS' => (float) $P['cnssS'],
+                'cnssP' => $profil->cnss_patronale !== null ? (float) $profil->cnss_patronale : (float) $P['cnssP']];
         } elseif ($profil->cnss_patronale !== null) $P['cnssP'] = (float) $profil->cnss_patronale;
-        if (! $profil->decl_cnss) $P['cnssS'] = 0.0;
         if (! $profil->soumis_tfp_fop) { $P['tfp'] = 0.0; $P['fop'] = 0.0; }
         $P['profil'] = $profil->meta();
         return $P;

@@ -11,7 +11,9 @@ use Illuminate\Support\Collection;
  * Effets sur la paie : taux de CNSS patronale (vide = taux du dossier), TFP et FOPROLOS seulement si « Soumis TFP-FOPROLOS »,
  * cotisation salariale CNSS et déclaration CNSS seulement si « Inclue dans la déclaration CNSS », présence dans la déclaration employeur.
  * « Contrat Dignité » : CNSS prise en charge par l’État jusqu’à 600 DT par mois (taux du régime général au-delà), 400 DT exonérés d’IRPP,
- * ni TFP ni FOPROLOS. « Base de calcul », « Contrat Exo 2 ans » et « Rég. d'IRPP KARAMA » sont enregistrés pour les déclarations.
+ * ni TFP ni FOPROLOS. « Contrat Exo 2 ans » : CNSS patronale du profil sur les 600 premiers dinars, taux ordinaires au-delà.
+ * Contrats Dignité et Exo 2 ans : les 600 premiers dinars du mois sont déclarés à la CNSS sous le code d'exploitation du profil
+ * (0334, 0337), l'excédent sur la déclaration du régime général (0000). « Base de calcul » et « Rég. d'IRPP KARAMA » sont enregistrés.
  */
 class PaieProfil extends Model
 {
