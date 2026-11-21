@@ -266,6 +266,8 @@
                 ['l' => 'Déclaration CNSS', 'i' => 'file-text', 'sub' => [
                     ['l' => 'Déclaration trimestrielle des salaires', 'i' => 'settings', 'sub' => $fmt('dcnss')],
                     ['l' => 'Récapitulatif CNSS du trimestre', 'i' => 'settings', 'sub' => $fmt('recap-cnss')],
+                    // Un fichier DS par code d'exploitation (archive .zip s'il y en a plusieurs)
+                    ['l' => 'Fichier de télédéclaration (DS)', 'i' => 'download', 'href' => route('paie.cnss.fichier', ['mois' => $mois])],
                 ]],
                 ['l' => 'Déclaration du régime complémentaire', 'i' => 'file-text', 'sub' => $fmt('drc')],
                 ['l' => 'Déclaration Employeur', 'i' => 'file-text', 'sub' => [

@@ -42,8 +42,9 @@
                 <div class="md:col-span-2"><label class="label">Matricule {!! $req !!}</label><input name="matricule" value="{{ $v('matricule') }}" class="input font-mono">{!! $err('matricule') !!}</div>
                 <div><label class="label">Titre</label><select name="titre" class="input"><option value="">—</option>@foreach(\App\Models\Salarie::TITRES as $c => $l)<option value="{{ $c }}" @selected($v('titre') === $c)>{{ $l }}</option>@endforeach</select></div>
                 <div class="md:col-span-3"><label class="label">Matricule pointeuse</label><input name="matricule_pointeuse" value="{{ $v('matricule_pointeuse') }}" class="input"></div>
-                <div class="md:col-span-3"><label class="label">Nom {!! $req !!}</label><input name="nom" value="{{ $v('nom') }}" class="input">{!! $err('nom') !!}</div>
-                <div class="md:col-span-3"><label class="label">Prénom {!! $req !!}</label><input name="prenom" value="{{ $v('prenom') }}" class="input">{!! $err('prenom') !!}</div>
+                <div class="md:col-span-2"><label class="label">Nom {!! $req !!}</label><input name="nom" value="{{ $v('nom') }}" class="input">{!! $err('nom') !!}</div>
+                <div class="md:col-span-2"><label class="label">Prénom {!! $req !!}</label><input name="prenom" value="{{ $v('prenom') }}" class="input">{!! $err('prenom') !!}</div>
+                <div class="md:col-span-2"><label class="label" title="Identité de l’assuré dans la télédéclaration CNSS : prénom, prénom du père, nom">Prénom du père</label><input name="prenom_pere" value="{{ $v('prenom_pere') }}" class="input">{!! $err('prenom_pere') !!}</div>
             </div>
             <div class="flex flex-col items-end gap-2">
                 <div class="flex flex-wrap gap-2">

@@ -27,7 +27,7 @@ class Salarie extends Model
     public const CARRIERE = ['date_naissance', 'type_contrat', 'contrat_debut', 'contrat_fin', 'profil', 'profil_debut', 'profil_fin', 'categorie', 'categorie_debut', 'categorie_fin', 'echelon', 'echelon_debut', 'echelon_fin'];
 
     /** Champs de la fiche employé complète (hors identité de base) : repris par la sauvegarde. */
-    public const FICHE = ['titre', 'prenom', 'matricule_pointeuse', 'adresse', 'ville', 'code_postal', 'tel_fixe', 'tel_mobile', 'cin_date', 'carte_sejour', 'nationalite',
+    public const FICHE = ['titre', 'prenom', 'prenom_pere', 'matricule_pointeuse', 'adresse', 'ville', 'code_postal', 'tel_fixe', 'tel_mobile', 'cin_date', 'carte_sejour', 'nationalite',
         'lieu_naissance', 'situation_familiale', 'enfants_detail', 'parents_charge', 'regime', 'conges_acquis', 'conges_report', 'conges_report_annee', 'cnss_assujetti', 'cnss_rc', 'retenue_etranger', 'regul_irpp', 'regul_primes', 'nb_bulletin',
         'assurance_vie', 'cea', 'interets_bancaires', 'stc_solde_total', 'departement', 'etat_presence', 'date_sortie', 'motif_sortie', 'date_declaration_cnss', 'agence'];
 

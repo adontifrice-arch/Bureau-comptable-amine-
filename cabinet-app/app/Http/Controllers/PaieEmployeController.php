@@ -162,7 +162,7 @@ class PaieEmployeController extends Controller
         $d = $r->validate([
             // En-tête
             'matricule' => ['required', 'max:20', $unique], 'titre' => 'nullable|in:'.implode(',', array_keys(Salarie::TITRES)), 'matricule_pointeuse' => 'nullable|max:30',
-            'nom' => 'required|max:255', 'prenom' => 'required|max:255',
+            'nom' => 'required|max:255', 'prenom' => 'required|max:255', 'prenom_pere' => 'nullable|max:100',
             // État civil
             'adresse' => 'required|max:255', 'ville' => 'required|max:100', 'code_postal' => 'nullable|max:10', 'tel_fixe' => 'nullable|max:30', 'tel_mobile' => 'nullable|max:30',
             'cin' => 'required|max:20', 'cin_date' => 'nullable|date', 'carte_sejour' => 'nullable|boolean', 'date_naissance' => 'nullable|date|before:today',
@@ -189,7 +189,7 @@ class PaieEmployeController extends Controller
             'photo' => 'nullable|image|max:4096', 'cin1' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:4096', 'cin2' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:4096',
             'contrat_fichier' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240', 'contrat_nom' => 'nullable|max:100',
             'diplome_fichier' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240', 'diplome_nom' => 'nullable|required_with:diplome_fichier|max:100',
-        ], [], ['matricule' => 'matricule', 'prenom' => 'prénom', 'cin' => 'n° CIN / carte de séjour', 'situation_familiale' => 'situation familiale',
+        ], [], ['matricule' => 'matricule', 'prenom' => 'prénom', 'prenom_pere' => 'prénom du père', 'cin' => 'n° CIN / carte de séjour', 'situation_familiale' => 'situation familiale',
             'poste' => 'qualification', 'regime' => 'régime salarial', 'conges_acquis' => 'acquis / mois', 'conges_report' => 'report de congés', 'conges_report_annee' => 'année du report', 'categorie' => 'catégorie', 'echelon' => 'échelon',
             'salaire_base' => 'salaire de base / taux horaire', 'nb_bulletin' => 'nombre de bulletins', 'contrat_debut' => 'date de début', 'etat_presence' => 'état de présence',
             'date_sortie' => 'date de sortie', 'diplome_nom' => 'nom du diplôme']);

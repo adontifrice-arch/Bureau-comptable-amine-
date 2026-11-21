@@ -606,6 +606,69 @@ class EtatsPaie
         return preg_match('/^(\d+)\s*[-\/ ]\s*(\d+)$/', $n, $m) ? $m[1].' - '.$m[2] : $n;
     }
 
+    /** Lignes par page du fichier de télédéclaration CNSS (nomenclature du document papier). */
+    public const CNSS_FICHIER_LIGNES_PAGE = 12;
+
+    /** N° CNSS (employeur ou assuré) en matricule de 8 chiffres et clé de 2 : « 123456-72 » → « 0012345672 ». */
+    public static function matriculeCnss10(?string $n): string
+    {
+        $n = trim((string) $n);
+        if (preg_match('/^(\d{1,8})\D+(\d{1,2})$/', $n, $m)) return str_pad($m[1], 8, '0', STR_PAD_LEFT).str_pad($m[2], 2, '0', STR_PAD_LEFT);
+        $d = preg_replace('/\D/', '', $n);
+        return $d === '' ? str_repeat('0', 10) : str_pad(substr($d, -10), 10, '0', STR_PAD_LEFT);
+    }
+
+    /** Champ alphanumérique du fichier CNSS : majuscules sans accents, cadré à gauche et complété par des espaces. */
+    private static function champCnss(?string $v, int $n): string
+    {
+        $v = mb_strtoupper(\Illuminate\Support\Str::ascii(preg_replace('/\s+/', ' ', trim((string) $v))));
+        return str_pad(substr($v, 0, $n), $n);
+    }
+
+    /**
+     * Fichier de télédéclaration des salaires à la CNSS (tracé « nouvelle version 2012 ») pour un code d'exploitation du trimestre
+     * de $mois : un enregistrement de 122 caractères par assuré — n° employeur (matricule 8 + clé 2), code d'exploitation (4),
+     * trimestre (1) et année (4), n° de page (3) et de ligne (2) à raison de 12 lignes par page, n° d'assuré (8 + 2),
+     * identité (60 : prénom, prénom du père, nom, en majuscules), n° CIN (8), salaire du trimestre en millimes (10), zone vierge (10).
+     * Nom du fichier : DS + n° employeur (10) + code (4) + « . » + trimestre + année, ex. DS00123456720006.12010.
+     * @return array{nom: string, contenu: string, assures: int, total: float, anomalies: list<string>}
+     */
+    public static function fichierCnss(Client $client, string $mois, ?string $code = null): array
+    {
+        $mm = self::trimestre($mois);
+        $d = Carbon::parse($mm[0].'-01');
+        $codes = self::codesCnss($client, $mois);
+        $code = isset($codes[$code]) ? $code : array_key_first($codes);
+        $code4 = str_pad(substr(preg_replace('/\D/', '', $code), -4), 4, '0', STR_PAD_LEFT);
+        $employeur = self::matriculeCnss10($client->matricule_cnss);
+        $periode = $d->quarter.$d->year;
+        $sal = \App\Models\Salarie::where('client_id', $client->id)->get()->keyBy('id');
+        $lignes = []; $anomalies = []; $total = 0.0; $i = 0;
+        if (! trim((string) $client->matricule_cnss)) $anomalies[] = 'N° d’affiliation CNSS de l’employeur non renseigné.';
+        foreach (self::parSalarie($client, $mm, 'base_cnss', 'decl_cnss', $code) as $id => $p) {
+            $montant = r3(array_sum($p['mois']));
+            if ($montant == 0.0) continue;
+            $s = $sal[$id] ?? null;
+            $page = intdiv($i, self::CNSS_FICHIER_LIGNES_PAGE) + 1;
+            $ligne = $i % self::CNSS_FICHIER_LIGNES_PAGE + 1;
+            $i++;
+            $identite = $s ? implode(' ', array_filter([trim((string) $s->prenom), trim((string) $s->prenom_pere), trim((string) $s->nom)])) : $p['nom'];
+            $cin = preg_replace('/\s/', '', (string) ($s?->cin ?? $p['cin']));
+            $nom = $s?->nomComplet() ?? $p['nom'];
+            if (! trim((string) $p['cnss'])) $anomalies[] = $nom.' : n° d’assuré social CNSS non renseigné.';
+            if ($s && ! trim((string) $s->prenom_pere)) $anomalies[] = $nom.' : prénom du père non renseigné (identité de l’assuré).';
+            if ($cin === '') $anomalies[] = $nom.' : n° CIN non renseigné.';
+            $lignes[] = $employeur.$code4.$periode.sprintf('%03d%02d', $page, $ligne).self::matriculeCnss10($p['cnss'])
+                .self::champCnss($identite, 60)
+                .(ctype_digit($cin) ? str_pad(substr($cin, -8), 8, '0', STR_PAD_LEFT) : self::champCnss($cin, 8))
+                .str_pad((string) (int) round($montant * 1000), 10, '0', STR_PAD_LEFT)
+                .str_repeat(' ', 10);
+            $total = r3($total + $montant);
+        }
+        return ['nom' => 'DS'.$employeur.$code4.'.'.$periode, 'contenu' => $lignes ? implode("\r\n", $lignes)."\r\n" : '',
+            'code' => $code, 'codes' => array_keys($codes), 'assures' => count($lignes), 'total' => $total, 'anomalies' => $anomalies];
+    }
+
     /** Récapitulatif des cotisations CNSS du trimestre (mois par mois). */
     public static function recapCnss(Client $client, string $mois): Etat
     {

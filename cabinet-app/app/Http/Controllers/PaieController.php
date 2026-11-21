@@ -449,6 +449,32 @@ class PaieController extends Controller
     }
 
     /**
+     * Fichier de télédéclaration des salaires à la CNSS (DS…), un par code d'exploitation du trimestre : celui du code demandé,
+     * sinon le seul code du trimestre, sinon une archive .zip réunissant le fichier de chaque code.
+     */
+    public function fichierCnss(Request $r)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client, 404);
+        $v = $r->validate(['mois' => 'nullable|date_format:Y-m', 'code' => ['nullable', 'regex:/^[0-9A-Za-z]{1,10}$/']]);
+        $mois = $v['mois'] ?? now()->format('Y-m');
+        $codes = $v['code'] ?? null ? [$v['code']] : array_keys(EtatsPaie::codesCnss($client, $mois));
+        $F = array_map(fn ($c) => EtatsPaie::fichierCnss($client, $mois, $c), $codes);
+        $F = array_values(array_filter($F, fn ($f) => $f['assures'] > 0));
+        if (! $F) return back()->with('error', 'Aucun salaire à déclarer à la CNSS pour ce trimestre.');
+        if (count($F) === 1) {
+            return response($F[0]['contenu'], 200, ['Content-Type' => 'text/plain; charset=US-ASCII', 'Content-Disposition' => 'attachment; filename="'.$F[0]['nom'].'"']);
+        }
+        $zip = new \ZipArchive();
+        $tmp = tempnam(sys_get_temp_dir(), 'cnss');
+        $zip->open($tmp, \ZipArchive::OVERWRITE);
+        foreach ($F as $f) $zip->addFromString($f['nom'], $f['contenu']);
+        $zip->close();
+        $nom = 'teledeclaration-cnss-'.\Illuminate\Support\Str::slug($client->nom).'-'.substr($F[0]['nom'], -5).'.zip';
+        return response()->download($tmp, $nom, ['Content-Type' => 'application/zip'])->deleteFileAfterSend();
+    }
+
+    /**
      * Ordre de virement → fichier pour la banque : .txt (une ligne par bénéficiaire) ou .xls (récapitulatif Excel),
      * pour une banque (récapitulatif de virement) ou pour tous les salariés payés par virement (UIB — virement en masse).
      */
