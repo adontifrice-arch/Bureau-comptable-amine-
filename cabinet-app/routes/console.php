@@ -27,3 +27,6 @@ Artisan::command('sauvegardes:auto', function () {
 })->purpose('Fait les sauvegardes automatiques arrivées à échéance');
 
 \Illuminate\Support\Facades\Schedule::command('sauvegardes:auto')->everyMinute()->withoutOverlapping();
+
+// Documents reçus des clients : lecture et aiguillage en arrière-plan (tâches en file), traités chaque minute
+\Illuminate\Support\Facades\Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=1')->everyMinute()->withoutOverlapping();

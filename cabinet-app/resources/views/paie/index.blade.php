@@ -4,6 +4,13 @@
         <x-client-picker :clients="$clients" :current="$client" :route="route('paie.index')" :params="['tab' => $tab, 'mois' => $mois]"/>
     </x-page-header>
     @include('paie._barre')
+    @php $nbRecus = \App\Models\Document::where('client_id', $client->id)->where('destination', 'paie')->whereIn('traitement', ['en_attente', 'propose', 'a_saisir', 'erreur'])->count(); @endphp
+    @if($nbRecus)
+        <a href="{{ route('paie.recus', ['client' => $client->id]) }}" class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+            <x-icon name="upload" class="h-4 w-4"/> {{ $nbRecus }} document(s) reçu(s) du client à traiter (pointage, congés, acomptes, prêts, documents des salariés) →</a>
+    @else
+        <div class="mb-4 text-right"><a href="{{ route('paie.recus', ['client' => $client->id, 'vue' => 'tous']) }}" class="text-xs font-medium text-brand-700 hover:underline">Documents reçus du client →</a></div>
+    @endif
 
     @if($tab === 'calc')
         @include('paie._saisie')

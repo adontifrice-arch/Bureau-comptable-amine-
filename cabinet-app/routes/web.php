@@ -290,6 +290,19 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::get('ged/{document}/telecharger', [C\GedController::class, 'download'])->name('ged.download');
     Route::delete('ged/{document}', [C\GedController::class, 'destroy'])->name('ged.destroy');
 
+    // ---------- Documents reçus des clients : boîtes des modules, propositions, import paie ----------
+    Route::get('comptabilite/pieces-recues', [C\PiecesRecuesController::class, 'compta'])->name('compta.recues');
+    Route::put('comptabilite/ecritures-proposees/{ep}', [C\PiecesRecuesController::class, 'ecritureUpdate'])->name('compta.proposees.update');
+    Route::post('comptabilite/ecritures-proposees/{ep}/valider', [C\PiecesRecuesController::class, 'ecritureValider'])->middleware('valideur')->name('compta.proposees.valider');
+    Route::post('comptabilite/ecritures-proposees/{ep}/rejeter', [C\PiecesRecuesController::class, 'ecritureRejeter'])->middleware('valideur')->name('compta.proposees.rejeter');
+    Route::get('immobilisations/documents-recus', [C\PiecesRecuesController::class, 'immobilisations'])->name('immobilisations.recus');
+    Route::get('paie/documents-recus', [C\PiecesRecuesController::class, 'paie'])->name('paie.recus');
+    Route::post('paie/documents-recus/{document}/importer', [C\PiecesRecuesController::class, 'paieImporter'])->name('paie.recus.importer');
+    Route::post('paie/documents-recus/{document}/classer', [C\PiecesRecuesController::class, 'paieClasser'])->name('paie.recus.classer');
+    Route::post('pieces-recues/{document}/reclasser', [C\PiecesRecuesController::class, 'reclasser'])->name('pieces-recues.reclasser');
+    Route::post('pieces-recues/{document}/relancer', [C\PiecesRecuesController::class, 'relancer'])->name('pieces-recues.relancer');
+    Route::post('pieces-recues/{document}/saisi', [C\PiecesRecuesController::class, 'saisi'])->name('pieces-recues.saisi');
+
     // ---------- Échanges avec les clients (espace client) ----------
     Route::get('echanges', [C\EchangeController::class, 'index'])->name('echanges.index');
     Route::post('clients/{client}/partager', [C\EchangeController::class, 'partager'])->name('echanges.partager');

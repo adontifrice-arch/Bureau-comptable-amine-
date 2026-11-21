@@ -113,17 +113,20 @@ class EspaceClientController extends Controller
         $u = $this->compte();
         $client = $this->client($r);
         $d = $r->validate([
-            'categorie' => ['required', Rule::in(Document::CATEGORIES_ENVOI_CLIENT)],
+            'type_piece' => ['required', Rule::in(array_keys(\App\Support\TypesPieces::TYPES))],
+            'periode' => 'nullable|date_format:Y-m',
             'message' => 'nullable|max:2000',
             'fichiers' => 'required|array|max:20', 'fichiers.*' => Document::REGLE_FICHIER,
-        ], [], ['fichiers' => 'fichiers', 'fichiers.*' => 'fichier']);
+        ], ['type_piece.required' => 'Choisissez le type de documents envoyés.'], ['type_piece' => 'type de documents', 'periode' => 'mois concerné', 'fichiers' => 'fichiers', 'fichiers.*' => 'fichier']);
 
         $docs = collect($r->file('fichiers'))->map(fn ($f) => Document::create([
-            'client_id' => $client->id, 'categorie' => $d['categorie'], 'description' => $d['message'] ?? null, 'date' => now(),
+            'client_id' => $client->id, 'categorie' => \App\Support\TypesPieces::categorie($d['type_piece']), 'description' => $d['message'] ?? null, 'date' => now(),
             'nom' => $f->getClientOriginalName(), 'chemin' => $f->store('ged/'.CabinetCourant::exiger().'/'.$client->id),
             'taille' => $f->getSize(), 'mime' => $f->getMimeType(), 'origine' => 'client', 'depose_par' => $u->id,
         ]));
-        Activite::create(['user_id' => null, 'client_id' => $client->id, 'action' => $docs->count().' document(s) envoyé(s) par '.$u->name.' depuis l’espace client']);
+        Activite::create(['user_id' => null, 'client_id' => $client->id, 'action' => $docs->count().' document(s) envoyé(s) par '.$u->name.' depuis l’espace client ('.\App\Support\TypesPieces::libelle($d['type_piece']).')']);
+        // Aiguillage vers la comptabilité, les immobilisations ou la paie, et lecture en arrière-plan
+        foreach ($docs as $doc) \App\Services\TraitementPieces::recevoir($doc, $d['type_piece'], $d['periode'] ?? null);
         EspaceClientAvis::envoiClient($u, $client, $docs, $d['message'] ?? null);
         return back()->with('ok', $docs->count() > 1 ? $docs->count().' documents envoyés au cabinet.' : 'Document envoyé au cabinet.');
     }

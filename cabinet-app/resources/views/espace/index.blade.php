@@ -8,12 +8,21 @@
         {{-- Envoi au cabinet --}}
         <div class="card self-start lg:col-span-2">
             <div class="card-h"><h2 class="card-t">Envoyer des documents au cabinet</h2></div>
-            <form method="POST" action="{{ route('espace.envoyer') }}" enctype="multipart/form-data" class="card-b space-y-4">@csrf
-                <div><label class="label" for="f-categorie">Type de documents</label>
-                    <select id="f-categorie" name="categorie" class="input" required>
-                        @foreach(\App\Models\Document::CATEGORIES_ENVOI_CLIENT as $c)<option @selected(old('categorie') === $c)>{{ $c }}</option>@endforeach
+            <form method="POST" action="{{ route('espace.envoyer') }}" enctype="multipart/form-data" class="card-b space-y-4"
+                  x-data="{ t: @js(old('type_piece', '')), avecPeriode: @js(\App\Support\TypesPieces::AVEC_PERIODE) }">@csrf
+                <div><label class="label" for="f-type">Type de documents</label>
+                    <select id="f-type" name="type_piece" class="input" required x-model="t">
+                        <option value="">Choisissez…</option>
+                        @foreach(\App\Support\TypesPieces::parDestination() as $groupe => $types)
+                            <optgroup label="{{ $groupe === 'GED (classement)' ? 'Autres documents' : $groupe }}">
+                                @foreach($types as $k => $lib)<option value="{{ $k }}">{{ $lib }}</option>@endforeach
+                            </optgroup>
+                        @endforeach
                     </select>
+                    <p class="mt-1 text-xs text-slate-400">Un envoi par type : vos documents sont transmis directement au service concerné du cabinet.</p>
                 </div>
+                <div x-show="avecPeriode.includes(t)" x-cloak><label class="label" for="f-periode">Mois concerné</label>
+                    <input id="f-periode" type="month" name="periode" value="{{ old('periode') }}" class="input"></div>
                 <div><label class="label" for="f-fichiers">Fichiers</label>
                     <input id="f-fichiers" type="file" name="fichiers[]" multiple required class="input">
                     <p class="mt-1 text-xs text-slate-400">PDF, images, Word, Excel, CSV ou ZIP · 20 Mo maximum par fichier, 20 fichiers par envoi.</p>

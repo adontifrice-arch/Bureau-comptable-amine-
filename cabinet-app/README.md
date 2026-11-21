@@ -60,6 +60,25 @@ schtasks /Create /SC MINUTE /MO 1 /TN "Cabinet - planificateur" /TR "\"C:\larago
 ```
 Sans planificateur, une sauvegarde en retard est faite dès qu’un utilisateur ouvre l’application.
 
+### Documents reçus des clients : traitement automatique
+
+Dans son espace, le client choisit le **type** de documents qu’il envoie ; chaque fichier part au module concerné et y est traité en arrière-plan (tâche « Cabinet - planificateur », chaque minute) :
+
+| Type | Module | Traitement |
+|---|---|---|
+| Factures d’achat / de vente, tableaux de factures | Comptabilité | Lecture (OCR par l’IA) → factures proposées aux journaux ACH / VTE |
+| Relevé bancaire | Comptabilité | Import (Excel, CSV, PDF ; image avec l’IA) → contreparties proposées, journal BQ |
+| Traites, chèques, état de caisse, pièce diverse | Comptabilité | Lecture → écritures proposées (BQ, CAI, OD), modifiables |
+| Facture d’immobilisation | Immobilisations | Lecture → facture proposée au journal ACH ; le bien entre au registre à sa validation |
+| Contrat de leasing | Immobilisations | Lecture → bien en crédit-bail inscrit au registre |
+| Pointage | Paie | Import dans la paie du mois (Excel sans IA ; PDF ou photo avec l’IA) |
+| États des congés, des acomptes et prêts | Paie | Lecture → lignes vérifiées puis importées |
+| Contrat de travail, CIVP, CIN, documents des salariés | Paie | Classés dans la fiche du salarié reconnu |
+
+Rien n’est comptabilisé sans validation : chaque proposition se valide dans son journal par un utilisateur autorisé. Chaque module a sa boîte « Documents reçus » (Comptabilité → Pièces reçues, Immobilisations → Documents reçus, Paie → Documents reçus du client), où l’on peut aussi reclasser un document mal typé, le relire ou le marquer comme saisi à la main.
+
+La lecture automatique utilise l’API Claude : renseignez `ANTHROPIC_API_KEY` dans `.env` (modèle : `ANTHROPIC_MODEL`). Sans clé, les documents arrivent dans leur module « à saisir » ; les relevés Excel / CSV et les pointages Excel sont importés quand même.
+
 ### Espace client et e-mails
 
 Le chef comptable invite un client depuis sa fiche (onglet **Espace client**) : la personne reçoit un e-mail pour choisir son mot de passe, puis se connecte sur `/espace-client`. Elle ne voit que ses propres envois et les documents de son dossier que le cabinet partage avec elle.

@@ -178,12 +178,16 @@ class ComptaController extends Controller
             $fr->update(['statut' => 'val', 'valide_par' => auth()->id()]);
         });
         $this->log('Validation de la facture '.$fr->fournisseur.' '.$fr->reference, $fr->client_id);
-        return back()->with('ok', 'Facture validée et comptabilisée au journal des achats.');
+        // Facture lue sur un document reçu du client : suivi du document (et entrée au registre d'une immobilisation)
+        \App\Services\TraitementPieces::apresValidation($fr->document_id);
+        $immo = $fr->document_id && \App\Models\Immobilisation::where('facture_recue_id', $fr->id)->exists();
+        return back()->with('ok', 'Facture validée et comptabilisée au journal des achats.'.($immo ? ' Le bien est inscrit au registre des immobilisations.' : ''));
     }
 
     public function rejeter(Request $r, FactureRecue $fr)
     {
         $fr->update(['statut' => 'rej', 'motif_rejet' => $r->input('motif') ?: 'Rejetée par le chef comptable']);
+        \App\Services\TraitementPieces::apresValidation($fr->document_id);
         return back()->with('ok', 'Facture rejetée.');
     }
 

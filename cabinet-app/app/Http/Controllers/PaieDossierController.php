@@ -205,18 +205,13 @@ class PaieDossierController extends Controller
         $brut = $ws->toArray(null, true, false, false);
         $texte = $ws->toArray(null, true, true, false);
         $cols = [];
-        foreach ($brut[0] ?? [] as $i => $entete) if ($k = $this->colonnePointage((string) $entete)) $cols[$k] ??= $i;
+        foreach ($brut[0] ?? [] as $i => $entete) if ($k = self::colonnePointage((string) $entete)) $cols[$k] ??= $i;
         if (! array_intersect_key($cols, array_flip(['matricule', 'cin', 'nom']))) return back()->with('err', 'Aucune colonne pour reconnaître les employés (matricule, CIN ou nom). Téléchargez le modèle de paie.');
         if (! array_intersect_key($cols, array_flip(['jours', 'hs', 'prime']))) return back()->with('err', 'Aucune colonne de pointage (jours travaillés, heures supplémentaires, primes).');
         if ($d['type'] === 'historique' && ! isset($cols['mois'])) return back()->with('err', 'Colonne « Mois » introuvable : elle est nécessaire pour l’historique.');
 
         $sal = $client->salaries()->get();
-        $trouver = function (?string $mat, ?string $cin, ?string $nom) use ($sal) {
-            if ($mat && ($e = $sal->first(fn ($e) => (string) $e->matricule !== '' && Str::lower((string) $e->matricule) === Str::lower($mat)))) return $e;
-            if ($cin && ($e = $sal->first(fn ($e) => $e->cin === $cin))) return $e;
-            if ($nom) return $sal->first(fn ($e) => Str::lower(trim($e->nom)) === Str::lower(trim($nom)));
-            return null;
-        };
+        $trouver = fn (?string $mat, ?string $cin, ?string $nom) => self::trouverSalarie($sal, $mat, $cin, $nom);
         $num = function ($v) {
             if ($v === null || $v === '') return null;
             if (is_numeric($v)) return (float) $v;
@@ -240,8 +235,36 @@ class PaieDossierController extends Controller
         }
         ksort($parMois);
 
+        [$faits, $clos] = self::appliquerPointage($client, $parMois, $d['type'] === 'historique' && ! empty($d['cloturer']));
+
+        $this->log('Paie : import du pointage ('.($faits ? implode(', ', $faits) : 'aucun mois').')', $client->id);
+        $msg = $faits ? 'Pointage importé pour '.implode(', ', array_map('mois_fr', $faits)).'.' : 'Aucun pointage importé.';
+        if ($clos) $msg .= ' Ignoré (paie déjà clôturée) : '.implode(', ', array_map('mois_fr', $clos)).'.';
+        if ($inconnus) $msg .= ' Employé(s) non reconnu(s) : '.implode(', ', array_slice(array_unique($inconnus), 0, 5)).'.';
+        if ($erreurs) $msg .= ' '.implode(' ; ', array_slice($erreurs, 0, 3)).'.';
+        return redirect()->route('paie.index', ['mois' => $d['type'] === 'mensuel' ? $d['mois'] : (end($faits) ?: now()->format('Y-m'))])
+            ->with($faits && ! $inconnus && ! $erreurs && ! $clos ? 'ok' : 'err', $msg);
+    }
+
+    /** Employé du dossier reconnu par son matricule, puis son CIN, puis son nom. */
+    public static function trouverSalarie(\Illuminate\Support\Collection $sal, ?string $mat, ?string $cin, ?string $nom): ?\App\Models\Salarie
+    {
+        if ($mat && ($e = $sal->first(fn ($e) => (string) $e->matricule !== '' && Str::lower((string) $e->matricule) === Str::lower($mat)))) return $e;
+        if ($cin && ($e = $sal->first(fn ($e) => $e->cin === $cin))) return $e;
+        if ($nom) return $sal->first(fn ($e) => Str::lower(trim($e->nom)) === Str::lower(trim($nom))
+            || Str::lower(trim($e->nomComplet())) === Str::lower(trim($nom)));
+        return null;
+    }
+
+    /**
+     * Pointage lu (par mois : [id salarié => jours, hs, prime]) reporté dans les paies en brouillon ; une paie déjà clôturée n'est pas touchée.
+     * Renvoie [mois faits, mois ignorés car clôturés].
+     */
+    public static function appliquerPointage(Client $client, array $parMois, bool $cloturer = false): array
+    {
         $faits = []; $clos = [];
-        DB::transaction(function () use ($client, $parMois, $d, &$faits, &$clos) {
+        ksort($parMois);
+        DB::transaction(function () use ($client, $parMois, $cloturer, &$faits, &$clos) {
             foreach ($parMois as $mois => $lignes) {
                 $paie = Paie::firstOrNew(['client_id' => $client->id, 'mois' => $mois, 'type' => 'normale']);
                 if ($paie->exists && $paie->statut !== 'brouillon') { $clos[] = $mois; continue; }
@@ -255,21 +278,14 @@ class PaieDossierController extends Controller
                 $paie->pointage = PaieCalc::pointage($pt);
                 $paie->primes = $pr;
                 $paie->save();
-                if ($d['type'] === 'historique' && ! empty($d['cloturer'])) {
+                if ($cloturer) {
                     $R = PaieCalc::mois($client, $mois, true);
                     $paie->update(['resultats' => $R, 'totaux' => PaieCalc::totaux($R), 'statut' => 'val']);
                 }
                 $faits[] = $mois;
             }
         });
-
-        $this->log('Paie : import du pointage ('.($faits ? implode(', ', $faits) : 'aucun mois').')', $client->id);
-        $msg = $faits ? 'Pointage importé pour '.implode(', ', array_map('mois_fr', $faits)).'.' : 'Aucun pointage importé.';
-        if ($clos) $msg .= ' Ignoré (paie déjà clôturée) : '.implode(', ', array_map('mois_fr', $clos)).'.';
-        if ($inconnus) $msg .= ' Employé(s) non reconnu(s) : '.implode(', ', array_slice(array_unique($inconnus), 0, 5)).'.';
-        if ($erreurs) $msg .= ' '.implode(' ; ', array_slice($erreurs, 0, 3)).'.';
-        return redirect()->route('paie.index', ['mois' => $d['type'] === 'mensuel' ? $d['mois'] : (end($faits) ?: now()->format('Y-m'))])
-            ->with($faits && ! $inconnus && ! $erreurs && ! $clos ? 'ok' : 'err', $msg);
+        return [$faits, $clos];
     }
 
     /** Classeur Excel d'une feuille : en-têtes en gras, colonnes de texte (identifiants, dates saisies) au format Texte. */
@@ -299,7 +315,7 @@ class PaieDossierController extends Controller
     }
 
     /** Colonne du fichier de pointage reconnue d'après son en-tête. */
-    private function colonnePointage(string $entete): ?string
+    public static function colonnePointage(string $entete): ?string
     {
         $s = Str::slug($entete);
         return match (true) {

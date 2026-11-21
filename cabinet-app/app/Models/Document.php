@@ -10,16 +10,15 @@ class Document extends Model
 {
     use AppartientAuCabinet;
 
-    /** Catégories proposées au client quand il envoie des documents au cabinet (toutes présentes dans la GED). */
-    public const CATEGORIES_ENVOI_CLIENT = ['Factures d’achat', 'Factures de vente', 'Relevés bancaires', 'Documents de paie',
-        'Courrier et correspondance', 'Statuts', 'Patente', 'Extrait RNE', 'CIN du gérant', 'Autres documents'];
+    /** Types de documents envoyés par le client et leur traitement : App\Support\TypesPieces. */
 
     /** Fichiers acceptés en GED comme dans l'espace client. */
     public const REGLE_FICHIER = 'file|max:20480|mimes:pdf,jpg,jpeg,png,webp,txt,csv,doc,docx,xls,xlsx,odt,ods,zip';
 
     protected $table = 'documents';
     protected $guarded = [];
-    protected $casts = ['date' => 'date', 'partage' => 'boolean', 'partage_at' => 'datetime', 'consulte_at' => 'datetime', 'traite_at' => 'datetime'];
+    protected $casts = ['date' => 'date', 'partage' => 'boolean', 'partage_at' => 'datetime', 'consulte_at' => 'datetime', 'traite_at' => 'datetime',
+        'resultat' => 'array', 'traitement_at' => 'datetime'];
 
     public function client() { return $this->belongsTo(Client::class); }
     public function user() { return $this->belongsTo(User::class); }

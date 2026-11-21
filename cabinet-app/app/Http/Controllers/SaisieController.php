@@ -163,6 +163,7 @@ class SaisieController extends Controller
             $fv->update(['statut' => 'val', 'valide_par' => auth()->id()]);
         });
         $this->log('Validation de la facture de vente '.$fv->tiers.' '.$fv->reference, $fv->client_id);
+        \App\Services\TraitementPieces::apresValidation($fv->document_id);
         return back()->with('ok', 'Facture validée et comptabilisée au journal des ventes.');
     }
 
@@ -170,6 +171,7 @@ class SaisieController extends Controller
     {
         if ($fv->statut === 'val') return back()->with('err', 'Facture déjà comptabilisée.');
         $fv->update(['statut' => 'rej', 'motif_rejet' => $r->input('motif') ?: 'Rejetée par le chef comptable']);
+        \App\Services\TraitementPieces::apresValidation($fv->document_id);
         return back()->with('ok', 'Facture rejetée.');
     }
 }

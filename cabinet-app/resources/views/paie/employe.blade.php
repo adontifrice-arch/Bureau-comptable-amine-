@@ -214,6 +214,16 @@
                         <input type="file" name="{{ $type }}_fichier" class="input-sm">{!! $err($type.'_fichier') !!}
                     </fieldset>
                 @endforeach
+                @if($docs->where('type', 'autre')->isNotEmpty())
+                    <fieldset class="space-y-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700"><legend class="px-1 text-xs font-semibold uppercase text-slate-400">Autres documents (reçus du client)</legend>
+                        <div class="divide-y divide-slate-100 rounded-lg border border-slate-200 text-sm dark:divide-slate-800 dark:border-slate-700">
+                            @foreach($docs->where('type', 'autre') as $p)
+                                <div class="flex items-center justify-between gap-2 px-3 py-1.5"><a href="{{ route('paie.employes.piece', $p) }}" target="_blank" class="truncate text-brand-700 hover:underline">{{ $p->nom }}</a>
+                                    <button type="submit" form="piece-{{ $p->id }}" class="text-xs text-rose-600 hover:underline">Supprimer</button></div>
+                            @endforeach
+                        </div>
+                    </fieldset>
+                @endif
                 <p class="text-xs text-slate-400 lg:col-span-4">Les fichiers choisis sont ajoutés en cliquant sur « Enregistrer ». Ils sont conservés dans un espace privé, accessible aux seuls utilisateurs du cabinet.</p>
             </div>
 

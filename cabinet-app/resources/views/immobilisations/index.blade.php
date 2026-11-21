@@ -13,7 +13,7 @@
     </x-page-header>
     @unless($chef)<div class="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800"><x-icon name="lock" class="h-4 w-4"/> Vous saisissez sans droit de validation : vous n’avez pas le droit de comptabiliser les dotations et les acquisitions.</div>@endunless
 
-    <x-tabs :active="$tab" :items="['registre' => ['Registre ('.$biens->count().')', $u('registre')], 'dotations' => ['Dotations '.$exercice, $u('dotations')], 'etats' => ['États imprimables', $u('etats')]]"/>
+    <x-tabs :active="$tab" :items="['registre' => ['Registre ('.$biens->count().')', $u('registre')], 'dotations' => ['Dotations '.$exercice, $u('dotations')], 'etats' => ['États imprimables', $u('etats')], 'recus' => ['Documents reçus'.(($nbRecus = \App\Models\Document::where('client_id', $client->id)->where('destination', 'immobilisations')->whereIn('traitement', ['en_attente', 'propose', 'a_saisir', 'erreur'])->count()) ? ' ('.$nbRecus.')' : ''), route('immobilisations.recus', ['client' => $client->id])]]"/>
 
     <div x-data="{ e: {}, natures: @js($natures), nouveau() { this.e = { nature: 'informatique', methode: 'lineaire', prorata: 'jour', taux: 33.33, date_mise_service: '{{ now()->format('Y-m-d') }}' }; this.$dispatch('open-modal', 'immo') } }">
     @if($tab === 'registre')

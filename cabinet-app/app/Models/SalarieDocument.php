@@ -13,7 +13,7 @@ class SalarieDocument extends Model
     protected $table = 'salarie_documents';
     protected $guarded = [];
 
-    public const TYPES = ['photo' => 'Photo', 'cin1' => 'CIN — 1re face', 'cin2' => 'CIN — 2e face', 'contrat' => 'Contrat', 'diplome' => 'Diplôme'];
+    public const TYPES = ['photo' => 'Photo', 'cin1' => 'CIN — 1re face', 'cin2' => 'CIN — 2e face', 'contrat' => 'Contrat', 'diplome' => 'Diplôme', 'autre' => 'Autre document'];
 
     public function salarie() { return $this->belongsTo(Salarie::class); }
 }

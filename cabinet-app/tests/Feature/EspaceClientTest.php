@@ -154,7 +154,7 @@ class EspaceClientTest extends TestCase
     public function test_le_client_envoie_des_documents_au_cabinet(): void
     {
         $u = $this->acces($this->client);
-        $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['categorie' => 'Relevés bancaires', 'message' => 'Janvier à mars',
+        $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['type_piece' => 'releve_bancaire', 'message' => 'Janvier à mars',
             'fichiers' => [UploadedFile::fake()->create('releve-janvier.pdf', 100, 'application/pdf'), UploadedFile::fake()->create('releve-fevrier.pdf', 100, 'application/pdf')]])
             ->assertSessionHas('ok');
 
@@ -179,10 +179,10 @@ class EspaceClientTest extends TestCase
     public function test_l_envoi_refuse_une_categorie_ou_un_fichier_non_autorise(): void
     {
         $u = $this->acces($this->client);
-        $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['categorie' => 'Statuts', 'fichiers' => [UploadedFile::fake()->create('virus.exe', 10)]])
+        $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['type_piece' => 'juridique', 'fichiers' => [UploadedFile::fake()->create('virus.exe', 10)]])
             ->assertSessionHasErrors('fichiers.0');
-        $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['categorie' => 'PV d’AGE', 'fichiers' => [UploadedFile::fake()->create('a.pdf', 10)]])
-            ->assertSessionHasErrors('categorie');
+        $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['type_piece' => 'inexistant', 'fichiers' => [UploadedFile::fake()->create('a.pdf', 10)]])
+            ->assertSessionHasErrors('type_piece');
         $this->assertSame(0, CabinetCourant::pour($this->chef->cabinet_id, fn () => Document::count()));
     }
 

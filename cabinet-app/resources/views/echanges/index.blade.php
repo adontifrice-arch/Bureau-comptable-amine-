@@ -30,6 +30,15 @@
                             {{ $d->categorie }} · {{ $d->created_at->format('d/m/Y H:i') }}{{ $d->deposant ? ' · '.$d->deposant->name : '' }} · {{ $d->taillePourAffichage() }}
                         </div>
                         @if($d->description)<div class="mt-0.5 text-xs text-slate-600 dark:text-slate-400">« {{ $d->description }} »</div>@endif
+                        @if($d->type_piece && $d->destination !== 'ged')
+                            @php [$ls, $bs] = \App\Support\TypesPieces::STATUTS[$d->traitement] ?? ['Classé', 'badge-gray'];
+                                 $boite = ['compta' => 'compta.recues', 'immobilisations' => 'immobilisations.recus', 'paie' => 'paie.recus'][$d->destination] ?? null; @endphp
+                            <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                                <span class="badge-gray">{{ \App\Support\TypesPieces::DESTINATIONS[$d->destination] }}</span><span class="{{ $bs }}">{{ $ls }}</span>
+                                <span class="text-slate-500">{{ $d->traitement_message }}</span>
+                                @if($boite && $d->client && auth()->user()->peutModule(\App\Support\Droits::moduleDeRoute($boite)))<a href="{{ route($boite, ['client' => $d->client_id]) }}" class="font-medium text-brand-700 hover:underline">Ouvrir →</a>@endif
+                            </div>
+                        @endif
                         @if($d->traite_at)<div class="text-[11px] text-emerald-700">Traité le {{ $d->traite_at->format('d/m/Y') }}{{ $d->traitePar ? ' par '.$d->traitePar->name : '' }}</div>@endif
                     </div>
                     <a href="{{ route('ged.download', $d) }}" class="btn-icon" title="Télécharger"><x-icon name="download" class="h-4 w-4"/></a>
