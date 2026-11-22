@@ -32,6 +32,7 @@
             ['immobilisations.index', 'Immobilisations', 'briefcase', 'immobilisations.*'],
             ['paie.index', 'Paie', 'wallet', 'paie.*'],
             ['liasse.index', 'Liasse fiscale', 'scale', 'liasse.*'],
+            ['rne.index', 'RNE', 'list', 'rne.*'],
             ['declarations.index', 'Déclarations', 'file-text', 'declarations.*'],
             ['audit.index', 'Audit & CAC', 'shield', 'audit.*'],
             ['ged.index', 'GED', 'folder', 'ged.*'],

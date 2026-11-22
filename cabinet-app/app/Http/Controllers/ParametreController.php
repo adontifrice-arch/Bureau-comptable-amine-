@@ -52,6 +52,43 @@ class ParametreController extends Controller
         return redirect()->route('parametres.index', ['tab' => 'fiscal'])->with('ok', 'Taux de la CSS enregistré : '.str_replace('.', ',', (string) +$d['css']).' %.');
     }
 
+    /** Certificat de signature électronique (ANCE/TunTrust, fichier .p12/.pfx) pour les factures El Fatoora. */
+    public function elfatooraCertificat(Request $r)
+    {
+        $r->validate(['certificat' => 'required|file|max:100', 'certificat_mdp' => 'required|string|max:200'],
+            ['certificat.required' => 'Choisissez le fichier du certificat (.p12 ou .pfx).', 'certificat_mdp.required' => 'Indiquez le mot de passe du certificat.']);
+        if (! in_array(strtolower($r->file('certificat')->getClientOriginalExtension()), ['p12', 'pfx'], true)) {
+            return $this->versElFatoora()->with('err', 'Le certificat doit être un fichier .p12 ou .pfx.');
+        }
+        try {
+            $i = \App\Services\ElFatoora\ElFatoora::enregistrerCertificat($r->file('certificat')->get(), $r->input('certificat_mdp'));
+        } catch (\RuntimeException $e) {
+            return $this->versElFatoora()->with('err', $e->getMessage());
+        }
+        $this->log('Certificat de signature El Fatoora importé ('.$i['titulaire'].')');
+        return $this->versElFatoora()->with('ok', 'Certificat de '.$i['titulaire'].' enregistré, valable jusqu’au '.dfr($i['fin']).'.');
+    }
+
+    public function elfatooraCertificatRetirer()
+    {
+        \App\Services\ElFatoora\ElFatoora::retirerCertificat();
+        $this->log('Certificat de signature El Fatoora retiré');
+        return $this->versElFatoora()->with('ok', 'Certificat retiré.');
+    }
+
+    public function elfatooraAcces(Request $r)
+    {
+        $d = $r->validate(['url' => 'nullable|url|max:255', 'login' => 'nullable|max:100', 'mdp' => 'nullable|max:200', 'role' => 'nullable|max:60']);
+        \App\Services\ElFatoora\ElFatoora::enregistrerAcces($d);
+        $this->log('Accès au web service El Fatoora modifiés');
+        return $this->versElFatoora()->with('ok', 'Accès El Fatoora enregistrés.');
+    }
+
+    private function versElFatoora()
+    {
+        return redirect()->route('parametres.index', ['tab' => 'elfatoora']);
+    }
+
     /** Nouveau lien d'invitation : l'ancien cesse de fonctionner. */
     public function invitation(Request $r)
     {

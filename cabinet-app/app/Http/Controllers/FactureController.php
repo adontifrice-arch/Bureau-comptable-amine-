@@ -6,8 +6,10 @@ use App\Models\Client;
 use App\Models\Facture;
 use App\Models\Service;
 use App\Models\Setting;
+use App\Services\ElFatoora\ElFatoora;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class FactureController extends Controller
 {
@@ -60,20 +62,26 @@ class FactureController extends Controller
 
     public function edit(Facture $facture)
     {
+        if ($facture->teifVerrouillee()) return redirect()->route('factures.show', $facture)->with('err', 'Facture transmise à El Fatoora : elle ne peut plus être modifiée.');
         return $this->form($facture, $facture->lignes->map(fn ($l) => ['designation' => $l->designation, 'quantite' => (float) $l->quantite, 'prix_unitaire' => (float) $l->prix_unitaire])->all());
     }
 
     public function update(Request $r, Facture $facture)
     {
+        if ($facture->teifVerrouillee()) return redirect()->route('factures.show', $facture)->with('err', 'Facture transmise à El Fatoora : elle ne peut plus être modifiée (établissez une facture d’avoir).');
         DB::transaction(function () use ($r, $facture) {
             $facture->update($this->valider($r, $facture));
             $this->syncLignes($facture, $r);
         });
-        return redirect()->route('factures.show', $facture)->with('ok', 'Document enregistré.');
+        $signee = $facture->teif_statut === 'signee';
+        ElFatoora::invalider($facture);
+        return redirect()->route('factures.show', $facture)->with('ok', 'Document enregistré.'.($signee ? ' La signature électronique a été annulée : signez de nouveau la facture.' : ''));
     }
 
     public function destroy(Facture $facture)
     {
+        if ($facture->teifVerrouillee()) return back()->with('err', 'Facture transmise à El Fatoora : elle ne peut pas être supprimée.');
+        ElFatoora::invalider($facture);
         $type = $facture->type;
         $facture->delete();
         return redirect()->route('factures.index', ['type' => $type])->with('ok', 'Document supprimé.');
@@ -99,35 +107,57 @@ class FactureController extends Controller
         return redirect()->route('factures.edit', $f)->with('ok', 'Facture '.$f->numero.' créée à partir du devis '.$facture->numero.'.');
     }
 
-    /** Brouillon XML TEIF (facture électronique TTN / El Fatoora) — à valider avec le XSD officiel. */
+    /** XML TEIF non signé, contrôlé contre le XSD officiel (facture électronique El Fatoora). */
     public function teif(Facture $facture)
     {
-        $facture->load(['client', 'lignes']);
-        $c = $facture->client; $cab = Setting::cabinet(); $t = $facture->totaux();
-        $e = fn ($s) => htmlspecialchars((string) $s, ENT_XML1);
-        $a3 = fn ($n) => number_format((float) $n, 3, '.', '');
-        $d6 = fn ($d) => $d ? $d->format('dmy') : '';
-        $moa = fn ($code, $n) => '<Moa amountTypeCode="'.$code.'" currencyCodeList="ISO_4217"><Amount currencyIdentifier="TND">'.$a3($n).'</Amount></Moa>';
-        $part = fn ($fn, $mf, $nom, $adr) => '<PartnerDetails functionCode="'.$fn.'"><Nad><PartnerIdentifier type="I-01">'.$e($mf).'</PartnerIdentifier><PartnerName nameType="Qualification">'.$e($nom).'</PartnerName><PartnerAdresses lang="fr"><AdressDescription>'.$e($adr).'</AdressDescription><Country codeList="ISO_3166-1">TN</Country></PartnerAdresses></Nad></PartnerDetails>';
-        $w = [];
-        if (! $cab['mf']) $w[] = 'matricule fiscal du cabinet manquant';
-        if (! $c->matricule_fiscal) $w[] = 'matricule fiscal du client manquant';
-        $x = ['<?xml version="1.0" encoding="UTF-8"?>', '<!-- Brouillon TEIF non signé : à valider avec le XSD officiel de TTN avant dépôt sur El Fatoora. -->'];
-        foreach ($w as $m) $x[] = "<!-- ATTENTION : $m -->";
-        $x[] = '<TEIF controlingAgency="TTN" version="1.8.8">';
-        $x[] = '<InvoiceHeader><MessageSenderIdentifier type="I-01">'.$e($cab['mf']).'</MessageSenderIdentifier><MessageRecieverIdentifier type="I-01">'.$e($c->matricule_fiscal).'</MessageRecieverIdentifier></InvoiceHeader>';
-        $x[] = '<InvoiceBody><Bgm><DocumentIdentifier>'.$e($facture->numero).'</DocumentIdentifier><DocumentType code="I-11">Facture</DocumentType></Bgm>';
-        $x[] = '<Dtm><DateText format="ddMMyy" functionCode="I-31">'.$d6($facture->date).'</DateText>'.($facture->echeance ? '<DateText format="ddMMyy" functionCode="I-32">'.$d6($facture->echeance).'</DateText>' : '').'</Dtm>';
-        $x[] = '<PartnerSection>'.$part('I-62', $cab['mf'], $cab['nom'], $cab['adresse']).$part('I-64', $c->matricule_fiscal, $c->nom, $c->adresse).'</PartnerSection>';
-        $x[] = '<LinSection>';
-        foreach ($facture->lignes as $i => $l) {
-            $x[] = '<Lin><ItemIdentifier>'.($i + 1).'</ItemIdentifier><LinImd lang="fr"><ItemCode>'.($i + 1).'</ItemCode><ItemDescription>'.$e($l->designation).'</ItemDescription></LinImd><LinQty><Quantity measurementUnit="UNIT">'.$a3($l->quantite).'</Quantity></LinQty><LinTax><TaxTypeName code="I-1602">TVA</TaxTypeName><TaxDetails><TaxRate>'.$a3($facture->tva_taux).'</TaxRate></TaxDetails></LinTax><LinMoa><MoaDetails>'.$moa('I-183', $l->prix_unitaire).'</MoaDetails><MoaDetails>'.$moa('I-171', $l->quantite * $l->prix_unitaire).'</MoaDetails></LinMoa></Lin>';
+        abort_if($facture->estDevis(), 404);
+        try {
+            $xml = ElFatoora::teifControle($facture);
+        } catch (\RuntimeException $e) {
+            return back()->with('err', $e->getMessage());
         }
-        $x[] = '</LinSection><InvoiceMoa><AmountDetails>'.$moa('I-176', $t['ht']).'</AmountDetails><AmountDetails>'.$moa('I-181', $t['tva']).'</AmountDetails><AmountDetails>'.$moa('I-180', $t['ttc']).'</AmountDetails></InvoiceMoa>';
-        $x[] = '<InvoiceTax><InvoiceTaxDetails><Tax><TaxTypeName code="I-1602">TVA</TaxTypeName><TaxDetails><TaxRate>'.$a3($facture->tva_taux).'</TaxRate></TaxDetails></Tax><AmountDetails>'.$moa('I-177', $t['ht']).'</AmountDetails><AmountDetails>'.$moa('I-178', $t['tva']).'</AmountDetails></InvoiceTaxDetails>';
-        if ($t['timbre'] > 0) $x[] = '<InvoiceTaxDetails><Tax><TaxTypeName code="I-1601">droit de timbre</TaxTypeName><TaxDetails><TaxRate>0</TaxRate></TaxDetails></Tax><AmountDetails>'.$moa('I-178', $t['timbre']).'</AmountDetails></InvoiceTaxDetails>';
-        $x[] = '</InvoiceTax></InvoiceBody></TEIF>';
-        return response(implode("\n", $x), 200, ['Content-Type' => 'application/xml', 'Content-Disposition' => 'attachment; filename="TEIF-'.$facture->numero.'.xml"']);
+        return response($xml, 200, ['Content-Type' => 'application/xml', 'Content-Disposition' => 'attachment; filename="TEIF-'.$facture->numero.'.xml"']);
+    }
+
+    /** XML signé (ou validé par TTN), nommé d'après le numéro de facture comme l'exige El Fatoora. */
+    public function teifSigne(Facture $facture)
+    {
+        abort_unless($facture->teif_fichier && Storage::disk('local')->exists($facture->teif_fichier), 404);
+        return response(Storage::disk('local')->get($facture->teif_fichier), 200, ['Content-Type' => 'application/xml',
+            'Content-Disposition' => 'attachment; filename="'.$facture->numero.'.xml"']);
+    }
+
+    public function teifSigner(Facture $facture)
+    {
+        return $this->elfatoora($facture, function () use ($facture) {
+            ElFatoora::signer($facture);
+            $this->log('Facture '.$facture->numero.' signée électroniquement (TEIF)', $facture->client_id);
+            return 'Facture signée (XAdES) : prête pour le dépôt sur El Fatoora.';
+        });
+    }
+
+    public function teifDeposer(Facture $facture)
+    {
+        return $this->elfatoora($facture, function () use ($facture) {
+            $m = ElFatoora::deposer($facture);
+            $this->log('Facture '.$facture->numero.' déposée sur El Fatoora', $facture->client_id);
+            return 'Facture déposée sur El Fatoora.'.($m !== '' ? ' Réponse : '.$m : '');
+        });
+    }
+
+    public function teifConsulter(Facture $facture)
+    {
+        return $this->elfatoora($facture, fn () => ElFatoora::consulter($facture));
+    }
+
+    private function elfatoora(Facture $facture, \Closure $action)
+    {
+        abort_if($facture->estDevis(), 404);
+        try {
+            return back()->with('ok', $action());
+        } catch (\RuntimeException $e) {
+            return back()->with('err', $e->getMessage());
+        }
     }
 
     // ---------- Chiffre d'affaires ----------

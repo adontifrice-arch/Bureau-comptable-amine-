@@ -29,6 +29,7 @@ class Droits
         'immobilisations' => ['Immobilisations', ['immobilisations.*']],
         'paie' => ['Paie', ['paie.*']],
         'liasse' => ['Liasse fiscale', ['liasse.*']],
+        'rne' => ['RNE', ['rne.*']],
         'declarations' => ['Déclarations', ['declarations.*']],
         'audit' => ['Audit & CAC', ['audit.*']],
         'ged' => ['GED', ['ged.*']],

@@ -15,6 +15,7 @@ Application Laravel 12 de gestion d’un cabinet d’expertise comptable (Tunisi
 | **Comptabilité** | Factures reçues (saisie, lecture IA optionnelle, validation par le chef comptable → journal des achats), paie à comptabiliser, écritures manuelles, journal, balance générale, grand livre, plan comptable |
 | **Paie** | Salariés, calcul mensuel (CNSS, IRPP au barème, CSS, TFP, FOPROLOS — taux paramétrables), clôture, bulletins |
 | **Liasse fiscale** | Bilan, état de résultat (N et N-1), tableau de passage au résultat fiscal, impression des états financiers |
+| **RNE** | Dépôt des états financiers : bilan, état de résultat, flux, notes et liste des associés en PDF (classés en GED), PV d’AGO et rapport du CAC importés après approbation, dossier ZIP, délai et suivi du dépôt ; check-lists des 95 formalités du RNE (documents demandés, redevance, délais) cochées par client |
 | **Déclarations** | Mensuelle (TVA, retenues, CSS, TFP…), annuelle (IS / IRPP), employeur (annexes 1 à 7) — pré-remplissage depuis la comptabilité et la paie, validation, export |
 | **Audit & CAC** | Missions, questionnaire de contrôle interne (OECT), programme de travail, contrôles automatiques, constats, honoraires au barème, projet de rapport éditable, piste d’audit |
 | **GED** | Classement des documents par client et catégorie, complétude des 9 pièces de base, recherche |
@@ -78,6 +79,13 @@ Dans son espace, le client choisit le **type** de documents qu’il envoie ; cha
 Rien n’est comptabilisé sans validation : chaque proposition se valide dans son journal par un utilisateur autorisé. Chaque module a sa boîte « Documents reçus » (Comptabilité → Pièces reçues, Immobilisations → Documents reçus, Paie → Documents reçus du client), où l’on peut aussi reclasser un document mal typé, le relire ou le marquer comme saisi à la main.
 
 La lecture automatique utilise l’API Claude : renseignez `ANTHROPIC_API_KEY` dans `.env` (modèle : `ANTHROPIC_MODEL`). Sans clé, les documents arrivent dans leur module « à saisir » ; les relevés Excel / CSV et les pointages Excel sont importés quand même.
+
+### Formalités du RNE
+
+Les formalités du Registre National des Entreprises et leurs check-lists (documents demandés, redevance, délais, observations) sont reprises du site officiel (https://home.registre-entreprises.tn/formalites/) et de la fiche PDF de chaque formalité. Elles sont conservées dans `database/data/rne_formalites.json` ; pour les mettre à jour quand le RNE change ses fiches :
+```bat
+php artisan rne:formalites
+```
 
 ### Espace client et e-mails
 

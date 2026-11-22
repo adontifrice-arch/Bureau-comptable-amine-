@@ -1,5 +1,6 @@
 {{-- États financiers complets (modèle du cabinet) : garde, sommaire, bilan, état de résultat, flux de trésorerie, notes --}}
 @php
+    $partie = $partie ?? 'complet';   // complet | bilan | resultat | flux | notes (pièces séparées pour le dépôt au RNE)
     use App\Services\EtatsFinanciers as EF;
     $m = fn ($v) => EF::montant($v);
     $N = $ef['N']; $P = $ef['N1']; $F = $ef['F']; $F1 = $ef['F1']; $notes = $ef['notes'];
@@ -71,6 +72,7 @@
     <div class="actions"><button onclick="window.print()">Imprimer</button> <a href="{{ route('liasse.etats-financiers', ['annee' => $an, 'format' => 'pdf']) }}">Télécharger le PDF</a></div>
 @endif
 
+@if($partie === 'complet')
 {{-- Page de garde --}}
 <div class="page">{!! $entete !!}
     <div class="garde">
@@ -92,7 +94,9 @@
 </div>
 
 <div class="page">{!! $entete !!}<div class="intercalaire">ÉTATS FINANCIERS ARRÊTÉS<br>AU {{ $date }}</div>{!! $pied !!}</div>
+@endif
 
+@if(in_array($partie, ['complet', 'bilan'], true))
 {{-- Bilan : actifs --}}
 <div class="page">{!! $entete !!}
     <div class="societe">{{ $client->nom }}</div><h2>BILAN</h2><div class="soustitre">(Exprimés en dinars)</div>
@@ -148,7 +152,9 @@
         {!! $l('Total des capitaux propres & passifs', '', $N['P']['total'], $P['P']['total'], 'grand') !!}
     </tbody></table>{!! $pied !!}
 </div>
+@endif
 
+@if(in_array($partie, ['complet', 'resultat'], true))
 {{-- État de résultat (modèle autorisé) --}}
 <div class="page">{!! $entete !!}
     <div class="societe">{{ $client->nom }}</div><h2>ÉTAT DE RÉSULTAT</h2><div class="soustitre">(Exprimés en dinars)</div>
@@ -182,7 +188,9 @@
         {!! $l('Résultat après modifications comptables', '', $R['ram'], $R1['ram'], 'grand') !!}
     </tbody></table>{!! $pied !!}
 </div>
+@endif
 
+@if(in_array($partie, ['complet', 'flux'], true))
 {{-- État des flux de trésorerie (modèle autorisé) --}}
 <div class="page">{!! $entete !!}
     <div class="societe">{{ $client->nom }}</div><h2>ÉTAT DES FLUX DE TRÉSORERIE</h2><div class="soustitre">(Exprimés en dinars)</div>
@@ -220,9 +228,13 @@
         {!! $f('Trésorerie à la clôture de l’exercice', 'tresorerie_fin', 'grand') !!}
     </tbody></table>{!! $pied !!}
 </div>
+@endif
 
+@if($partie === 'complet')
 <div class="page">{!! $entete !!}<div class="intercalaire">NOTES AUX ÉTATS FINANCIERS<br>ARRÊTÉS AU {{ $date }}</div>{!! $pied !!}</div>
+@endif
 
+@if(in_array($partie, ['complet', 'notes'], true))
 {{-- Notes : présentation, référentiel, principes comptables --}}
 <div class="page texte">{!! $entete !!}
     <h2>NOTES AUX ÉTATS FINANCIERS ARRÊTÉS AU {{ $date }}</h2>
@@ -293,5 +305,6 @@
     @endforelse
     {!! $pied !!}
 </div>
+@endif
 </body>
 </html>

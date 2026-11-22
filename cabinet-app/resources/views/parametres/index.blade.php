@@ -1,7 +1,7 @@
 @php $chef = auth()->user()->estChef(); @endphp
 <x-layouts.app title="Paramètres">
     <x-page-header title="Paramètres"/>
-    <x-tabs :active="$tab" :items="array_filter(['cabinet' => $chef ? ['Cabinet', '?tab=cabinet'] : null, 'fiscal' => $chef ? ['Fiscalité', '?tab=fiscal'] : null, 'users' => $chef ? ['Utilisateurs'.(($p = $users->where('status', 'pending')->count()) ? ' ('.$p.' en attente)' : ''), '?tab=users'] : null, 'sauvegardes' => $chef ? ['Sauvegardes', '?tab=sauvegardes'] : null, 'compte' => ['Mon compte', '?tab=compte']])"/>
+    <x-tabs :active="$tab" :items="array_filter(['cabinet' => $chef ? ['Cabinet', '?tab=cabinet'] : null, 'fiscal' => $chef ? ['Fiscalité', '?tab=fiscal'] : null, 'elfatoora' => $chef ? ['Facture électronique', '?tab=elfatoora'] : null, 'users' => $chef ? ['Utilisateurs'.(($p = $users->where('status', 'pending')->count()) ? ' ('.$p.' en attente)' : ''), '?tab=users'] : null, 'sauvegardes' => $chef ? ['Sauvegardes', '?tab=sauvegardes'] : null, 'compte' => ['Mon compte', '?tab=compte']])"/>
     @if($tab === 'cabinet' && $chef)
         <form method="POST" action="{{ route('parametres.cabinet') }}" enctype="multipart/form-data" class="grid gap-6 lg:grid-cols-3">@csrf
             <div class="card lg:col-span-2"><div class="card-h"><h2 class="card-t">Coordonnées (en-tête des factures et documents)</h2></div>
@@ -45,6 +45,51 @@
                 <button class="btn-primary">Enregistrer</button>
             </div>
         </form>
+    @elseif($tab === 'elfatoora' && $chef)
+        @php $ef = \App\Services\ElFatoora\ElFatoora::reglages(); $ci = $ef['certificat_infos']; @endphp
+        <div class="grid gap-6 lg:grid-cols-2">
+            <div class="card">
+                <div class="card-h"><h2 class="card-t">Certificat de signature électronique</h2></div>
+                <div class="card-b space-y-4">
+                    @if($ci)
+                        @php $expire = $ci['fin'] < now()->toDateString(); $bientot = ! $expire && $ci['fin'] < now()->addDays(30)->toDateString(); @endphp
+                        <dl class="grid grid-cols-3 gap-y-1 text-sm">
+                            <dt class="text-slate-500">Titulaire</dt><dd class="col-span-2 font-medium">{{ $ci['titulaire'] }}</dd>
+                            @if($ci['organisation'])<dt class="text-slate-500">Organisation</dt><dd class="col-span-2">{{ $ci['organisation'] }}</dd>@endif
+                            <dt class="text-slate-500">Émis par</dt><dd class="col-span-2">{{ $ci['emetteur'] }}</dd>
+                            <dt class="text-slate-500">Validité</dt><dd class="col-span-2">du {{ dfr($ci['debut']) }} au {{ dfr($ci['fin']) }}
+                                @if($expire)<span class="badge-red">Expiré</span>@elseif($bientot)<span class="badge-amber">Expire bientôt</span>@else<span class="badge-green">Valide</span>@endif</dd>
+                        </dl>
+                        <form method="POST" action="{{ route('parametres.elfatoora.certificat.retirer') }}" onsubmit="return confirm('Retirer le certificat de signature ?')">@csrf @method('DELETE')<button class="btn-secondary">Retirer le certificat</button></form>
+                    @else
+                        <p class="text-sm text-slate-500">Aucun certificat : les factures ne peuvent pas être signées depuis l’application.</p>
+                    @endif
+                    <form method="POST" action="{{ route('parametres.elfatoora.certificat') }}" enctype="multipart/form-data" class="space-y-3 border-t pt-4">@csrf
+                        <div><label class="label" for="ef-cert">{{ $ci ? 'Remplacer par un autre certificat' : 'Importer le certificat' }} (.p12 / .pfx)</label>
+                            <input id="ef-cert" type="file" name="certificat" accept=".p12,.pfx" class="input" required>
+                            @error('certificat')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
+                        <div><label class="label" for="ef-cmdp">Mot de passe du certificat</label>
+                            <input id="ef-cmdp" type="password" name="certificat_mdp" class="input" autocomplete="off" required>
+                            @error('certificat_mdp')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
+                        <button class="btn-primary">Enregistrer le certificat</button>
+                    </form>
+                    <p class="text-xs text-slate-400">Certificat délivré par l’ANCE (TunTrust) au nom du cabinet. Il est conservé chiffré sur le serveur.
+                        Les certificats sur clé USB (token) ou à distance (DigiGo, Mobile ID) ne sont pas exportables en .p12 : signez alors le XML TEIF avec l’outil fourni par l’ANCE ou TTN, puis déposez-le sur El Fatoora.</p>
+                </div>
+            </div>
+            <form method="POST" action="{{ route('parametres.elfatoora.acces') }}" class="card">@csrf
+                <div class="card-h"><h2 class="card-t">Accès au web service El Fatoora</h2></div>
+                <div class="card-b space-y-4">
+                    <x-field label="Identifiant El Fatoora" name="login" :value="$ef['login']" autocomplete="off"/>
+                    <div><label class="label" for="ef-mdp">Mot de passe El Fatoora</label>
+                        <input id="ef-mdp" type="password" name="mdp" class="input" autocomplete="new-password" placeholder="{{ $ef['mdp'] ? '•••••••• (inchangé si vide)' : '' }}"></div>
+                    <x-field label="Adresse du web service" name="url" :value="$ef['url']" hint="Production : {{ \App\Services\ElFatoora\WebService::URL_PRODUCTION }} — saisissez l’adresse de test communiquée par TTN pour la phase d’intégration."/>
+                    <x-field label="Rôle du signataire" name="role" :value="$ef['role']" hint="Rôle déclaré dans la signature (ClaimedRole) : « Fournisseur » par défaut."/>
+                    <p class="text-xs text-slate-400">Matricule transmis : celui du cabinet ({{ $c['mf'] ?: 'non renseigné' }}). Les factures sont signées en XAdES-B (RSA-SHA256), selon la politique de signature de Tunisie TradeNet (OID 2.16.788.1.2.1.3).</p>
+                    <button class="btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
     @elseif($tab === 'users' && $chef)
         <div class="mb-6 grid gap-6 lg:grid-cols-2">
             <div class="card card-b" x-data="{ copie: false }">

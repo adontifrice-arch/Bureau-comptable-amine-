@@ -83,6 +83,10 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::patch('facturation/{facture}/statut', [C\FactureController::class, 'statut'])->name('factures.statut');
     Route::post('facturation/{facture}/convertir', [C\FactureController::class, 'convertir'])->name('factures.convertir');
     Route::get('facturation/{facture}/teif', [C\FactureController::class, 'teif'])->name('factures.teif');
+    Route::get('facturation/{facture}/teif/signe', [C\FactureController::class, 'teifSigne'])->name('factures.teif.signe');
+    Route::post('facturation/{facture}/teif/signer', [C\FactureController::class, 'teifSigner'])->name('factures.teif.signer');
+    Route::post('facturation/{facture}/teif/deposer', [C\FactureController::class, 'teifDeposer'])->name('factures.teif.deposer');
+    Route::post('facturation/{facture}/teif/consulter', [C\FactureController::class, 'teifConsulter'])->name('factures.teif.consulter');
 
     // ---------- Notes de frais & dépenses ----------
     Route::get('frais', [C\FraisController::class, 'index'])->name('frais.index');
@@ -292,6 +296,15 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::get('ged/{document}/telecharger', [C\GedController::class, 'download'])->name('ged.download');
     Route::delete('ged/{document}', [C\GedController::class, 'destroy'])->name('ged.destroy');
 
+    // ---------- RNE : dépôt des états financiers, check-lists des formalités ----------
+    Route::get('rne', [C\RneController::class, 'index'])->name('rne.index');
+    Route::post('rne/{client}/{exercice}/generer', [C\RneController::class, 'generer'])->whereNumber('exercice')->name('rne.generer');
+    Route::post('rne/{client}/{exercice}/depot', [C\RneController::class, 'enregistrer'])->whereNumber('exercice')->name('rne.enregistrer');
+    Route::post('rne/{client}/{exercice}/pieces/{piece}', [C\RneController::class, 'importer'])->whereNumber('exercice')->name('rne.importer');
+    Route::delete('rne/{client}/{exercice}/pieces/{piece}', [C\RneController::class, 'retirer'])->whereNumber('exercice')->name('rne.retirer');
+    Route::get('rne/{client}/{exercice}/zip', [C\RneController::class, 'zip'])->whereNumber('exercice')->name('rne.zip');
+    Route::post('rne/{client}/checklist', [C\RneController::class, 'cocher'])->name('rne.cocher');
+
     // ---------- Documents reçus des clients : boîtes des modules, propositions, import paie ----------
     Route::get('comptabilite/pieces-recues', [C\PiecesRecuesController::class, 'compta'])->name('compta.recues');
     Route::put('comptabilite/ecritures-proposees/{ep}', [C\PiecesRecuesController::class, 'ecritureUpdate'])->name('compta.proposees.update');
@@ -319,6 +332,9 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::get('parametres', [C\ParametreController::class, 'index'])->name('parametres.index');
     Route::post('parametres/cabinet', [C\ParametreController::class, 'cabinet'])->middleware('chef')->name('parametres.cabinet');
     Route::post('parametres/fiscal', [C\ParametreController::class, 'fiscal'])->middleware('chef')->name('parametres.fiscal');
+    Route::post('parametres/elfatoora/certificat', [C\ParametreController::class, 'elfatooraCertificat'])->middleware('chef')->name('parametres.elfatoora.certificat');
+    Route::delete('parametres/elfatoora/certificat', [C\ParametreController::class, 'elfatooraCertificatRetirer'])->middleware('chef')->name('parametres.elfatoora.certificat.retirer');
+    Route::post('parametres/elfatoora/acces', [C\ParametreController::class, 'elfatooraAcces'])->middleware('chef')->name('parametres.elfatoora.acces');
     Route::post('parametres/mot-de-passe', [C\ParametreController::class, 'password'])->name('parametres.password');
     Route::patch('parametres/utilisateurs/{user}', [C\ParametreController::class, 'user'])->middleware('chef')->name('parametres.user');
     Route::delete('parametres/utilisateurs/{user}', [C\ParametreController::class, 'userDestroy'])->middleware('chef')->name('parametres.user.destroy');

@@ -30,3 +30,10 @@ Artisan::command('sauvegardes:auto', function () {
 
 // Documents reçus des clients : lecture et aiguillage en arrière-plan (tâches en file), traités chaque minute
 \Illuminate\Support\Facades\Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=1')->everyMinute()->withoutOverlapping();
+
+// Formalités du RNE et leurs check-lists (documents demandés), relues sur le site officiel
+Artisan::command('rne:formalites', function () {
+    $this->info('Lecture de '.\App\Services\Rne\Formalites::PAGE.' et des fiches de chaque formalité…');
+    $n = \App\Services\Rne\Formalites::actualiser(fn ($code) => $this->line('  '.$code));
+    $this->info("$n formalité(s) enregistrée(s) dans database/data/rne_formalites.json.");
+})->purpose('Met à jour les formalités du RNE et leurs check-lists depuis le site officiel');

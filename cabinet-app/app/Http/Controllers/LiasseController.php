@@ -223,10 +223,24 @@ class LiasseController extends Controller
         $client = $this->dossier($r);
         abort_unless($client, 404);
         $annee = (int) $r->input('annee', now()->year);
-        $data = ['client' => $client, 'ef' => \App\Services\EtatsFinanciers::calculer($client, $annee), 'infos' => self::infosEtats($client)];
-        if ($r->input('format') !== 'pdf') return view('liasse.etats-financiers', $data + ['impression' => true]);
+        $partie = in_array($r->input('partie'), self::PARTIES, true) ? $r->input('partie') : 'complet';
+        if ($r->input('format') !== 'pdf') {
+            return view('liasse.etats-financiers', ['client' => $client, 'ef' => \App\Services\EtatsFinanciers::calculer($client, $annee),
+                'infos' => self::infosEtats($client), 'impression' => true, 'partie' => $partie]);
+        }
+        return response(self::pdfEtats($client, $annee, $partie), 200, ['Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.\Illuminate\Support\Str::slug(($partie === 'complet' ? 'etats-financiers' : $partie).'-'.$annee.'-'.$client->nom).'.pdf"']);
+    }
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('liasse.etats-financiers', $data + ['impression' => false])
+    /** Parties des états financiers éditables séparément (dépôt au RNE). */
+    public const PARTIES = ['complet', 'bilan', 'resultat', 'flux', 'notes'];
+
+    /** PDF paginé des états financiers (ou d'une de leurs parties) : contenu binaire. */
+    public static function pdfEtats(Client $client, int $annee, string $partie = 'complet'): string
+    {
+        $data = ['client' => $client, 'ef' => \App\Services\EtatsFinanciers::calculer($client, $annee), 'infos' => self::infosEtats($client),
+            'impression' => false, 'partie' => $partie];
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('liasse.etats-financiers', $data)
             ->setPaper('a4', 'portrait')->setOption(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Sans']);
         $dom = $pdf->getDomPDF();
         $dom->render();
@@ -240,7 +254,6 @@ class LiasseController extends Controller
         $c->line(42, $h - 40, $l - 42, $h - 40, $gris, 0.5);
         $c->page_text(42, $h - 32, $client->nom, $police, 7.5, $gris);
         if ($client->matricule_fiscal) $c->page_text($l - 160, $h - 32, $client->matricule_fiscal, $police, 7.5, $gris);
-        return response($dom->output(), 200, ['Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="'.\Illuminate\Support\Str::slug('etats-financiers-'.$annee.'-'.$client->nom).'.pdf"']);
+        return $dom->output();
     }
 }
