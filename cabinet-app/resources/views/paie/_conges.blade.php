@@ -27,7 +27,10 @@
         <div><label class="label">Nombre de jours <span class="font-normal text-slate-400">(vide : jours ouvrables de la période)</span></label><input type="number" step="0.5" min="0" name="jours" value="{{ old('jours') }}" class="input"></div>
         <div><label class="label">Observation</label><input name="observation" value="{{ old('observation') }}" class="input"></div>
         <p class="text-xs text-slate-400">Le congé payé est décompté du solde et payé dans la paie du mois (colonne Congé de Saisie Paie, si elle n’est pas saisie) ; le congé exceptionnel est payé sans être décompté ; le congé sans solde est retiré des jours payés ; le congé de maladie est noté pour mémoire.</p>
-        <div class="flex justify-end"><button class="btn-primary"><x-icon name="plus" class="h-4 w-4"/> Enregistrer le congé</button></div>
+        <div class="flex flex-wrap justify-end gap-2">
+            <button type="submit" formaction="{{ route('paie.conges.demande') }}" formmethod="GET" formtarget="_blank" class="btn-secondary" title="Imprimer la demande de congé de cette période, sans l’enregistrer"><x-icon name="printer" class="h-4 w-4"/> Demande de congé</button>
+            <button class="btn-primary"><x-icon name="plus" class="h-4 w-4"/> Enregistrer le congé</button>
+        </div>
     </form>
 
     <div class="card overflow-x-auto">
@@ -56,7 +59,7 @@
             <tr><td class="font-medium">{{ $c->salarie?->nomComplet() }}</td>
                 <td><span class="{{ ['paye' => 'badge-green', 'exceptionnel' => 'badge-amber', 'sans_solde' => 'badge-gray', 'maladie' => 'badge-gray'][$c->type] ?? 'badge-gray' }}">{{ $types[$c->type] ?? $c->type }}</span></td>
                 <td>{{ $c->du->format('d/m/Y') }}</td><td>{{ $c->au->format('d/m/Y') }}</td><td class="num">{{ $nb($c->jours) }}</td><td class="text-xs text-slate-500">{{ $c->observation }}</td>
-                <td class="text-right"><form method="POST" action="{{ route('paie.conges.destroy', $c) }}" onsubmit="return confirm('Supprimer ce congé ?')">@csrf @method('DELETE')<button class="btn-icon text-rose-600" title="Supprimer"><x-icon name="trash" class="h-4 w-4"/></button></form></td></tr>
+                <td class="whitespace-nowrap text-right"><a href="{{ route('paie.conges.demande', ['conge' => $c->id, 'mois' => $mois]) }}" target="_blank" class="btn-icon" title="Demande de congé"><x-icon name="printer" class="h-4 w-4"/></a><form method="POST" action="{{ route('paie.conges.destroy', $c) }}" class="inline" onsubmit="return confirm('Supprimer ce congé ?')">@csrf @method('DELETE')<button class="btn-icon text-rose-600" title="Supprimer"><x-icon name="trash" class="h-4 w-4"/></button></form></td></tr>
         @empty <tr><td colspan="7"><x-empty icon="calendar" title="Aucun congé saisi en {{ $annee }}"/></td></tr> @endforelse
         </tbody>
     </table>

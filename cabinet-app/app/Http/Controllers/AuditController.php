@@ -148,7 +148,7 @@ class AuditController extends Controller
         $pt = Paie::where('client_id', $c->id)->where('mois', 'like', "$y-%")->where('statut', 'transmise')->pluck('mois');
         $add('Paies transmises non comptabilisées', $pt->count() ? 'warn' : 'ok', $pt->count() ? $pt->map(fn ($m) => mois_fr($m))->implode(', ') : 'Toutes les paies clôturées sont comptabilisées.');
         $PE = Salarie::where('client_id', $c->id)->get();
-        if ($PE->count()) { $pm = $PE->filter(fn ($e) => ! $e->cin || ! $e->cnss); $add('Fiches des salariés complètes (CIN et numéro CNSS)', $pm->count() ? 'warn' : 'ok', $pm->count() ? $pm->pluck('nom')->implode(', ') : 'Fiches complètes.'); }
+        if ($PE->count()) { $pf = \App\Models\PaieProfil::parNom($c); $pm = $PE->filter(fn ($e) => ! $e->cin || (! $e->cnss && ! $e->cnssFacultatif($pf))); $add('Fiches des salariés complètes (CIN et numéro CNSS)', $pm->count() ? 'warn' : 'ok', $pm->count() ? $pm->pluck('nom')->implode(', ') : 'Fiches complètes.'); }
         $late = [];
         for ($m = 1; $m <= 12; $m++) {
             $mo = sprintf('%d-%02d', $y, $m); if ($mo >= now()->format('Y-m')) break;

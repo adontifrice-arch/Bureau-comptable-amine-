@@ -1,27 +1,52 @@
-{{-- Échéancier d'un prêt (société ou CNSS) : échéances mensuelles retenues sur la paie et reste dû. --}}
-@php $reste = (float) $pret->montant; $n = 0; @endphp
-<x-layouts.app :title="'Échéancier — '.$pret->salarie?->nomComplet()">
-    <div class="no-print"><x-page-header :title="'Échéancier — '.\App\Models\Pret::TYPES[$pret->type]" :subtitle="$pret->salarie?->nomComplet()" :back="route('paie.index', ['tab' => 'prets', 'type' => $pret->type, 'mois' => $pret->premier_mois])">
-        <button onclick="window.print()" class="btn-primary"><x-icon name="printer" class="h-4 w-4"/> Imprimer</button>
-    </x-page-header></div>
-    <x-doc-sheet :titre="'ÉCHÉANCIER — '.mb_strtoupper(\App\Models\Pret::TYPES[$pret->type])" :numero="$pret->reference">
-        <div class="mb-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-            <span class="text-slate-500">Employeur</span><span>{{ $client->nom }}</span>
-            <span class="text-slate-500">Salarié</span><span class="font-semibold">{{ $pret->salarie?->nomComplet() }}{{ $pret->salarie?->matricule ? ' (mat. '.$pret->salarie->matricule.')' : '' }}</span>
-            <span class="text-slate-500">Date du prêt</span><span>{{ $pret->date->format('d/m/Y') }}</span>
-            <span class="text-slate-500">Montant</span><span class="font-mono">{{ tnd($pret->montant) }}</span>
-            <span class="text-slate-500">Remboursement</span><span>{{ $pret->nb_echeances }} échéance(s) de {{ tnd($pret->echeance) }}, retenues sur la paie</span>
+{{--
+    Échéancier de prêt du salarié : un prêt, ou tous les prêts d'un salarié (Prêt → Échéancier de prêt (salarié)).
+    Chaque échéance mensuelle retenue sur la paie, son état (retenue sur une paie clôturée, soldée par le STC, à venir) et le reste dû.
+--}}
+@extends('paie.documents.layout', ['titre' => 'Échéancier de prêt — '.$salarie->nomComplet(), 'retour' => route('paie.index', ['tab' => 'prets', 'type' => $prets->first()?->type ?? 'societe', 'mois' => $mois])])
+@section('corps')
+    @php ['resp' => $resp, 'respQ' => $respQ, 'ville' => $ville] = \App\Support\DocPaie::employeur($client); @endphp
+    <div class="feuille" contenteditable="true" spellcheck="false">
+        @include('paie.documents._entete')
+        <h1>Échéancier de prêt<small>{{ $prets->count() > 1 ? $prets->count().' prêts' : \App\Models\Pret::TYPES[$prets->first()->type] }} — situation à fin {{ mois_fr($mois) }}</small></h1>
+        <div class="infos">
+            <div><span>Salarié</span><span><b>{{ $salarie->nomComplet() }}</b>{{ $salarie->matricule ? ' — matricule '.$salarie->matricule : '' }}</span></div>
+            <div><span>CIN</span><span>{{ $salarie->cin ?: '……………' }}</span></div>
+            <div><span>Qualification</span><span>{{ $salarie->poste ?: '……………' }}</span></div>
         </div>
-        <table class="w-full text-sm">
-            <thead><tr class="bg-slate-100 text-left text-xs uppercase text-slate-600"><th class="px-3 py-2">N°</th><th class="px-3 py-2">Paie de</th><th class="px-3 py-2 text-right">Échéance</th><th class="px-3 py-2 text-right">Reste dû</th></tr></thead>
-            <tbody>
-            @foreach($pret->echeancier() as $m => $e)
-                @php $reste = r3($reste - $e); @endphp
-                <tr class="border-b border-slate-200"><td class="px-3 py-1.5">{{ ++$n }}</td><td class="px-3 py-1.5 capitalize">{{ mois_fr($m) }}</td><td class="px-3 py-1.5 text-right font-mono">{{ tnd($e, false) }}</td><td class="px-3 py-1.5 text-right font-mono">{{ tnd($reste, false) }}</td></tr>
-            @endforeach
-            </tbody>
-        </table>
-        <div class="mt-10 grid grid-cols-2 gap-8 text-sm"><div class="font-semibold">Pour l’employeur</div><div class="font-semibold">Le salarié <span class="text-xs font-normal text-slate-500">(lu et approuvé)</span></div></div>
-        <div class="h-16"></div>
-    </x-doc-sheet>
-</x-layouts.app>
+
+        @php $totaux = ['montant' => 0.0, 'rembourse' => 0.0, 'reste' => 0.0]; @endphp
+        @foreach($prets as $p)
+            @php
+                $sit = $p->situation($mois);
+                foreach (['rembourse', 'reste'] as $c) $totaux[$c] += $sit[$c];
+                $totaux['montant'] += $p->montant;
+                $reste = (float) $p->montant; $n = 0;
+            @endphp
+            <div class="cadre">
+                <b>{{ \App\Models\Pret::TYPES[$p->type] }}</b>{{ $p->reference ? ' — réf. '.$p->reference : '' }} accordé le {{ $p->date->format('d/m/Y') }} :
+                <b>{{ tnd($p->montant) }}</b>, remboursable en {{ $p->nb_echeances }} échéance(s) mensuelle(s) de {{ tnd($p->echeance) }} retenue(s) sur le salaire,
+                de {{ mois_fr($p->premier_mois) }} à {{ $p->dernierMois() ? mois_fr($p->dernierMois()) : '—' }}.@if($p->observation) <i>{{ $p->observation }}</i>@endif
+            </div>
+            <table class="t">
+                <tr><th class="c" style="width: 8%">N°</th><th>Paie de</th><th class="n">Échéance</th><th class="n">Remboursé</th><th class="n">Reste dû</th><th class="c">État</th></tr>
+                @foreach($p->echeancier() as $m => $ech)
+                    @php $reste = r3($reste - $ech); $etat = ! empty($sit['stc']) && $m > $sit['stc'] ? 'Soldée par le STC' : (in_array($m, $closes, true) ? 'Retenue' : ($m <= $mois ? 'En cours' : 'À venir')); @endphp
+                    <tr><td class="c">{{ ++$n }}</td><td style="text-transform: capitalize">{{ mois_fr($m) }}</td><td class="n">{{ tnd($ech, false) }}</td>
+                        <td class="n">{{ tnd(r3((float) $p->montant - $reste), false) }}</td><td class="n">{{ tnd($reste, false) }}</td><td class="c">{{ $etat }}</td></tr>
+                @endforeach
+                <tr class="total"><td colspan="2">Situation à fin {{ mois_fr($mois) }}</td><td class="n">{{ tnd($p->montant, false) }}</td><td class="n">{{ tnd($sit['rembourse'], false) }}</td><td class="n">{{ tnd($sit['reste'], false) }}</td><td></td></tr>
+            </table>
+        @endforeach
+
+        @if($prets->count() > 1)
+            <table class="t"><tr class="total"><td>Total des prêts</td><td class="n">{{ tnd($totaux['montant']) }}</td><td>Remboursé</td><td class="n">{{ tnd($totaux['rembourse']) }}</td><td>Reste dû</td><td class="n">{{ tnd($totaux['reste']) }}</td></tr></table>
+        @endif
+
+        <p style="font-size: 9pt">Le salarié autorise l’employeur à retenir chaque mois sur son salaire les échéances ci-dessus. En cas de départ de l’entreprise, le reste dû est retenu sur le solde de tout compte.</p>
+        <p>Fait à {{ $ville }}, le {{ now()->format('d/m/Y') }}.</p>
+        <div class="deux">
+            <div><b>Le salarié</b><br><span style="font-size: 8.5pt">(signature précédée de « Lu et approuvé »)</span><div class="sig"></div></div>
+            <div style="text-align: right"><b>Pour l’employeur</b><br><span style="font-size: 8.5pt">{{ $resp }}, {{ $respQ }}</span><div class="sig"></div></div>
+        </div>
+    </div>
+@endsection

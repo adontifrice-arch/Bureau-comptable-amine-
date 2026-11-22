@@ -69,10 +69,31 @@ class PaiePretController extends Controller
         return back()->with('ok', 'Prêt supprimé'.($pret->type === 'societe' ? ', avec son écriture de versement.' : '.'));
     }
 
+    /** Échéancier d'un prêt. */
     public function echeancier(Request $r, Pret $pret)
     {
         $client = $this->dossier($r);
         abort_unless($pret->client_id === $client?->id, 404);
-        return view('paie.echeancier_pret', ['client' => $client, 'pret' => $pret->load('salarie')]);
+        return $this->vueEcheancier($r, $client, $pret->salarie, collect([$pret]));
+    }
+
+    /** Échéancier de prêt (salarié) : tous les prêts du salarié, d'un type ou de tous les types. */
+    public function echeancierSalarie(Request $r)
+    {
+        $client = $this->dossier($r);
+        $d = $r->validate(['salarie' => 'required|integer', 'type' => 'nullable|in:tous,'.implode(',', array_keys(Pret::TYPES)), 'mois' => 'nullable|date_format:Y-m'],
+            ['salarie.required' => 'Choisissez le salarié.']);
+        $s = Salarie::where('client_id', $client->id)->findOrFail((int) $d['salarie']);
+        $prets = Pret::where('client_id', $client->id)->where('salarie_id', $s->id)
+            ->when(($d['type'] ?? 'tous') !== 'tous', fn ($q) => $q->where('type', $d['type']))->orderBy('date')->get();
+        if ($prets->isEmpty()) return back()->with('err', $s->nomComplet().' n’a aucun prêt'.(($d['type'] ?? 'tous') !== 'tous' ? ' de ce type' : '').'.');
+        return $this->vueEcheancier($r, $client, $s, $prets);
+    }
+
+    private function vueEcheancier(Request $r, $client, Salarie $s, $prets)
+    {
+        $mois = preg_match('/^\d{4}-\d{2}$/', (string) $r->input('mois')) ? $r->input('mois') : now()->format('Y-m');
+        $closes = Paie::where('client_id', $client->id)->normale()->where('statut', '!=', 'brouillon')->pluck('mois')->all();
+        return view('paie.echeancier_pret', ['client' => $client, 'salarie' => $s, 'prets' => $prets, 'mois' => $mois, 'closes' => $closes]);
     }
 }

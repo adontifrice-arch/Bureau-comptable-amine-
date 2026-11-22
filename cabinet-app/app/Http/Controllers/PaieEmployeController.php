@@ -20,9 +20,12 @@ class PaieEmployeController extends Controller
 {
     public const DOCUMENTS = [
         'attestation-travail' => 'Attestation de travail',
-        'attestation-salaire' => 'Attestation de salaire',
+        'attestation-salaire' => 'Attestation de salaire mensuelle',
+        'attestation-salaire-annuelle' => 'Attestation de salaire annuelle',
         'certificat-travail' => 'Certificat de travail',
         'certificat-retenue' => 'Certificat de retenue',
+        'attestation-cnss' => 'Attestation des salaires déclarés à la CNSS',
+        'recu-vetements' => 'Reçu de vêtements de travail',
         'contrat' => 'Contrat de travail',
         'demission' => 'Démission',
     ];
@@ -120,33 +123,124 @@ class PaieEmployeController extends Controller
         return EtatsEmployes::etat($etat, $client, $d['statut'] ?? 'tous', $d['mois'] ?? now()->format('Y-m'))->reponse($format);
     }
 
-    /** Documents RH : attestations, certificats, contrat de travail, lettre de démission. */
+    /** Documents RH : attestations, certificats, contrat de travail, lettre de démission, reçu de vêtements de travail. */
     public function rh(Request $r, Salarie $salarie, string $type)
     {
         $client = $this->dossier($r);
         abort_unless($salarie->client_id === $client->id && isset(self::DOCUMENTS[$type]), 404);
         $d = $r->validate(['annee' => 'nullable|integer|min:2000|max:2100', 'mois' => 'nullable|date_format:Y-m', 'pdf' => 'nullable|boolean']);
-        $data = ['client' => $client, 'e' => $salarie, 'type' => $type, 'titre' => self::DOCUMENTS[$type], 'pdf' => $r->boolean('pdf'),
+        $annee = (int) ($d['annee'] ?? now()->year);
+        $page = ['e' => $salarie];
+        switch ($type) {
+            case 'attestation-salaire':
+                $mois = $d['mois'] ?? now()->format('Y-m');
+                $page += ['mois' => $mois, 'paie' => collect(PaieCalc::mois($client, $mois, true))->firstWhere('salarie_id', $salarie->id)];
+                break;
+            case 'attestation-salaire-annuelle':
+                $page += $this->dernierSalaire($client, $salarie, $d['mois'] ?? now()->format('Y-m'));
+                break;
+            case 'certificat-retenue':
+                $page += ['annee' => $annee, 'cumul' => $this->cumulsAnnuels($client, $annee)[$salarie->id] ?? self::cumulVide()];
+                break;
+            case 'attestation-cnss':
+                $page += ['annee' => $annee, 'trimestres' => $this->salairesDeclaresCnss($client, $annee)[$salarie->id] ?? $this->trimestresVides($annee)];
+                break;
+            case 'recu-vetements':
+                $page += ['annee' => $annee];
+                break;
+        }
+        $nom = self::DOCUMENTS[$type].' '.$salarie->nomComplet().' '.(in_array($type, ['certificat-retenue', 'attestation-cnss'], true) ? $annee : '');
+        return $this->rendreRh($client, $type, [$page], $r->boolean('pdf'), $nom);
+    }
+
+    /**
+     * Certificat de retenue de tous les employés payés dans l'année : un certificat par page, à imprimer ou en un seul PDF.
+     */
+    public function rhTous(Request $r, string $type)
+    {
+        $client = $this->dossier($r);
+        abort_unless($client && $type === 'certificat-retenue', 404);
+        $annee = (int) ($r->validate(['annee' => 'nullable|integer|min:2000|max:2100', 'pdf' => 'nullable|boolean'])['annee'] ?? now()->year);
+        $cumuls = $this->cumulsAnnuels($client, $annee);
+        $salaries = PaieCalc::trier(Salarie::where('client_id', $client->id)->whereIn('id', array_keys($cumuls))->get(), 'nom');
+        if ($salaries->isEmpty()) return back()->with('err', 'Aucun salaire versé en '.$annee.' : pas de certificat de retenue à établir.');
+        $pages = $salaries->map(fn ($e) => ['e' => $e, 'annee' => $annee, 'cumul' => $cumuls[$e->id]])->values()->all();
+        return $this->rendreRh($client, $type, $pages, $r->boolean('pdf'), 'Certificats de retenue '.$annee.' tous les employes');
+    }
+
+    private function rendreRh(Client $client, string $type, array $pages, bool $pdf, string $nomFichier)
+    {
+        $data = ['client' => $client, 'type' => $type, 'titre' => self::DOCUMENTS[$type], 'pdf' => $pdf, 'pages' => $pages,
             'k' => $client->paie_config ?? [], 'cab' => Setting::cabinet()];
-        if ($type === 'attestation-salaire') {
-            $mois = $d['mois'] ?? now()->format('Y-m');
-            $data['mois'] = $mois;
-            $data['paie'] = collect(PaieCalc::mois($client, $mois, true))->firstWhere('salarie_id', $salarie->id);
-        }
-        if ($type === 'certificat-retenue') {
-            $annee = (int) ($d['annee'] ?? now()->year);
-            $cumul = array_fill_keys(['brut', 'cnssS', 'ir', 'css', 'net'], 0.0);
-            foreach (range(1, 12) as $m) {
-                $x = collect(PaieCalc::mois($client, sprintf('%d-%02d', $annee, $m)))->firstWhere('salarie_id', $salarie->id);
-                if ($x) foreach ($cumul as $c => $_) $cumul[$c] = r3($cumul[$c] + $x[$c]);
-            }
-            $data += ['annee' => $annee, 'cumul' => $cumul];
-        }
-        if ($data['pdf']) {
+        if ($pdf) {
             return Pdf::loadView('paie.documents.rh', $data)->setPaper('a4')->setOption(['isRemoteEnabled' => false, 'defaultFont' => 'DejaVu Sans'])
-                ->download(Str::slug(self::DOCUMENTS[$type].' '.$salarie->nomComplet().' '.($data['annee'] ?? '')).'.pdf');
+                ->download(Str::slug(trim($nomFichier)).'.pdf');
         }
         return view('paie.documents.rh', $data);
+    }
+
+    private static function cumulVide(): array
+    {
+        return array_fill_keys(['brut', 'cnssS', 'ir', 'css', 'net'], 0.0);
+    }
+
+    /** Cumuls de l'année par salarié (brut, CNSS, IRPP, CSS, net) : salariés ayant perçu un salaire dans l'année. */
+    private function cumulsAnnuels(Client $client, int $annee): array
+    {
+        $par = [];
+        foreach (range(1, 12) as $m) {
+            foreach (PaieCalc::mois($client, sprintf('%d-%02d', $annee, $m)) as $x) {
+                $par[$x['salarie_id']] ??= self::cumulVide();
+                foreach ($par[$x['salarie_id']] as $c => $v) $par[$x['salarie_id']][$c] = r3($v + $x[$c]);
+            }
+        }
+        return array_filter($par, fn ($c) => abs($c['brut']) > 0.0005);
+    }
+
+    /**
+     * Attestation de salaire annuelle : dernier salaire connu au plus tard le mois choisi (jusqu'à douze mois en arrière),
+     * multiplié par 12.
+     */
+    private function dernierSalaire(Client $client, Salarie $e, string $mois): array
+    {
+        $m = \Carbon\Carbon::parse($mois.'-01');
+        for ($i = 0; $i < 12; $i++, $m->subMonth()) {
+            $x = collect(PaieCalc::mois($client, $m->format('Y-m'), $i === 0))->firstWhere('salarie_id', $e->id);
+            if ($x && $x['brut'] > 0) return ['mois' => $m->format('Y-m'), 'paie' => $x];
+        }
+        return ['mois' => $mois, 'paie' => null];
+    }
+
+    /** Trimestres de l'année, chacun avec ses trois mois à zéro. */
+    private function trimestresVides(int $annee): array
+    {
+        $t = [];
+        foreach ([1, 2, 3, 4] as $q) {
+            $t[$q] = ['mois' => [], 'total' => 0.0];
+            foreach (range(3 * $q - 2, 3 * $q) as $mm) $t[$q]['mois'][sprintf('%d-%02d', $annee, $mm)] = 0.0;
+        }
+        return $t;
+    }
+
+    /**
+     * Salaires déclarés à la CNSS (assiette des déclarations trimestrielles : paie du mois et paies spéciales rattachées,
+     * employés inclus dans la déclaration CNSS), par salarié, trimestre et mois.
+     */
+    private function salairesDeclaresCnss(Client $client, int $annee): array
+    {
+        $par = [];
+        foreach (range(1, 12) as $mm) {
+            $m = sprintf('%d-%02d', $annee, $mm);
+            $q = intdiv($mm - 1, 3) + 1;
+            foreach (PaieCalc::moisDeclares($client, $m) as $x) {
+                if (! ($x['decl_cnss'] ?? true)) continue;
+                $par[$x['salarie_id']] ??= $this->trimestresVides($annee);
+                $v = (float) ($x['base_cnss'] ?? $x['brut']);
+                $par[$x['salarie_id']][$q]['mois'][$m] = r3($par[$x['salarie_id']][$q]['mois'][$m] + $v);
+                $par[$x['salarie_id']][$q]['total'] = r3($par[$x['salarie_id']][$q]['total'] + $v);
+            }
+        }
+        return $par;
     }
 
     private function prochainMatricule(Client $client): string
@@ -172,8 +266,8 @@ class PaieEmployeController extends Controller
             'parents_charge' => 'nullable|integer|min:0|max:4',
             // Informations spécifiques
             'poste' => 'required|max:100', 'regime' => 'required|in:mensuel,horaire', 'conges_acquis' => 'required|numeric|min:0|max:200', 'conges_report' => 'nullable|numeric|min:-366|max:1000', 'conges_report_annee' => 'nullable|required_with:conges_report|integer|min:1990|max:2100',
-            'categorie' => 'required|max:50', 'categorie_debut' => 'nullable|date', 'categorie_fin' => 'nullable|date|after_or_equal:categorie_debut',
-            'echelon' => 'required|max:50', 'echelon_debut' => 'nullable|date', 'echelon_fin' => 'nullable|date|after_or_equal:echelon_debut',
+            'categorie' => 'nullable|max:50', 'categorie_debut' => 'nullable|date', 'categorie_fin' => 'nullable|date|after_or_equal:categorie_debut',
+            'echelon' => 'nullable|max:50', 'echelon_debut' => 'nullable|date', 'echelon_fin' => 'nullable|date|after_or_equal:echelon_debut',
             'salaire_base' => 'required|numeric|min:0', 'profil' => 'nullable|max:255', 'profil_debut' => 'nullable|date', 'profil_fin' => 'nullable|date|after_or_equal:profil_debut',
             'cnss_assujetti' => 'nullable|boolean', 'cnss' => 'nullable|max:30', 'nb_bulletin' => 'required|integer|min:1|max:5',
             'assurance_vie' => 'nullable|numeric|min:0', 'cea' => 'nullable|numeric|min:0', 'interets_bancaires' => 'nullable|numeric|min:0',

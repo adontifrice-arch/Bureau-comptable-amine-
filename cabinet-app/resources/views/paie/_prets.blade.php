@@ -49,6 +49,7 @@
                 <div class="card-h"><h3 class="card-t">{{ $titre }} ({{ $liste->count() }})</h3>
                     @if($loop->first)<span class="flex gap-3 text-xs">
                         <a href="{{ route('paie.edition', ['prets-etat', 'imprimer', 'mois' => $mois, 'type' => $typePret]) }}" target="_blank" class="text-brand-600 hover:underline">Etat des prêts</a>
+                        <button type="button" x-data @click="$dispatch('open-modal', 'paie-echeancier-salarie')" class="text-brand-600 hover:underline">Échéancier (salarié)</button>
                         <a href="{{ route('paie.edition', ['prets-retenues', 'imprimer', 'mois' => $mois, 'type' => $typePret]) }}" target="_blank" class="text-brand-600 hover:underline">Retenues du mois</a></span>@endif</div>
                 <table class="tbl text-sm">
                     <thead><tr><th>Salarié</th><th>Date</th><th class="text-right">Montant</th><th class="text-right">Échéance</th><th>Période</th><th class="text-right">Ce mois</th><th class="text-right">Reste dû</th><th></th></tr></thead>
@@ -60,7 +61,7 @@
                             <td class="text-xs">{{ mois_fr($p->premier_mois) }} → {{ $p->dernierMois() ? mois_fr($p->dernierMois()) : '—' }}</td>
                             <td class="num">{{ ($m = $p->echeanceDuMois($mois)) ? n3($m) : '—' }}</td><td class="num font-semibold">{{ n3($s['reste']) }}@if(! empty($s['stc']))<div class="text-xs font-normal text-slate-500">soldé par le STC de {{ mois_fr($s['stc']) }}</div>@endif</td>
                             <td class="whitespace-nowrap text-right">
-                                <a href="{{ route('paie.prets.echeancier', $p) }}" target="_blank" class="btn-icon" title="Échéancier"><x-icon name="list" class="h-4 w-4"/></a>
+                                <a href="{{ route('paie.prets.echeancier', [$p, 'mois' => $mois]) }}" target="_blank" class="btn-icon" title="Échéancier de prêt"><x-icon name="list" class="h-4 w-4"/></a>
                                 <form method="POST" action="{{ route('paie.prets.destroy', $p) }}" class="inline" onsubmit="return confirm('Supprimer ce prêt ?')">@csrf @method('DELETE')<button class="btn-icon text-rose-600" title="Supprimer"><x-icon name="trash" class="h-4 w-4"/></button></form>
                             </td></tr>
                     @empty <tr><td colspan="8" class="py-6 text-center text-sm text-slate-400">Aucun prêt.</td></tr> @endforelse

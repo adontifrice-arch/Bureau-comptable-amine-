@@ -121,10 +121,10 @@
                         @if($e->exists)@php $sc = \App\Services\PaieCalc::soldeConges($e, now()->format('Y-m')); $jj = fn ($v) => rtrim(rtrim(number_format((float) $v, 2, ',', ' '), '0'), ','); @endphp
                             <p class="mt-1 text-xs text-slate-500">Solde à ce jour : report {{ $jj($sc['report']) }} j + acquis {{ now()->year }} {{ $jj($sc['acquis']) }} j − pris {{ $jj($sc['pris']) }} j = <b>{{ $jj($sc['reste']) }} j</b></p>@endif
                     </div>
-                    <div><label class="label">Catégorie {!! $req !!}</label><input name="categorie" list="l-categories" value="{{ $v('categorie') }}" class="input">{!! $err('categorie') !!}</div>
+                    <div><label class="label">Catégorie</label><input name="categorie" list="l-categories" value="{{ $v('categorie') }}" class="input">{!! $err('categorie') !!}</div>
                     <div><label class="label">Début catégorie</label><input type="date" name="categorie_debut" value="{{ $v('categorie_debut') }}" class="input"></div>
                     <div><label class="label">Fin catégorie</label><input type="date" name="categorie_fin" value="{{ $v('categorie_fin') }}" class="input">{!! $err('categorie_fin') !!}</div>
-                    <div><label class="label">Échelon {!! $req !!}</label><input name="echelon" list="l-echelons" value="{{ $v('echelon') }}" class="input">{!! $err('echelon') !!}</div>
+                    <div><label class="label">Échelon</label><input name="echelon" list="l-echelons" value="{{ $v('echelon') }}" class="input">{!! $err('echelon') !!}</div>
                     <div><label class="label">Début échelon</label><input type="date" name="echelon_debut" value="{{ $v('echelon_debut') }}" class="input"></div>
                     <div><label class="label">Fin échelon</label><input type="date" name="echelon_fin" value="{{ $v('echelon_fin') }}" class="input">{!! $err('echelon_fin') !!}</div>
                     <div><label class="label"><span x-text="regime === 'horaire' ? 'Taux horaire' : 'Salaire de base'"></span> {!! $req !!}</label><input type="number" step="0.001" min="0" name="salaire_base" value="{{ $v('salaire_base') }}" class="input">{!! $err('salaire_base') !!}</div>

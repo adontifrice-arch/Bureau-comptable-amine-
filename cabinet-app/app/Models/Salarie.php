@@ -62,6 +62,20 @@ class Salarie extends Model
         return trim($this->nom.' '.$this->prenom);
     }
 
+    /**
+     * Le n° d'affiliation CNSS n'est pas exigé des employés non déclarés à la CNSS : profil CIVP, gérant, ou tout profil
+     * non « Inclue dans la Déclaration CNSS » ; ni des employés non assujettis. $profils : PaieProfil::parNom() du dossier.
+     */
+    public function cnssFacultatif(?\Illuminate\Support\Collection $profils = null): bool
+    {
+        if (! $this->cnss_assujetti && $this->cnss_assujetti !== null) return true;
+        $nom = mb_strtolower(trim((string) $this->profil));
+        if ($nom === '') return false;
+        if (in_array(\Illuminate\Support\Str::ascii($nom), ['civp', 'gerant', 'sivp'], true)) return true;
+        $p = ($profils ?? PaieProfil::parNom($this->client))->get($nom);
+        return $p !== null && ! $p->decl_cnss;
+    }
+
     public function estActif(): bool
     {
         return $this->etat_presence !== 'sorti';

@@ -140,9 +140,9 @@
     <p class="mt-4 text-xs text-slate-400">Contrats, date de naissance, profil, catégorie et échelon se renseignent dans la fiche de l’employé (Employé → Liste des employés).</p>
 </x-modal>
 
-{{-- Calculatrice : calculs libres et simulateur brut ↔ net --}}
+{{-- Calculatrice : calculs libres, simulateur brut ↔ net et simulateur net → brut --}}
 <x-modal name="paie-calculatrice" title="Calculatrice">
-    <div x-data="{
+    <div @paie-net-brut.window="t = 'nb'; $nextTick(() => $refs.net?.focus())" x-data="{
             t: 'calc', ecran: '0', neuf: true,
             touche(k) {
                 if (k === 'C') { this.ecran = '0'; this.neuf = true; return; }
@@ -160,11 +160,19 @@
                 const rep = await fetch('{{ route('paie.simulation') }}?' + q, { headers: { Accept: 'application/json' } });
                 if (rep.ok) this.r = await rep.json(); else { this.r = null; this.err = 'Montant invalide.'; }
             },
+            n: { montant: '', chef: false, enfants: 0, parents: 0, profil: '' }, rn: null, errn: '',
+            async netBrut() {
+                this.errn = ''; if (!this.n.montant) { this.rn = null; return; }
+                const q = new URLSearchParams({ montant: this.n.montant, sens: 'net', chef: this.n.chef ? 1 : 0, enfants: this.n.enfants || 0, parents: this.n.parents || 0, profil: this.n.profil });
+                const rep = await fetch('{{ route('paie.simulation') }}?' + q, { headers: { Accept: 'application/json' } });
+                if (rep.ok) this.rn = await rep.json(); else { this.rn = null; this.errn = 'Montant invalide.'; }
+            },
             f(v) { return Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
         }" @keydown.window="if (open && t === 'calc' && document.activeElement.tagName !== 'INPUT') { const m = { '*': '×', '/': '÷', 'Enter': '=', 'Backspace': '←', 'Escape': 'C', '.': ',' }; const k = m[$event.key] ?? $event.key; if ('0123456789,+-×÷%=←C()'.includes(k) && k.length === 1) { $event.preventDefault(); touche(k); } }">
         <div class="mb-4 flex gap-1 border-b border-slate-200 dark:border-slate-800">
             <button type="button" @click="t = 'calc'" class="tab" :class="t === 'calc' && 'tab-active'">Calculatrice</button>
             <button type="button" @click="t = 'sim'" class="tab" :class="t === 'sim' && 'tab-active'">Simulateur brut ↔ net</button>
+            <button type="button" @click="t = 'nb'; $nextTick(() => $refs.net?.focus())" class="tab" :class="t === 'nb' && 'tab-active'">Simulateur net → brut</button>
         </div>
         <div x-show="t === 'calc'" class="mx-auto max-w-xs">
             <div class="mb-3 truncate rounded-lg bg-slate-900 px-4 py-3 text-right font-mono text-2xl text-white" x-text="ecran"></div>
@@ -193,6 +201,36 @@
                 </table>
             </template>
             <p class="text-xs text-slate-400">Calcul avec les taux et le barème des paramètres de paie, sans prime.</p>
+        </div>
+        {{-- Simulateur net → brut : brut à verser pour un net à payer voulu, selon la situation familiale et le profil. --}}
+        <div x-show="t === 'nb'" x-cloak class="space-y-4">
+            <div class="grid gap-3 sm:grid-cols-4">
+                <div class="sm:col-span-2"><label class="label">Net à payer souhaité</label><input x-ref="net" type="number" step="0.001" min="0" x-model="n.montant" @input.debounce.400ms="netBrut()" class="input text-right font-mono"></div>
+                <div class="sm:col-span-2"><label class="label">Profil</label><select x-model="n.profil" @change="netBrut()" class="input"><option value="">Ordinaire (paramètres du dossier)</option>@foreach(\App\Models\PaieProfil::duDossier($client)->pluck('nom') as $pn)<option value="{{ $pn }}">{{ $pn }}</option>@endforeach</select></div>
+                <div><label class="label">Enfants à charge</label><input type="number" min="0" max="20" x-model="n.enfants" @input.debounce.400ms="netBrut()" class="input"></div>
+                <div><label class="label">Parents à charge</label><input type="number" min="0" max="4" x-model="n.parents" @input.debounce.400ms="netBrut()" class="input"></div>
+                <label class="flex items-center gap-2 self-end pb-2 text-sm sm:col-span-2"><input type="checkbox" x-model="n.chef" @change="netBrut()"> Chef de famille</label>
+            </div>
+            <p x-show="errn" x-text="errn" class="text-sm text-red-600"></p>
+            <template x-if="rn">
+                <div>
+                    <div class="mb-3 flex items-center justify-between rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-950/30">
+                        <span class="font-semibold">Salaire brut à verser</span><span class="font-mono text-xl font-bold text-brand-700 dark:text-brand-300" x-text="f(rn.brut)"></span>
+                    </div>
+                    <table class="w-full text-sm">
+                        <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-1.5">Salaire brut</td><td class="text-right font-mono" x-text="f(rn.brut)"></td></tr>
+                        <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-1.5">Retenue CNSS <span class="text-xs text-slate-400" x-text="'(' + String(rn.taux_cnssS).replace('.', ',') + ' %)'"></span></td><td class="text-right font-mono" x-text="'− ' + f(rn.cnssS)"></td></tr>
+                        <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-1.5 text-slate-500">Salaire imposable</td><td class="text-right font-mono text-slate-500" x-text="f(rn.brut - rn.cnssS)"></td></tr>
+                        <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-1.5">IRPP</td><td class="text-right font-mono" x-text="'− ' + f(rn.ir)"></td></tr>
+                        <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-1.5">CSS</td><td class="text-right font-mono" x-text="'− ' + f(rn.css)"></td></tr>
+                        <tr class="border-b border-slate-200 bg-emerald-50 dark:border-slate-700 dark:bg-emerald-950/30"><td class="py-1.5 font-semibold">Net à payer obtenu</td><td class="text-right font-mono font-semibold" x-text="f(rn.net)"></td></tr>
+                        <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-1.5 text-slate-500">CNSS patronale</td><td class="text-right font-mono text-slate-500" x-text="f(rn.cnssP)"></td></tr>
+                        <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-1.5 text-slate-500">TFP + FOPROLOS</td><td class="text-right font-mono text-slate-500" x-text="f(rn.tfp + rn.fop)"></td></tr>
+                        <tr><td class="py-1.5 font-semibold">Coût employeur</td><td class="text-right font-mono font-semibold" x-text="f(rn.cout)"></td></tr>
+                    </table>
+                </div>
+            </template>
+            <p class="text-xs text-slate-400">Le brut est recherché pour que le net à payer atteigne le montant voulu (taux, barème IRPP et CSS des paramètres de paie, sans prime ni acompte). Le profil fixe la CNSS salariale (CIVP, gérant : aucune) et les charges patronales.</p>
         </div>
     </div>
 </x-modal>

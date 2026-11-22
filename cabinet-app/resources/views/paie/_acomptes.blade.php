@@ -10,6 +10,14 @@
     <span class="text-xs text-slate-500">Changez de mois avec la période de la barre d’outils.</span>
 </div>
 
+@if($nouveau = $liste->firstWhere('id', session('recu_acompte')) ?? (session('recu_acompte') ? \App\Models\Acompte::with('salarie')->where('client_id', $client->id)->find(session('recu_acompte')) : null))
+    {{-- Après la saisie : reçu d'avance sur salaire à imprimer et faire signer. --}}
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
+        <span>Acompte de <b>{{ tnd($nouveau->montant) }}</b> versé à <b>{{ $nouveau->salarie?->nomComplet() }}</b> : imprimez le reçu d’avance sur salaire et faites-le signer.</span>
+        <a href="{{ route('paie.acomptes.recu', $nouveau) }}" target="_blank" class="btn-primary btn-sm"><x-icon name="printer" class="h-4 w-4"/> Reçu d’avance sur salaire</a>
+    </div>
+@endif
+
 <div class="grid gap-4 lg:grid-cols-[24rem_1fr]">
     <form method="POST" action="{{ route('paie.acomptes.store') }}" class="card card-b space-y-3 text-sm">@csrf
         <input type="hidden" name="retour" value="{{ $mois }}">
@@ -42,7 +50,7 @@
                 <tr><td class="font-medium">{{ $a->salarie?->nomComplet() }}</td><td>{{ $a->date->format('d/m/Y') }}</td><td>{{ $modes[$a->mode] ?? $a->mode }}</td>
                     <td class="num">{{ n3($a->montant) }}</td><td class="text-xs text-slate-500">{{ $a->observation }}</td>
                     <td class="whitespace-nowrap text-right">
-                        <a href="{{ route('paie.acomptes.recu', $a) }}" target="_blank" class="btn-icon" title="Reçu d’acompte"><x-icon name="printer" class="h-4 w-4"/></a>
+                        <a href="{{ route('paie.acomptes.recu', $a) }}" target="_blank" class="btn-icon" title="Reçu d’avance sur salaire"><x-icon name="printer" class="h-4 w-4"/></a>
                         @unless($paieClose)<form method="POST" action="{{ route('paie.acomptes.destroy', $a) }}" class="inline" onsubmit="return confirm('Supprimer cet acompte ?')">@csrf @method('DELETE')<button class="btn-icon text-rose-600" title="Supprimer"><x-icon name="trash" class="h-4 w-4"/></button></form>@endunless
                     </td></tr>
             @empty <tr><td colspan="6"><x-empty icon="bank" title="Aucun acompte retenu en {{ mois_fr($mois) }}"/></td></tr> @endforelse

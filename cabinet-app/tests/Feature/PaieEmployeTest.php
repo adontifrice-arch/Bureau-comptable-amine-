@@ -80,7 +80,10 @@ class PaieEmployeTest extends TestCase
     {
         Salarie::create(['client_id' => $this->client->id, 'nom' => 'Autre', 'matricule' => '0033', 'salaire_base' => 900]);
         $this->post(route('paie.salaries.store'), $this->fiche(['prenom' => '', 'ville' => '', 'categorie' => '', 'contrat_debut' => '']))
-            ->assertSessionHasErrors(['matricule', 'prenom', 'ville', 'categorie', 'contrat_debut']);
+            ->assertSessionHasErrors(['matricule', 'prenom', 'ville', 'contrat_debut'])->assertSessionDoesntHaveErrors(['categorie', 'echelon']);
+        // Catégorie et échelon ne sont pas obligatoires.
+        $this->post(route('paie.salaries.store'), $this->fiche(['matricule' => '0035', 'categorie' => '', 'echelon' => '']))->assertSessionHasNoErrors();
+        $this->assertNull(Salarie::where('matricule', '0035')->value('categorie'));
         $this->post(route('paie.salaries.store'), $this->fiche(['matricule' => '0034', 'etat_presence' => 'sorti']))->assertSessionHasErrors('date_sortie');
     }
 

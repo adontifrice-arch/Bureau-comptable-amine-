@@ -62,10 +62,12 @@ class PaieAlertes
         if (! $client->paie_rib && $sal->contains('mode_paiement', 'virement')) $a[] = ['niveau' => 'warn', 'texte' => 'Compte de l’employeur à débiter non renseigné (ordre de virement).', 'lien' => null];
 
         $smig = (float) ($k['smig_mensuel'] ?? 0);
+        $profils = \App\Models\PaieProfil::parNom($client);
         foreach ($sal as $e) {
             $manque = array_keys(array_filter([
                 'CIN' => ! $e->cin,
-                'n° CNSS' => ! $e->cnss,
+                // Pas de n° CNSS exigé des CIVP, gérants et autres profils non déclarés à la CNSS.
+                'n° CNSS' => ! $e->cnss && ! $e->cnssFacultatif($profils),
                 'RIB' => $e->mode_paiement === 'virement' && ! $e->rib,
                 'salaire de base' => (float) $e->salaire_base <= 0,
             ]));

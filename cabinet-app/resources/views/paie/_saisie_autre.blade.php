@@ -116,7 +116,7 @@
             <span class="font-semibold">Arrondissement</span><span class="input-sm bg-slate-50 text-right text-slate-500 dark:bg-slate-800">{{ $PS['arrondi'] }}</span>
         </div>
         <div class="card card-b flex flex-col justify-center gap-2">
-            <button type="button" x-data @click="$dispatch('open-modal', 'paie-calculatrice')" class="btn-secondary btn-sm justify-start"><x-icon name="arrow-left" class="h-4 w-4"/> À l’envers</button>
+            <button type="button" x-data @click="$dispatch('open-modal', 'paie-calculatrice'); $dispatch('paie-net-brut')" class="btn-secondary btn-sm justify-start"><x-icon name="arrow-left" class="h-4 w-4"/> À l’envers</button>
             <button form="form-autre" class="btn-secondary btn-sm justify-start" @disabled($lockS)><x-icon name="copy" class="h-4 w-4"/> Recalculer</button>
         </div>
         <div class="card card-b grid grid-cols-2 gap-2">

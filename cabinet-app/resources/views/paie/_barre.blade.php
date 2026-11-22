@@ -103,10 +103,13 @@
                 ['l' => 'État historique contrat', 'i' => 'users', 'href' => $et('historique-contrat'), 'blank' => true],
                 ['sep' => true],
                 $doc('attestation-travail', 'Attestation de travail'),
-                $doc('attestation-salaire', 'Attestation de salaire'),
+                $doc('attestation-salaire', 'Attestation de salaire mensuelle'),
+                $doc('attestation-salaire-annuelle', 'Attestation de salaire annuelle'),
                 $doc('certificat-travail', 'Certificat de travail'),
                 $doc('certificat-retenue', 'Certificat de retenue'),
                 $doc('certificat-retenue-pdf', 'Certificat de retenue PDF'),
+                $doc('attestation-cnss', 'Attestation des salaires déclarés à la CNSS'),
+                $doc('recu-vetements', 'Reçu de vêtements de travail'),
                 $doc('contrat', 'Contrat de travail'),
                 $doc('demission', 'Démission'),
             ];
@@ -216,6 +219,7 @@
         'Congé' => ['calendar', [
             ['l' => 'Saisie congé antérieur', 'i' => 'users', 'href' => $lien('conges-ant')],
             ['l' => 'Saisie des congés', 'i' => 'users', 'href' => $lien('conges')],
+            ['l' => 'Demande de congé', 'i' => 'file-text', 'modal' => 'paie-demande-conge'],
             ['l' => 'Etat des Congés', 'i' => 'file-text', 'sub' => collect(\App\Services\Exports\EtatsPaie::CONGES)->map(fn ($l, $k) => ['l' => $l, 'i' => 'settings', 'sub' => [
                 ['l' => 'Imprimer', 'i' => 'printer', 'href' => $ed($k), 'blank' => true],
                 ['l' => 'PDF', 'i' => 'file-text', 'href' => $ed($k, 'pdf'), 'blank' => true],
@@ -224,6 +228,7 @@
         ]],
         'Acompte' => ['bank', [
             ['l' => 'Saisie des acomptes', 'i' => 'upload', 'href' => $lien('acomptes')],
+            ['l' => 'Reçu avance sur salaire', 'i' => 'receipt', 'modal' => 'paie-recus-avance'],
             ['l' => 'Etat des acomptes', 'i' => 'file-text', 'sub' => collect(\App\Services\Exports\EtatsPaie::ACOMPTES)->map(fn ($l, $k) => ['l' => $l, 'i' => 'settings', 'sub' => [
                 ['l' => 'Imprimer', 'i' => 'printer', 'href' => $ed($k), 'blank' => true],
                 ['l' => 'PDF', 'i' => 'file-text', 'href' => $ed($k, 'pdf'), 'blank' => true],
@@ -232,6 +237,7 @@
         ]],
         'Prêt' => ['scale', collect(\App\Models\Pret::TYPES)->map(fn ($l, $k) => ['l' => $l, 'i' => 'upload', 'sub' => [
             ['l' => 'Saisie des prêts', 'i' => 'users', 'href' => $lien('prets', ['type' => $k])],
+            ['l' => 'Échéancier de prêt (salarié)', 'i' => 'list', 'modal' => 'paie-echeancier-salarie'],
             ...collect(\App\Services\Exports\EtatsPaie::PRETS)->map(fn ($el, $e) => ['l' => $el, 'i' => 'file-text', 'sub' => [
                 ['l' => 'Imprimer', 'i' => 'printer', 'href' => route('paie.edition', [$e, 'imprimer', 'mois' => $mois, 'type' => $k]), 'blank' => true],
                 ['l' => 'PDF', 'i' => 'file-text', 'href' => route('paie.edition', [$e, 'pdf', 'mois' => $mois, 'type' => $k]), 'blank' => true],
@@ -330,6 +336,7 @@
 
 @include('paie._fichier')
 @include('paie._employe_menu')
+@include('paie._documents_menu')
 
 <x-modal name="paie-envoi-mail" title="Envoi par mail">
     <form method="POST" action="{{ route('paie.envoi-mail') }}" class="space-y-4 text-sm">@csrf

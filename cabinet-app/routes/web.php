@@ -194,6 +194,7 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     // Paie — menu Employé : fiche employé, pièces jointes, états du personnel, documents RH
     Route::get('paie/employes/nouveau', [C\PaieEmployeController::class, 'create'])->name('paie.employes.create');
     Route::get('paie/employes/etats/{etat}/{format}', [C\PaieEmployeController::class, 'etat'])->name('paie.employes.etat');
+    Route::get('paie/employes/documents/{type}', [C\PaieEmployeController::class, 'rhTous'])->name('paie.employes.rh-tous');
     Route::get('paie/employes/{salarie}', [C\PaieEmployeController::class, 'edit'])->name('paie.employes.edit');
     Route::get('paie/employes/{salarie}/imprimer', [C\PaieEmployeController::class, 'imprimer'])->name('paie.employes.imprimer');
     Route::get('paie/employes/{salarie}/document/{type}', [C\PaieEmployeController::class, 'rh'])->name('paie.employes.rh');
@@ -215,12 +216,14 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::get('paie/stc/{paie}/quittance', [C\PaieController::class, 'quittance'])->name('paie.stc.quittance');
     Route::post('paie/conges/anterieurs', [C\PaieCongeController::class, 'anterieurs'])->name('paie.conges.anterieurs');
     Route::post('paie/conges', [C\PaieCongeController::class, 'store'])->name('paie.conges.store');
+    Route::get('paie/conges/demande', [C\PaieCongeController::class, 'demande'])->name('paie.conges.demande');
     Route::delete('paie/conges/{conge}', [C\PaieCongeController::class, 'destroy'])->name('paie.conges.destroy');
     Route::post('paie/acomptes', [C\PaieAcompteController::class, 'store'])->name('paie.acomptes.store');
     Route::delete('paie/acomptes/{acompte}', [C\PaieAcompteController::class, 'destroy'])->name('paie.acomptes.destroy');
     Route::get('paie/acomptes/{acompte}/recu', [C\PaieAcompteController::class, 'recu'])->name('paie.acomptes.recu');
     Route::post('paie/prets', [C\PaiePretController::class, 'store'])->name('paie.prets.store');
     Route::delete('paie/prets/{pret}', [C\PaiePretController::class, 'destroy'])->name('paie.prets.destroy');
+    Route::get('paie/prets/echeancier-salarie', [C\PaiePretController::class, 'echeancierSalarie'])->name('paie.prets.echeancier-salarie');
     Route::get('paie/prets/{pret}/echeancier', [C\PaiePretController::class, 'echeancier'])->name('paie.prets.echeancier');
     Route::post('paie/envoi-mail', [C\PaieController::class, 'envoiMail'])->name('paie.envoi-mail');
     Route::get('paie/enveloppes',[C\PaieController::class, 'enveloppes'])->name('paie.enveloppes');

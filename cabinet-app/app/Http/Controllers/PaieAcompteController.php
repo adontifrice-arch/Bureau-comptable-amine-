@@ -24,7 +24,8 @@ class PaieAcompteController extends Controller
         $a = Acompte::create(['client_id' => $client->id, 'salarie_id' => $s->id] + $d);
         $this->log('Paie : acompte de '.tnd($a->montant).' à '.$s->nomComplet(), $client->id);
         return redirect()->route('paie.index', ['tab' => 'acomptes', 'mois' => $r->input('retour', $d['mois'])])
-            ->with('ok', 'Acompte de '.tnd($a->montant).' enregistré pour '.$s->nomComplet().', retenu sur la paie de '.mois_fr($a->mois).'.');
+            ->with('ok', 'Acompte de '.tnd($a->montant).' enregistré pour '.$s->nomComplet().', retenu sur la paie de '.mois_fr($a->mois).'.')
+            ->with('recu_acompte', $a->id);   // le reçu d'avance sur salaire est proposé aussitôt
     }
 
     public function destroy(Request $r, Acompte $acompte)
@@ -37,7 +38,7 @@ class PaieAcompteController extends Controller
         return back()->with('ok', 'Acompte supprimé.');
     }
 
-    /** Reçu d'acompte à faire signer par le salarié. */
+    /** Reçu d'avance sur salaire à faire signer par le salarié (deux exemplaires). */
     public function recu(Request $r, Acompte $acompte)
     {
         $client = $this->dossier($r);

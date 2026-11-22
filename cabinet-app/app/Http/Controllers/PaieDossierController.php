@@ -448,9 +448,14 @@ class PaieDossierController extends Controller
     /** Calculatrice de paie : du brut vers le net, ou du net vers le brut. */
     public function simulation(Request $r)
     {
-        $d = $r->validate(['montant' => 'required|numeric|min:0|max:1000000', 'sens' => 'required|in:brut,net', 'chef' => 'nullable|boolean', 'enfants' => 'nullable|integer|min:0|max:20']);
-        $P = PaieCalc::parametres($this->dossier($r));
-        $e = new Salarie(['nom' => 'Simulation', 'chef_famille' => (bool) ($d['chef'] ?? false), 'enfants' => (int) ($d['enfants'] ?? 0)]);
+        $d = $r->validate(['montant' => 'required|numeric|min:0|max:1000000', 'sens' => 'required|in:brut,net', 'chef' => 'nullable|boolean', 'enfants' => 'nullable|integer|min:0|max:20',
+            'parents' => 'nullable|integer|min:0|max:4', 'profil' => 'nullable|string|max:255']);
+        $client = $this->dossier($r);
+        // Simulateur net → brut : le profil choisi (CIVP, gérant…) fixe la CNSS salariale et les charges patronales.
+        $profil = ! empty($d['profil']) ? PaieProfil::parNom($client)->get(mb_strtolower(trim($d['profil']))) : null;
+        $P = PaieCalc::pourProfil(PaieCalc::parametres($client), $profil);
+        $e = new Salarie(['nom' => 'Simulation', 'chef_famille' => (bool) ($d['chef'] ?? false), 'enfants' => (int) ($d['enfants'] ?? 0),
+            'parents_charge' => (int) ($d['parents'] ?? 0), 'profil' => $profil?->nom]);
         $calc = function (float $brut) use ($e, $P) { $e->salaire_base = $brut; return PaieCalc::calcul($e, 0, $P); };
         if ($d['sens'] === 'brut') return response()->json($calc((float) $d['montant']));
         [$bas, $haut] = [(float) $d['montant'], (float) $d['montant'] * 3 + 1];

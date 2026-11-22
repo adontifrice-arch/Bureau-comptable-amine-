@@ -29,6 +29,35 @@ class PaieCongeController extends Controller
             ->with('ok', Conge::TYPES[$c->type].' de '.$s->nomComplet().' enregistré : '.rtrim(rtrim(number_format($c->jours, 2, ',', ''), '0'), ',').' jour(s).');
     }
 
+    /**
+     * Demande de congé à faire signer par le salarié : depuis un congé du registre (conge) ou pour un salarié et une période
+     * (salarie, du, au, type), sans rien enregistrer. Solde disponible à la fin du mois précédant le congé.
+     */
+    public function demande(Request $r)
+    {
+        $client = $this->dossier($r);
+        // Depuis le formulaire de saisie du congé (bouton « Demande de congé ») : le salarié choisi s'appelle salarie_id.
+        if (! $r->filled('salarie') && $r->filled('salarie_id')) $r->merge(['salarie' => $r->input('salarie_id')]);
+        $d = $r->validate(['conge' => 'nullable|integer', 'salarie' => 'nullable|required_without:conge|integer', 'type' => 'nullable|in:'.implode(',', array_keys(Conge::TYPES)),
+            'du' => 'nullable|date', 'au' => 'nullable|date|after_or_equal:du', 'jours' => 'nullable|numeric|min:0|max:366', 'observation' => 'nullable|string|max:255'],
+            ['salarie.required_without' => 'Choisissez le salarié.', 'au.after_or_equal' => 'La fin du congé doit suivre son début.']);
+        if (! empty($d['conge'])) {
+            $c = Conge::with('salarie')->where('client_id', $client->id)->findOrFail((int) $d['conge']);
+        } else {
+            $s = Salarie::where('client_id', $client->id)->findOrFail((int) $d['salarie']);
+            $c = new Conge(['type' => $d['type'] ?? 'paye', 'du' => $d['du'] ?? null, 'au' => $d['au'] ?? null, 'observation' => $d['observation'] ?? null]);
+            $c->setRelation('salarie', $s);
+        }
+        $cinq = (float) PaieCalc::parametres($client)['jours_mois'] <= 22;
+        if ($c->jours === null && $c->du && $c->au) $c->jours = isset($d['jours']) ? (float) $d['jours'] : Conge::joursOuvres($c->du, $c->au, $cinq);
+        // Reprise : premier jour ouvrable après la fin du congé.
+        $reprise = $c->au?->copy()->addDay();
+        while ($reprise && ($reprise->isSunday() || ($cinq && $reprise->isSaturday()))) $reprise->addDay();
+        $avant = PaieCalc::soldeConges($c->salarie, ($c->du ?? now())->copy()->startOfMonth()->subMonth()->format('Y-m'));
+        return view('paie.demande_conge', ['client' => $client, 'c' => $c, 'e' => $c->salarie, 'reprise' => $reprise, 'solde' => $avant,
+            'mois' => $r->input('mois', ($c->du ?? now())->format('Y-m'))]);
+    }
+
     public function destroy(Request $r, Conge $conge)
     {
         $client = $this->dossier($r);
