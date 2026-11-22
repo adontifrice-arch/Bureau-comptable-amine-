@@ -19,7 +19,6 @@
     .bp .bp-petit { font-size: 6.5pt; }
     .bp .bp-info th { font-size: 6pt; padding: 1.5mm 0.5mm 0.5mm; border-bottom: 0.3mm solid #000; text-align: center; }
     .bp .bp-info td { font-size: 6.5pt; padding: 1mm 0.5mm; text-align: center; height: 6mm; vertical-align: middle; }
-    .bp .bp-enf { font-size: 5.5pt; line-height: 1; display: inline-block; vertical-align: middle; text-align: right; }
     .bp .bp-lignes th { font-size: 8.5pt; font-family: 'Cambria', 'DejaVu Serif', serif; text-align: center; border: 0.3mm solid #000; padding: 0.5mm; }
     .bp .bp-lignes thead tr:first-child th { border-top: 0.4mm solid #000; }
     .bp .bp-lignes td { font-size: 6.5pt; height: 4mm; line-height: 1.25; padding: 0.4mm 1mm 0; border-left: 0.3mm solid #000; white-space: nowrap; overflow: hidden; }
@@ -78,7 +77,7 @@
                 <td>{{ $s?->profil ?? ($x['profil'] ?? '') }}</td>
                 <td>{{ $s?->situation_familiale ? str_replace('(e)', ' (e)', \App\Models\Salarie::SITUATIONS[$s->situation_familiale] ?? $s->situation_familiale) : '' }}</td>
                 <td>{{ $s ? ($s->chef_famille ? 'Oui' : 'Non') : '' }}</td>
-                <td>{{ $nbEnf }}@if($enfants) <span class="bp-enf">@foreach($enfants as $i => $e){{ $i + 1 }}:{{ ! empty($e['infirme']) ? 'I' : (! empty($e['etudiant']) ? 'E' : 'O') }}@if(! $loop->last)<br>@endif @endforeach</span>@endif</td>
+                <td>{{ $nbEnf }}</td>
                 <td>{{ isset($x['jours_mois']) ? $n3f($x['jours_mois']) : '' }}</td>
                 <td>{{ isset($x['jours']) ? $n3f($x['jours']) : '' }}</td>
                 @if($variante === 'jours')

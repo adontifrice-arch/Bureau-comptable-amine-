@@ -12,11 +12,20 @@
     @if($double)<style>@media print { @page { size: A4 landscape; margin: 6mm; } }</style>@endif
     @if($format === 'a5' || $double)<style>
         .feuille-a5 { width: 136mm; }
-        .feuille-a5d { width: 285mm; border-collapse: collapse; }
-        .feuille-a5d > tbody > tr > td { width: 50%; vertical-align: top; padding: 0; }
-        .feuille-a5d .coupe { width: 8mm; border-left: 0.3mm dotted #000; position: relative; }
-        .feuille-a5d .coupe span { position: absolute; bottom: -1mm; left: -2.2mm; font-size: 10pt; color: #555; }
+        .feuille-a5d { width: 284mm; border-collapse: collapse; table-layout: fixed; }
+        .feuille-a5d > tbody > tr > td { vertical-align: top; padding: 0; }
+        .feuille-a5d td.ex { width: 138mm; }
+        .feuille-a5d td.coupe { width: 8mm; position: relative; }
+        .feuille-a5d td.coupe div { position: absolute; top: 0; bottom: 0; left: 50%; border-left: 0.3mm dotted #000; }
+        .feuille-a5d td.coupe span { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); background: #fff; font-size: 11pt; line-height: 1; color: #444; }
+        .apercu-a5 { overflow-x: auto; overflow-y: hidden; }
         @media screen { .feuille-a5, .feuille-a5d { background: #fff; padding: 6mm; box-sizing: content-box; box-shadow: 0 1px 3px rgba(0,0,0,.15); } }
+        @media print {
+            main { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+            .apercu-a5 { overflow: visible; margin: 0 !important; break-inside: avoid; page-break-inside: avoid; }
+            .apercu-a5:last-child { break-after: auto; page-break-after: auto; }
+            .feuille-a5, .feuille-a5d { margin: 0 !important; }
+        }
     </style>@endif
     @if($format === 'mat')<style>@media print { @page { size: A4 portrait; margin: 8mm; } } .matricielle { font-family: 'Courier New', Courier, monospace; font-size: 10pt; line-height: 1.25; color: #000; }</style>@endif
     <div class="no-print"><x-page-header :title="'Bulletins de paie — '.($formats[$format] ?? strtoupper($format)).' — '.($periode ?? mois_fr($mois))" :subtitle="$client->nom" :back="route('paie.index', ['mois' => $mois])">
@@ -31,10 +40,10 @@
     @elseif($double)
         {{-- A5 double : le bulletin en deux exemplaires (employeur, employé) côte à côte sur une feuille A4 paysage, séparés par un trait de coupe. --}}
         @foreach($R as $x)
-            <div class="mb-8 overflow-x-auto break-after-page"><table class="feuille-a5d mx-auto"><tr>
-                <td>@include('paie._bulletin_a5', ['x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'variante' => $variante])</td>
-                <td class="coupe" style="width: 8mm"><span>&#9986;</span></td>
-                <td>@include('paie._bulletin_a5', ['x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'variante' => $variante])</td>
+            <div class="apercu-a5 mb-8 break-after-page"><table class="feuille-a5d mx-auto"><tr>
+                <td class="ex">@include('paie._bulletin_a5', ['x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'variante' => $variante])</td>
+                <td class="coupe"><div></div><span>&#9986;</span></td>
+                <td class="ex">@include('paie._bulletin_a5', ['x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'variante' => $variante])</td>
             </tr></table></div>
         @endforeach
     @elseif($format === 'mat')
@@ -56,7 +65,7 @@
         @endforeach
     @elseif($format === 'a5')
         @foreach($R as $x)
-            <div class="mb-8 overflow-x-auto break-after-page"><div class="feuille-a5 mx-auto">@include('paie._bulletin_a5', ['x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'variante' => ''])</div></div>
+            <div class="apercu-a5 mb-8 break-after-page"><div class="feuille-a5 mx-auto">@include('paie._bulletin_a5', ['x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'variante' => ''])</div></div>
         @endforeach
     @else
         @foreach($R as $x)
