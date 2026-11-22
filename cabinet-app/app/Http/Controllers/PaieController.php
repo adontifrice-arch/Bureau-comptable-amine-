@@ -276,9 +276,9 @@ class PaieController extends Controller
         if (! isset(self::FORMATS_BULLETIN[$format])) $format = 'a4';
         if ($format === 'a5c') $R = $this->avecConges($client, $R);
         // Chaque bulletin est édité autant de fois que demandé sur la fiche employé (Nb bulletin).
-        $copies = Salarie::whereIn('id', array_column($R, 'salarie_id'))->pluck('nb_bulletin', 'id');
-        $R = collect($R)->flatMap(fn ($x) => array_fill(0, max(1, (int) ($copies[$x['salarie_id']] ?? 1)), $x))->all();
-        return view('paie.bulletins', ['client' => $client, 'mois' => $mois, 'periode' => $periode, 'R' => $R, 'P' => PaieCalc::parametres($client), 'format' => $format]);
+        $S = Salarie::whereIn('id', array_column($R, 'salarie_id'))->get()->keyBy('id');
+        $R = collect($R)->flatMap(fn ($x) => array_fill(0, max(1, (int) ($S[$x['salarie_id']]->nb_bulletin ?? 1)), $x))->all();
+        return view('paie.bulletins', ['client' => $client, 'mois' => $mois, 'periode' => $periode, 'R' => $R, 'S' => $S, 'P' => PaieCalc::parametres($client), 'format' => $format]);
     }
 
     /** Modes d'impression des bulletins (Paie → Bulletin → critère → mode). */
@@ -321,12 +321,13 @@ class PaieController extends Controller
         $zip = new \ZipArchive();
         $zip->open($zipPath, \ZipArchive::OVERWRITE);
         $noms = [];
+        $S = Salarie::whereIn('id', array_column($R, 'salarie_id'))->get()->keyBy('id');
         foreach ($R as $x) {
             $nom = $parCin ? (($x['cin'] ?: 'sans-CIN-'.$x['salarie_id']).' '.$x['_mois']) : ($x['_mois'].' '.$x['nom']);
             $nom = trim(preg_replace('#[\\\\/:*?"<>|]+#', '-', $nom));
             $noms[$nom] = ($noms[$nom] ?? 0) + 1;
             if ($noms[$nom] > 1) $nom .= ' ('.$noms[$nom].')';
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('paie.bulletin_pdf', ['client' => $client, 'x' => $x, 'P' => $P, 'lignes' => PaieCalc::lignesBulletin($x, $P)])
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView($format === 'a5' ? 'paie.bulletin_pdf_a5' : 'paie.bulletin_pdf', ['client' => $client, 'x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'P' => $P, 'lignes' => PaieCalc::lignesBulletin($x, $P)])
                 ->setPaper($format, 'portrait')->setOption(['isRemoteEnabled' => false, 'isPhpEnabled' => false, 'defaultFont' => 'DejaVu Sans']);
             $zip->addFromString($nom.'.pdf', $pdf->output());
         }

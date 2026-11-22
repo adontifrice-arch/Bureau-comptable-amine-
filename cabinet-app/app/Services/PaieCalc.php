@@ -841,6 +841,53 @@ class PaieCalc
     }
 
     /**
+     * Lignes du bulletin A5 (modèle « Désignation | Nombre ou base | Montant | Ret.Sal ») : [libellé, base, gain, retenue, gras].
+     * Une ligne [null] marque un saut entre les blocs. Le net à payer figure au pied du bulletin.
+     */
+    public static function lignesBulletinA5(array $x, array $P): array
+    {
+        $L = [];
+        $ligne = function (string $lib, $base, $gain, $ret, bool $gras = false) use (&$L) {
+            $L[] = [$lib, $base, $gain, $ret, $gras];
+        };
+        if (! empty($x['special'])) {
+            // Paie spéciale (congé, 13e mois, solde de tout compte…) : lignes du bulletin, gains à gauche et retenues à droite.
+            foreach (static::lignesBulletin($x, $P) as $row) {
+                if (str_starts_with($row[0], 'NET À PAYER')) continue;
+                $gras = ($row[2] ?? 0) === 1;
+                $v = (float) $row[1];
+                $ligne($gras ? mb_convert_case(mb_strtolower($row[0]), MB_CASE_TITLE) : $row[0], null, $v >= 0 ? $v : null, $v < 0 ? -$v : null, $gras);
+            }
+            return $L;
+        }
+        $rub = collect($x['rubriques'] ?? [])->where('sens', '!=', 'note');
+        $base = fn ($l) => $l['quantite'] ?? $l['montant'];
+        $ligne('Salaire de base', $x['base'] ?? null, $x['salaire'] ?? $x['base'], null, true);
+        if ((float) ($x['hs_montant'] ?? 0)) $ligne('Heures supplémentaires', $x['hs'] ?: null, $x['hs_montant'], null);
+        if ((float) ($x['prime'] ?? 0)) $ligne('Primes et indemnités', $x['prime'], $x['prime'], null);
+        foreach ($rub->where('sens', 'gain') as $l) $ligne($l['nom'].(! empty($l['nature']) ? ' (en nature)' : ''), $base($l), $l['montant'], null);
+        foreach ($rub->where('sens', 'retenue')->where('cotisable', true) as $l) $ligne($l['nom'], $base($l), null, $l['montant']);
+        $ligne('Total Brut', null, $x['brut'], null, true);
+        if ((float) $x['cnssS']) {
+            $taux = rtrim(rtrim(number_format((float) ($x['taux_cnssS'] ?? $P['cnssS']), 2, ',', ''), '0'), ',');
+            $ligne('CNSS ('.$taux.' %)', $x['base_cotisee'] ?? $x['base_cnss'] ?? $x['brut'], null, $x['cnssS']);
+        }
+        $imposable = r3(($x['brut_imp'] ?? $x['brut']) - $x['cnssS']);
+        $ligne('Salaire Imposable', null, $imposable, null, true);
+        $L[] = [null];
+        if ((float) $x['ir']) $ligne('IRPP', $imposable, null, $x['ir']);
+        if ((float) $x['css']) $ligne('Retenue à la source (CSS) ('.rtrim(rtrim(number_format((float) $P['css'], 2, '.', ''), '0'), '.').'%)', $imposable, null, $x['css']);
+        $autres = [];
+        foreach ($rub->where('sens', 'retenue')->where('cotisable', false) as $l) $autres[] = [$l['nom'], $l['quantite'], null, $l['montant'], false];
+        if ((float) ($x['nature'] ?? 0)) $autres[] = ['Avantages en nature', null, null, $x['nature'], false];
+        if ((float) ($x['acompte'] ?? 0)) $autres[] = ['Acompte', null, null, $x['acompte'], false];
+        if ((float) ($x['pret_societe'] ?? 0)) $autres[] = ['Prêt', null, null, $x['pret_societe'], false];
+        if ((float) ($x['pret_cnss'] ?? 0)) $autres[] = ['Prêt CNSS', null, null, $x['pret_cnss'], false];
+        if ($autres) array_push($L, [null], ...$autres);
+        return $L;
+    }
+
+    /**
      * Écriture de paie (plan comptable tunisien) : D 640 salaires, 647 charges sociales, 661 TFP/FOPROLOS / C 425 net, 45311 CNSS, 432 retenues,
      * 437 TFP/FOPROLOS, 427 retenues diverses sur salaires (rubriques à déduire non cotisables), 79 transfert de charges (avantages en nature) ;
      * D 441 / C 74 : quote-part de l'État des contrats Dignité.

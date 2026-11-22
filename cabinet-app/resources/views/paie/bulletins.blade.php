@@ -8,8 +8,16 @@
     $variante = ['a5j' => 'jours', 'a5c' => 'conge', 'a5cin' => 'cin'][$format] ?? '';
 @endphp
 <x-layouts.app :title="'Bulletins '.$mois">
-    @if($format === 'a5')<style>@media print { @page { size: A5 portrait; margin: 7mm; } }</style>@endif
-    @if($double)<style>@media print { @page { size: A4 landscape; margin: 6mm; } .feuille { height: 196mm; } }</style>@endif
+    @if($format === 'a5')<style>@media print { @page { size: A5 portrait; margin: 6mm; } }</style>@endif
+    @if($double)<style>@media print { @page { size: A4 landscape; margin: 6mm; } }</style>@endif
+    @if($format === 'a5' || $double)<style>
+        .feuille-a5 { width: 136mm; }
+        .feuille-a5d { width: 285mm; border-collapse: collapse; }
+        .feuille-a5d > tbody > tr > td { width: 50%; vertical-align: top; padding: 0; }
+        .feuille-a5d .coupe { width: 8mm; border-left: 0.3mm dotted #000; position: relative; }
+        .feuille-a5d .coupe span { position: absolute; bottom: -1mm; left: -2.2mm; font-size: 10pt; color: #555; }
+        @media screen { .feuille-a5, .feuille-a5d { background: #fff; padding: 6mm; box-sizing: content-box; box-shadow: 0 1px 3px rgba(0,0,0,.15); } }
+    </style>@endif
     @if($format === 'mat')<style>@media print { @page { size: A4 portrait; margin: 8mm; } } .matricielle { font-family: 'Courier New', Courier, monospace; font-size: 10pt; line-height: 1.25; color: #000; }</style>@endif
     <div class="no-print"><x-page-header :title="'Bulletins de paie — '.($formats[$format] ?? strtoupper($format)).' — '.($periode ?? mois_fr($mois))" :subtitle="$client->nom" :back="route('paie.index', ['mois' => $mois])">
         <select class="input-sm w-52" onchange="location.href = this.value">
@@ -21,10 +29,13 @@
     @if(! count($R))
         <div class="card"><x-empty title="Aucun bulletin pour cette sélection"/></div>
     @elseif($double)
-        @foreach(array_chunk($R, 2) as $paire)
-            <div class="feuille mx-auto mb-8 grid max-w-6xl break-after-page grid-cols-2 gap-6">
-                @foreach($paire as $x)@include('paie._bulletin_a5', ['x' => $x, 'variante' => $variante])@endforeach
-            </div>
+        {{-- A5 double : le bulletin en deux exemplaires (employeur, employé) côte à côte sur une feuille A4 paysage, séparés par un trait de coupe. --}}
+        @foreach($R as $x)
+            <div class="mb-8 overflow-x-auto break-after-page"><table class="feuille-a5d mx-auto"><tr>
+                <td>@include('paie._bulletin_a5', ['x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'variante' => $variante])</td>
+                <td class="coupe" style="width: 8mm"><span>&#9986;</span></td>
+                <td>@include('paie._bulletin_a5', ['x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'variante' => $variante])</td>
+            </tr></table></div>
         @endforeach
     @elseif($format === 'mat')
         {{-- Matricielle : texte à chasse fixe sur 80 colonnes, sans couleur, pour imprimante matricielle. --}}
@@ -45,7 +56,7 @@
         @endforeach
     @elseif($format === 'a5')
         @foreach($R as $x)
-            <div class="mx-auto mb-8 max-w-xl break-after-page">@include('paie._bulletin_a5', ['x' => $x, 'variante' => ''])</div>
+            <div class="mb-8 overflow-x-auto break-after-page"><div class="feuille-a5 mx-auto">@include('paie._bulletin_a5', ['x' => $x, 's' => $S[$x['salarie_id']] ?? null, 'variante' => ''])</div></div>
         @endforeach
     @else
         @foreach($R as $x)

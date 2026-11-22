@@ -38,7 +38,8 @@ class PaieEditionsTest extends TestCase
     public function test_toutes_les_editions_dans_tous_les_formats(): void
     {
         $this->get(route('paie.index'))->assertOk()->assertSee('Solde de tout compte')->assertSee('Journal global');
-        foreach (['a4', 'a5'] as $f) $this->get(route('paie.bulletins', ['mois' => '2026-10', 'format' => $f]))->assertOk()->assertSee('BULLETIN DE PAIE');
+        $this->get(route('paie.bulletins', ['mois' => '2026-10', 'format' => 'a4']))->assertOk()->assertSee('BULLETIN DE PAIE');
+        $this->get(route('paie.bulletins', ['mois' => '2026-10', 'format' => 'a5']))->assertOk()->assertSee('Bulletin de Paie')->assertSee('Net à payer')->assertSee('Ret.Sal');
         foreach (array_keys(EtatsPaie::EDITIONS) as $e) {
             foreach (['imprimer', 'pdf', 'xlsx', 'docx'] as $f) $this->get(route('paie.edition', [$e, $f, 'mois' => '2026-10']))->assertOk();
         }
