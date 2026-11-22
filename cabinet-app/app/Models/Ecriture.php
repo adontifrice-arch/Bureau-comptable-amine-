@@ -52,6 +52,21 @@ class Ecriture extends Model
         return array_diff_key(self::journaux($client), array_flip(self::AUTOMATIQUES));
     }
 
+    /** Numéro de la prochaine pièce du journal dans le dossier (00000001, 00000002…), pièces supprimées comprises. */
+    public static function prochainNumero(int $client, string $journal): string
+    {
+        $max = static::withoutGlobalScopes()->where('client_id', $client)->where('journal', $journal)->max('numero');
+        return str_pad((string) ((int) $max + 1), 8, '0', STR_PAD_LEFT);
+    }
+
+    protected static function booted(): void
+    {
+        // Toute écriture reçoit le numéro de pièce suivant de son journal (saisie, factures, paie, banque…).
+        static::creating(function (Ecriture $e) {
+            if (! $e->numero && $e->client_id) $e->numero = static::prochainNumero($e->client_id, (string) $e->journal);
+        });
+    }
+
     protected $table = 'ecritures';
     protected $guarded = [];
     protected $casts = ['date'=>'date'];

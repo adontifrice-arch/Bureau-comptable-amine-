@@ -73,13 +73,18 @@ class Ecritures
     public static function modifier(Ecriture $e, array $d): void
     {
         $lignes = collect($d['lignes'])->filter(fn ($l) => trim((string) ($l['compte'] ?? '')) !== '' && ((float) ($l['debit'] ?? 0) || (float) ($l['credit'] ?? 0)))
-            ->map(fn ($l) => ['compte' => Saisie::normaliser($l['compte'], Saisie::longueur($e->client_id)), 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0)])->values();
+            ->map(fn ($l) => ['compte' => Saisie::normaliser($l['compte'], Saisie::longueur($e->client_id)), 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0)]
+                // Libellé et référence de ligne (saisie par pièce) : conservés tels quels lorsqu'ils ne sont pas transmis.
+                + array_intersect_key($l, array_flip(['libelle', 'reference'])))->values();
         if ($lignes->count() < 2) throw new RuntimeException('Saisissez au moins deux lignes.');
         if (abs($lignes->sum('debit') - $lignes->sum('credit')) > 0.0005) {
             throw new RuntimeException('Écriture déséquilibrée : débit '.tnd($lignes->sum('debit')).' ≠ crédit '.tnd($lignes->sum('credit')).'.');
         }
         DB::transaction(function () use ($e, $d, $lignes) {
-            $e->update(['date' => $d['date'], 'journal' => $d['journal'], 'libelle' => $d['libelle']]);
+            // Une pièce changée de journal prend le numéro suivant de son nouveau journal.
+            $e->update(['date' => $d['date'], 'journal' => $d['journal'], 'libelle' => $d['libelle']]
+                + ($d['journal'] !== $e->journal ? ['numero' => Ecriture::prochainNumero($e->client_id, $d['journal'])] : [])
+                + (array_key_exists('reference', $d) ? ['reference' => $d['reference']] : []));
             // Une ligne inchangée (même compte, mêmes montants) garde sa lettre et son pointage bancaire ; une ligne modifiée les perd
             // (son lettrage apparaît alors parmi les lettrages invalides, et elle redevient à pointer).
             $anciennes = $e->lignes()->where(fn ($q) => $q->whereNotNull('lettre')->orWhereNotNull('pointe_le'))->get()

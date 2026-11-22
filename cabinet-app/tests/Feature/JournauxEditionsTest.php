@@ -66,7 +66,7 @@ class JournauxEditionsTest extends TestCase
         $this->get(route('compta.index', ['tab' => 'jnl', 'annee' => 2026, 'vue' => 'auxiliaire']))->assertOk()
             ->assertSee('ACH — Achats')->assertSee('Facture B')->assertSee('Total du journal');
         $this->get(route('compta.index', ['tab' => 'jnl', 'annee' => 2026, 'vue' => 'centralise']))->assertOk()->assertSee('Février 2026')->assertSee('Total BQ — Banque');
-        $this->get(route('compta.index', ['tab' => 'jnl', 'annee' => 2026]))->assertOk()->assertSee('Saisir une écriture');   // liste des écritures inchangée
+        $this->get(route('compta.index', ['tab' => 'jnl', 'annee' => 2026]))->assertOk()->assertSee('Saisir une pièce');   // liste des écritures inchangée
     }
 
     public function test_journal_par_lot(): void

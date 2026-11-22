@@ -133,19 +133,20 @@
             <div class="flex flex-wrap gap-1">@foreach(['' => 'Tous'] + $journaux as $k => $l)<a href="{{ $u('jnl', ['journal' => $k] + $rech->parametres()) }}" class="{{ request('journal', '') === (string) $k ? 'badge-blue' : 'badge-gray' }} !py-1" title="{{ $k }}">{{ $l }}</a>@endforeach</div>
             <div class="flex gap-2">
                 <button class="btn-secondary" x-data @click="$dispatch('open-modal', 'journaux')"><x-icon name="book" class="h-4 w-4"/> Journaux</button>
-                @if($valideur)<button class="btn-primary" x-data @click="$dispatch('open-modal', 'od')"><x-icon name="plus" class="h-4 w-4"/> Saisir une écriture</button>@endif
+                @if($valideur)<a href="{{ route('compta.piece', array_filter(['journal' => request('journal')])) }}" class="btn-primary"><x-icon name="plus" class="h-4 w-4"/> Saisir une pièce</a>@endif
             </div>
         </div>
         <div class="space-y-3">
             @forelse($ecritures as $e)
                 <div class="card overflow-hidden" ondblclick="if (! event.target.closest('a, button, form')) window.location = {{ \Illuminate\Support\Js::from(route('compta.ecritures.show', [$e, 'retour' => request()->fullUrl()])) }}" title="Double-clic : ouvrir l’écriture">
                     <div class="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5 text-sm dark:border-slate-800 dark:bg-slate-800/30">
-                        <span class="badge-blue">{{ $e->journal }}</span><span class="font-mono text-xs">{{ dfr($e->date) }}</span><span class="flex-1 font-medium">{{ $e->libelle }}</span>
+                        <span class="badge-blue">{{ $e->journal }}</span>@if($e->numero)<span class="font-mono text-xs text-rose-600" title="N° de pièce">{{ $e->numero }}</span>@endif<span class="font-mono text-xs">{{ dfr($e->date) }}</span><span class="flex-1 font-medium">{{ $e->libelle }}@if($e->reference)<span class="ml-2 text-xs font-normal text-slate-400">réf. {{ $e->reference }}</span>@endif</span>
                         <span class="text-xs text-slate-400">{{ $e->validePar ? 'validée par '.$e->validePar->name : '' }}</span>
                         <a href="{{ route('compta.ecritures.show', [$e, 'retour' => request()->fullUrl()]) }}" class="btn-ghost btn-sm"><x-icon name="eye" class="h-3.5 w-3.5"/> Ouvrir</a>
+                        <a href="{{ route('compta.piece', ['ecriture' => $e->id]) }}" class="btn-ghost btn-sm" title="Ouvrir dans la saisie par pièce"><x-icon name="edit" class="h-3.5 w-3.5"/> Pièce</a>
                         @if(\App\Services\Ecritures::autorise(auth()->user()))<form method="POST" action="{{ route('compta.ecritures.annuler', $e) }}" onsubmit="const m = prompt('Supprimer cette écriture ? Elle sera conservée dans « Pièces supprimées ».\n\nMotif (facultatif) :'); if (m === null) return false; this.motif.value = m">@csrf<input type="hidden" name="motif"><button class="btn-ghost btn-sm !text-rose-600">Supprimer</button></form>@endif
                     </div>
-                    <table class="w-full text-sm">@foreach($e->lignes as $l)<tr class="border-b border-slate-50 last:border-0 dark:border-slate-800"><td class="w-24 px-4 py-1.5 font-mono text-xs">{{ $l->compte }}</td><td class="px-2 py-1.5 text-slate-500 {{ $l->credit > 0 ? 'pl-10' : '' }}">{{ \App\Services\Compta::libelle($l->compte) }}</td><td class="num w-36 px-4 py-1.5">{{ n3($l->debit) }}</td><td class="num w-36 px-4 py-1.5">{{ n3($l->credit) }}</td></tr>@endforeach</table>
+                    <table class="w-full text-sm">@foreach($e->lignes as $l)<tr class="border-b border-slate-50 last:border-0 dark:border-slate-800"><td class="w-24 px-4 py-1.5 font-mono text-xs">{{ $l->compte }}</td><td class="px-2 py-1.5 text-slate-500 {{ $l->credit > 0 ? 'pl-10' : '' }}">{{ \App\Services\Compta::libelle($l->compte) }}@if($l->libelle && $l->libelle !== $e->libelle)<span class="ml-2 text-xs text-slate-400">— {{ $l->libelle }}</span>@endif</td><td class="num w-36 px-4 py-1.5">{{ n3($l->debit) }}</td><td class="num w-36 px-4 py-1.5">{{ n3($l->credit) }}</td></tr>@endforeach</table>
                 </div>
             @empty <div class="card"><x-empty icon="book" title="Aucune écriture sur {{ $annee }}"/></div> @endforelse
         </div>
@@ -178,30 +179,6 @@
                 </form>
                 <p class="mt-2 text-xs text-slate-400">Le compte associé (banque, caisse…) est proposé en première ligne des écritures saisies dans le journal. Un journal ajouté ne peut être retiré que s’il ne contient aucune écriture.</p>
             @endif
-        </x-modal>
-        <x-modal name="od" title="Écriture manuelle" size="max-w-3xl">
-            @php $jSaisie = \App\Models\Ecriture::journauxSaisie($client->id); $jDefaut = isset($jSaisie[request('journal')]) ? (string) request('journal') : (string) array_key_first($jSaisie); @endphp
-            <form method="POST" action="{{ route('compta.od.store') }}" x-data="{ l: [{compte:'',debit:'',credit:''},{compte:'',debit:'',credit:''}], get d(){return this.l.reduce((s,x)=>s+(+x.debit||0),0)}, get c(){return this.l.reduce((s,x)=>s+(+x.credit||0),0)},
-                    j: @js($jDefaut), comptesJ: @js((object) \App\Models\Ecriture::comptesJournaux($client->id)), auto: '',
-                    appliquer() { const c = this.comptesJ[this.j] || ''; if (! this.l[0].compte || this.l[0].compte === this.auto) this.l[0].compte = c; this.auto = c } }" x-init="appliquer()" class="space-y-4">@csrf
-                <div class="grid gap-4 md:grid-cols-4">
-                    <div><label class="label">Date</label><input type="date" name="date" class="input" value="{{ now()->format('Y-m-d') }}"></div>
-                    <div><label class="label">Journal</label><select name="journal" class="input" x-model="j" @change="appliquer()">@foreach($jSaisie as $k => $l)<option value="{{ $k }}">{{ $k }} — {{ $l }}</option>@endforeach</select></div>
-                    <div class="md:col-span-2"><label class="label">Libellé</label><input name="libelle" class="input" required></div>
-                </div>
-                <datalist id="cpts" data-plan>@foreach($plan as $n => $l)<option value="{{ $n }}">{{ $l }}</option>@endforeach</datalist>
-                <template x-for="(x, i) in l" :key="i"><div class="grid grid-cols-12 gap-2">
-                    <input class="input col-span-5 font-mono" list="cpts" placeholder="Compte" :name="`lignes[${i}][compte]`" x-model="x.compte" data-compte autocomplete="off" aria-label="Compte">
-                    <input type="number" step="0.001" class="input col-span-3" placeholder="Débit" :name="`lignes[${i}][debit]`" x-model="x.debit">
-                    <input type="number" step="0.001" class="input col-span-3" placeholder="Crédit" :name="`lignes[${i}][credit]`" x-model="x.credit">
-                    <button type="button" class="btn-icon col-span-1" @click="l.splice(i,1)"><x-icon name="trash" class="h-4 w-4"/></button>
-                </div></template>
-                <div class="flex items-center justify-between">
-                    <button type="button" class="btn-secondary btn-sm" @click="l.push({compte:'',debit:'',credit:''})">+ Ligne</button>
-                    <div class="text-sm">Débit <b class="font-mono" x-text="tnd(d)"></b> · Crédit <b class="font-mono" x-text="tnd(c)"></b> <span x-show="Math.abs(d-c) > 0.0005" class="badge-red ml-2">Déséquilibrée</span><span x-show="d > 0 && Math.abs(d-c) <= 0.0005" class="badge-green ml-2">Équilibrée</span></div>
-                </div>
-                <div class="flex justify-end"><button class="btn-primary">Enregistrer</button></div>
-            </form>
         </x-modal>
 
     @elseif($tab === 'bal')

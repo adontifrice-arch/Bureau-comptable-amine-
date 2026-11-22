@@ -130,6 +130,9 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::post('comptabilite/factures/{fr}/rejeter', [C\ComptaController::class, 'rejeter'])->middleware('valideur')->name('compta.factures.rejeter');
     Route::post('comptabilite/paies/{paie}/valider', [C\ComptaController::class, 'validerPaie'])->middleware('valideur')->name('compta.paies.valider');
     Route::post('comptabilite/od', [C\ComptaController::class, 'odStore'])->middleware('valideur')->name('compta.od.store');
+    Route::get('comptabilite/piece', [C\PieceController::class, 'show'])->name('compta.piece');
+    Route::post('comptabilite/piece', [C\PieceController::class, 'store'])->middleware('valideur')->name('compta.piece.store');
+    Route::put('comptabilite/piece/{ecriture}', [C\PieceController::class, 'update'])->name('compta.piece.update');
     Route::post('comptabilite/journaux', [C\ComptaController::class, 'journaux'])->middleware('chef')->name('compta.journaux');
     Route::get('comptabilite/balance-n1', [C\BalanceN1Controller::class, 'index'])->name('compta.balance-n1');
     Route::post('comptabilite/balance-n1/lire', [C\BalanceN1Controller::class, 'lire'])->name('compta.balance-n1.lire');

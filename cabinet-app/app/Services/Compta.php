@@ -125,15 +125,17 @@ class Compta
     }
 
     /** Enregistre une écriture équilibrée. */
-    public static function passer(int $client, string $date, string $journal, string $libelle, array $lignes, ?string $source = null, ?int $user = null): Ecriture
+    /** $entete : champs complémentaires de l'écriture (reference) ; une ligne peut porter son libellé et sa référence. */
+    public static function passer(int $client, string $date, string $journal, string $libelle, array $lignes, ?string $source = null, ?int $user = null, array $entete = []): Ecriture
     {
         // Numéros de compte à la longueur choisie dans le paramétrage du dossier (401 → 401000…)
         $longueur = Saisie::longueur($client);
-        return DB::transaction(function () use ($client, $date, $journal, $libelle, $lignes, $source, $user, $longueur) {
-            $e = Ecriture::create(compact('date', 'journal', 'libelle', 'source') + ['client_id' => $client, 'valide_par' => $user]);
+        return DB::transaction(function () use ($client, $date, $journal, $libelle, $lignes, $source, $user, $longueur, $entete) {
+            $e = Ecriture::create(compact('date', 'journal', 'libelle', 'source') + ['client_id' => $client, 'valide_par' => $user] + array_intersect_key($entete, array_flip(['reference'])));
             foreach ($lignes as $l) {
                 if ((float) ($l['debit'] ?? 0) == 0 && (float) ($l['credit'] ?? 0) == 0) continue;
-                $e->lignes()->create(['compte' => Saisie::normaliser((string) $l['compte'], $longueur), 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0)]);
+                $e->lignes()->create(['compte' => Saisie::normaliser((string) $l['compte'], $longueur), 'debit' => r3($l['debit'] ?? 0), 'credit' => r3($l['credit'] ?? 0)]
+                    + array_filter(array_intersect_key($l, array_flip(['libelle', 'reference'])), fn ($v) => $v !== null && $v !== ''));
             }
             return $e;
         });

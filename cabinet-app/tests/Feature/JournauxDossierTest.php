@@ -46,7 +46,9 @@ class JournauxDossierTest extends TestCase
         $this->assertArrayNotHasKey('PAI', Ecriture::journauxSaisie($this->client->id));
 
         $this->get(route('compta.index', ['tab' => 'jnl', 'annee' => 2026]))->assertOk()->assertSee('Journaux du dossier')
-            ->assertSee('Banque BIAT')->assertSee('BQ2 — Banque BIAT')->assertSee('Amortissements');
+            ->assertSee('Banque BIAT')->assertSee('Amortissements');
+        // Le journal ajouté est proposé à la saisie par pièce ; les journaux automatiques ne le sont pas.
+        $this->get(route('compta.piece'))->assertOk()->assertSee('<option value="BQ2">BQ2</option>', false)->assertDontSee('<option value="PAI">', false);
 
         $this->od('BQ2')->assertSessionHas('ok');
         $e = Ecriture::where('journal', 'BQ2')->firstOrFail();
@@ -71,7 +73,9 @@ class JournauxDossierTest extends TestCase
         $this->post(route('compta.journaux'), ['comptes' => ['BQ' => '53A']])->assertSessionHasErrors('comptes.BQ');
 
         $this->get(route('compta.index', ['tab' => 'jnl', 'annee' => 2026]))->assertOk()->assertSee('Compte associé')
-            ->assertSee('name="comptes[BQ2]" value="5322"', false)->assertSee('comptesJ: '.\Illuminate\Support\Js::from((object) Ecriture::comptesJournaux($this->client->id)), false);
+            ->assertSee('name="comptes[BQ2]" value="5322"', false);
+        // Le compte associé est proposé en première ligne de la pièce saisie dans le journal.
+        $this->get(route('compta.piece', ['journal' => 'BQ2']))->assertOk()->assertViewHas('comptesJ', fn ($c) => (array) $c === Ecriture::comptesJournaux($this->client->id));
 
         // Retirer le journal retire son compte associé
         $this->post(route('compta.journaux'), ['retirer' => 'BQ2'])->assertSessionHas('ok');
