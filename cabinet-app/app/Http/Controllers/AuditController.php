@@ -159,7 +159,7 @@ class AuditController extends Controller
         $add('Déclarations mensuelles déposées', $late ? 'warn' : 'ok', $late ? 'Non déposées : '.implode(', ', $late) : 'À jour.');
         $tl = Echeance::where('client_id', $c->id)->whereNull('accomplie_le')->where('date_echeance', '<', now()->startOfDay())->get();
         $add('Échéances fiscales et sociales en retard', $tl->count() ? 'ko' : 'ok', $tl->count() ? $tl->take(4)->pluck('intitule')->implode(', ') : 'Aucune.');
-        $miss = collect(array_slice(config('cabinet.GC'), 0, 9))->reject(fn ($k) => Document::where('client_id', $c->id)->where('categorie', $k)->exists());
+        $miss = collect($c->piecesRequises())->reject(fn ($k) => Document::where('client_id', $c->id)->where('categorie', $k)->exists());
         $add('Pièces de base du dossier juridique', $miss->count() ? 'info' : 'ok', $miss->count() ? $miss->count().' pièce(s) non classée(s) : '.$miss->take(5)->implode(', ') : 'Dossier complet.');
         return $K;
     }

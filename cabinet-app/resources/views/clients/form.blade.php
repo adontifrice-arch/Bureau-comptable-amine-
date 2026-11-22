@@ -6,7 +6,7 @@
           x-data="{ tp: @js(old('type_personne', $client->type_personne ?? ($edit ? ($client->estPhysique() ? 'physique' : 'morale') : (in_array(request('type'), ['physique', 'morale'], true) ? request('type') : '')))),
                     associes:@js(collect(old('associes', $associes))->values()), gas: @js((string) old('gerant_associe', $client->gerant_associe === null ? '' : ($client->gerant_associe ? '1' : '0'))),
                     np: @js((string) old('nb_parts', $client->nb_parts)), gp: @js((string) old('gerant_parts', $client->gerant_parts)), vn: @js((string) old('valeur_nominale', $client->valeur_nominale)), cap: @js((string) old('capital', $client->capital > 0 ? $client->capital : '')),
-                    addA() { this.associes.push({civilite:'',nom:'',cin:'',parts:'',apport:'numeraire'}) },
+                    addA() { this.associes.push({civilite:'',nom:'',identifiant_unique:'',rcs:'',cin:'',parts:'',apport:'numeraire'}) },
                     totalParts() { return (this.gas === '1' ? (+this.gp || 0) : 0) + this.associes.reduce((s, a) => s + (+a.parts || ((+a.parts_a && +a.parts_de) ? a.parts_a - a.parts_de + 1 : 0)), 0) },
                     nat: @js((string) old('gerant_nationalite', $client->gerant_nationalite)),
                     chef: @js((string) old('chef_famille', $client->chef_famille === null ? '' : ($client->chef_famille ? '1' : '0'))),
@@ -190,6 +190,8 @@
                         <div><label class="label">Civilité</label><select class="input" :name="`associes[${i}][civilite]`" x-model="a.civilite"><option value="">—</option><option value="M">Monsieur</option><option value="Mme">Madame</option></select></div>
                         <div class="md:col-span-2"><label class="label">Nom et prénom</label><input class="input" :name="`associes[${i}][nom]`" x-model="a.nom"></div>
                         <div><label class="label">Nationalité</label><input class="input" list="nationalites" placeholder="Tunisienne, Française…" :name="`associes[${i}][nationalite]`" x-model="a.nationalite"></div>
+                        <div><label class="label">Identifiant unique <span class="font-normal text-slate-400">(associé société)</span></label><input class="input font-mono" placeholder="1234567A" :name="`associes[${i}][identifiant_unique]`" x-model="a.identifiant_unique"></div>
+                        <div><label class="label">RCS <span class="font-normal text-slate-400">(société étrangère)</span></label><input class="input font-mono" placeholder="834 651 820 RCS Paris" :name="`associes[${i}][rcs]`" x-model="a.rcs"></div>
                         <div x-show="! etr(a.nationalite)"><label class="label">CIN</label><input class="input" :name="`associes[${i}][cin]`" x-model="a.cin"></div>
                         <div x-show="! etr(a.nationalite)"><label class="label">CIN délivrée le</label><input type="date" class="input" :name="`associes[${i}][cin_date]`" x-model="a.cin_date"></div>
                         <div x-show="! etr(a.nationalite)"><label class="label">CIN délivrée à</label><input class="input" :name="`associes[${i}][cin_lieu]`" x-model="a.cin_lieu"></div>

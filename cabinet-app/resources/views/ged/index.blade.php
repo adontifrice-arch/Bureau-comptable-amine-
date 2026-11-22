@@ -6,7 +6,7 @@
     <div class="mb-6 grid gap-4 sm:grid-cols-3">
         <x-stat label="Documents" :value="$total" icon="folder"/>
         <x-stat label="Espace utilisé" :value="$kb($taille)" icon="download"/>
-        <x-stat label="Dossiers complets (9 pièces de base)" :value="$completude->where('n', 9)->count().' / '.$clients->count()" icon="check" tone="green"/>
+        <x-stat label="Dossiers complets (pièces de base)" :value="$completude->filter(fn ($x) => $x['n'] >= $x['total'])->count().' / '.$clients->count()" icon="check" tone="green"/>
     </div>
     <div class="grid gap-6 xl:grid-cols-4">
         <div class="card xl:col-span-3">
@@ -39,21 +39,35 @@
             <div class="card-h"><h2 class="card-t">Complétude des dossiers</h2></div>
             @foreach($completude as $x)
                 <a href="{{ route('clients.show', [$x['c'], 'tab' => 'documents']) }}" class="block border-b border-slate-100 px-5 py-3 last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
-                    <div class="flex justify-between text-sm"><span class="truncate">{{ $x['c']->nom }}</span><span class="font-mono text-xs">{{ $x['n'] }}/9</span></div>
-                    <div class="mt-1.5 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800"><div class="h-1.5 rounded-full {{ $x['n'] === 9 ? 'bg-emerald-500' : 'bg-brand-500' }}" style="width: {{ $x['n'] / 9 * 100 }}%"></div></div>
+                    <div class="flex justify-between text-sm"><span class="truncate">{{ $x['c']->nom }}</span><span class="font-mono text-xs">{{ $x['n'] }}/{{ $x['total'] }}</span></div>
+                    <div class="mt-1.5 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800"><div class="h-1.5 rounded-full {{ $x['n'] >= $x['total'] ? 'bg-emerald-500' : 'bg-brand-500' }}" style="width: {{ $x['total'] ? $x['n'] / $x['total'] * 100 : 100 }}%"></div></div>
                 </a>
             @endforeach
         </div>
     </div>
-    <x-modal name="up" title="Ajouter des documents">
-        <form method="POST" action="{{ route('ged.store') }}" enctype="multipart/form-data" class="grid gap-4 md:grid-cols-2">@csrf
-            <div><label class="label">Dossier</label><select name="client_id" class="input"><option value="">Cabinet (interne)</option>@foreach($clients as $c)<option value="{{ $c->id }}" @selected(request('client') == $c->id)>{{ $c->nom }}</option>@endforeach</select></div>
-            <div><label class="label">Catégorie</label><select name="categorie" class="input">@foreach(config('cabinet.GC') as $g)<option>{{ $g }}</option>@endforeach</select></div>
-            <x-field label="Date du document" name="date" type="date" :value="now()->format('Y-m-d')"/>
-            <x-field label="Description" name="description"/>
-            <div class="md:col-span-2"><label class="label">Fichiers (20 Mo max. chacun)</label><input type="file" name="fichiers[]" multiple required class="input"></div>
-            <label class="flex items-center gap-2 text-sm text-slate-600 md:col-span-2"><input type="checkbox" name="partager" value="1" class="rounded border-slate-300 text-brand-600"> Partager avec le client (visible dans son espace client, avis par e-mail)</label>
-            <div class="flex justify-end md:col-span-2"><button class="btn-primary">Classer</button></div>
+    <x-modal name="up" title="Ajouter des documents" size="max-w-3xl">
+        <form method="POST" action="{{ route('ged.store') }}" enctype="multipart/form-data" class="space-y-4"
+              x-data="{ lots: [{ id: 1, n: 0 }], suivant: 2, get total() { return this.lots.reduce((s, l) => s + l.n, 0) } }">@csrf
+            <div class="grid gap-4 md:grid-cols-2">
+                <div><label class="label">Dossier</label><select name="client_id" class="input"><option value="">Cabinet (interne)</option>@foreach($clients as $c)<option value="{{ $c->id }}" @selected(request('client') == $c->id)>{{ $c->nom }}</option>@endforeach</select></div>
+                <x-field label="Date des documents" name="date" type="date" :value="now()->format('Y-m-d')"/>
+            </div>
+            <template x-for="(l, i) in lots" :key="l.id">
+                <div class="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-2 dark:border-slate-700">
+                    <div class="flex items-center justify-between md:col-span-2">
+                        <span class="text-xs font-semibold uppercase text-slate-400" x-text="'Groupe ' + (i + 1)"></span>
+                        <button type="button" class="text-xs text-rose-600 hover:underline" x-show="lots.length > 1" @click="lots.splice(i, 1)">Retirer</button>
+                    </div>
+                    <div><label class="label">Catégorie</label><select :name="`lots[${i}][categorie]`" class="input">@foreach(config('cabinet.GC') as $g)<option>{{ $g }}</option>@endforeach</select></div>
+                    <div><label class="label">Description</label><input :name="`lots[${i}][description]`" class="input"></div>
+                    <div class="md:col-span-2"><label class="label">Fichiers (20 Mo max. chacun)</label>
+                        <input type="file" :name="`lots[${i}][fichiers][]`" multiple required class="input" @change="l.n = $event.target.files.length">
+                        <p class="mt-1 text-xs text-slate-400" x-show="l.n" x-text="l.n + ' fichier(s) choisi(s)'"></p></div>
+                </div>
+            </template>
+            <button type="button" class="btn-secondary w-full" x-show="lots.length < 10" @click="lots.push({ id: suivant++, n: 0 })"><x-icon name="plus" class="h-4 w-4"/> Ajouter une autre catégorie</button>
+            <label class="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" name="partager" value="1" class="rounded border-slate-300 text-brand-600"> Partager avec le client (visible dans son espace client, avis par e-mail)</label>
+            <div class="flex justify-end"><button class="btn-primary"><span x-text="total > 1 ? 'Classer les ' + total + ' documents' : 'Classer'">Classer</span></button></div>
         </form>
     </x-modal>
     <x-modal name="edit" title="Modifier les informations">

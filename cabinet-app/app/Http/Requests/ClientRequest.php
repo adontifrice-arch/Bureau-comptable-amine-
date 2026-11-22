@@ -125,7 +125,7 @@ class ClientRequest extends FormRequest
             'associes.*.passeport_date' => $date, 'associes.*.passeport_validite' => $date, 'associes.*.nationalite' => 'nullable|max:100',
             'associes.*.adresse' => 'nullable|max:255', 'associes.*.naissance_date' => $date, 'associes.*.naissance_lieu' => 'nullable|max:100',
             'associes.*.parts' => 'nullable|integer|min:1', 'associes.*.parts_de' => 'nullable|integer|min:1', 'associes.*.parts_a' => 'nullable|integer|min:1',
-            'associes.*.apport' => 'in:numeraire,nature', 'associes.*.civilite' => 'nullable|in:M,Mme',
+            'associes.*.apport' => 'in:numeraire,nature', 'associes.*.civilite' => 'nullable|in:M,Mme', 'associes.*.identifiant_unique' => 'nullable|max:30', 'associes.*.rcs' => 'nullable|max:50',
         ];
     }
 

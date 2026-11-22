@@ -311,4 +311,105 @@ class ClientTest extends TestCase
         $this->assertSame(0, Echeance::withTrashed()->count());
         $this->assertDatabaseCount('associes', 0);
     }
+
+    public function test_pieces_de_base_d_une_personne_physique(): void
+    {
+        $c = Client::create(['nom' => 'Ben Salah Karim', 'type_personne' => 'physique', 'forme' => 'Entreprise individuelle']);
+        $this->assertSame(['Patente', 'Déclaration d’existence', 'Extrait RNE', 'Affiliation CNSS', 'Affiliation CNSS (travailleur indépendant)',
+            'Déclaration d’investissement API', 'Code en douane'], array_keys($c->piecesDeBase()));
+        $this->assertSame(['Patente', 'Déclaration d’existence', 'Extrait RNE'], $c->piecesRequises());
+
+        // Les pièces conditionnelles deviennent requises quand la fiche l'indique
+        $c->update(['matricule_independant' => '12345678-01', 'regime_export' => 'totale',
+            'cadres_legaux' => [['cadre' => '1', 'organisme' => 'API', 'numero' => '2026-0042', 'date_declaration' => '2026-01-02', 'date_entree' => '2026-01-05']]]);
+        $this->assertSame(['Patente', 'Déclaration d’existence', 'Extrait RNE', 'Affiliation CNSS (travailleur indépendant)', 'Déclaration d’investissement API', 'Code en douane'],
+            $c->fresh()->piecesRequises());
+        foreach (array_keys($c->piecesDeBase()) as $p) $this->assertContains($p, config('cabinet.GC'));     // catégories de la GED
+
+        \App\Models\Document::create(['client_id' => $c->id, 'categorie' => 'Patente', 'nom' => 'patente.pdf', 'chemin' => 'x', 'taille' => 1, 'date' => now()]);
+        $this->get(route('clients.show', [$c, 'tab' => 'documents']))->assertOk()->assertSee('1/6')->assertSee('Si applicable')->assertSee('si affilié comme employeur')
+            ->assertDontSee('Statuts');
+        $this->get(route('ged.index'))->assertOk()->assertSee('1/6');
+    }
+
+    public function test_pieces_de_base_d_une_personne_morale(): void
+    {
+        $c = Client::create(['nom' => 'Alpha SARL', 'type_personne' => 'morale', 'forme' => 'SARL']);
+        $this->assertSame(['Statuts', 'Patente', 'Déclaration d’existence', 'Extrait RNE', 'Affiliation CNSS', 'Affiliation CNSS (travailleur indépendant)',
+            'Déclaration du bénéficiaire effectif', 'Liste des associés', 'Déclaration d’investissement API', 'Fiche d’investissement BCT', 'Code en douane'], array_keys($c->piecesDeBase()));
+        // Toujours requises : statuts, patente, déclaration d'existence, extrait RNE, bénéficiaire effectif, liste des associés
+        $this->assertSame(['Statuts', 'Patente', 'Déclaration d’existence', 'Extrait RNE', 'Déclaration du bénéficiaire effectif', 'Liste des associés'], $c->piecesRequises());
+        $this->get(route('clients.show', [$c, 'tab' => 'documents']))->assertOk()->assertSee('0/6')->assertSee('Statuts')->assertSee('Si applicable')
+            ->assertSee('si la société est non résidente');
+        $c->update(['residence' => 'residente']);
+        $this->assertNotContains('Fiche d’investissement BCT', $c->fresh()->piecesRequises());
+
+        // Pièces conditionnelles renseignées sur la fiche (fiche BCT : société non résidente)
+        $c->update(['residence' => 'non_residente', 'matricule_cnss' => '123456-78', 'matricule_independant' => '87654321-01', 'regime_export' => 'partielle',
+            'cadres_legaux' => [['cadre' => '1', 'organisme' => 'API', 'numero' => 'D-77']]]);
+        $this->assertCount(11, $c->fresh()->piecesRequises());
+        $this->assertContains('Fiche d’investissement BCT', $c->fresh()->piecesRequises());
+        $this->get(route('clients.show', [$c, 'tab' => 'documents']))->assertOk()->assertSee('0/11')->assertDontSee('Si applicable');
+    }
+
+    public function test_identifiant_unique_d_un_associe_societe(): void
+    {
+        $fiche = $this->fiche();
+        $fiche['associes'][] = ['nom' => 'STE Holding Beta', 'identifiant_unique' => '1805005M', 'nationalite' => 'Tunisienne', 'parts' => '', 'apport' => 'numeraire'];
+        $fiche['associes'][] = ['nom' => 'PGAM Management', 'rcs' => '834 651 820 RCS Paris', 'nationalite' => 'Française', 'parts' => '', 'apport' => 'numeraire'];
+        $this->post(route('clients.store'), $fiche)->assertSessionHasNoErrors();
+        $c = Client::with('associes')->sole();
+        $this->assertSame('1805005M', $c->associes->firstWhere('nom', 'STE Holding Beta')->identifiant_unique);
+        $this->assertSame('834 651 820 RCS Paris', $c->associes->firstWhere('nom', 'PGAM Management')->rcs);
+        $this->get(route('clients.show', $c))->assertOk()->assertSee('Identifiant unique 1805005M')->assertSee('RCS 834 651 820 RCS Paris');
+        $this->get(route('clients.edit', $c))->assertOk()->assertSee('Identifiant unique')->assertSee('société étrangère');
+        $lignes = collect(\App\Services\Exports\ListeAssocies::lignes($c));
+        $ligne = $lignes->firstWhere('nom', 'STE HOLDING BETA');
+        $this->assertSame(['STE', 'MF', '1805005M'], [$ligne['genre'], $ligne['type'], $ligne['numero']]);
+        // Société étrangère : RCS, et « STE » même sans « STE » dans le nom
+        $ligne = $lignes->firstWhere('nom', 'PGAM MANAGEMENT');
+        $this->assertSame(['STE', 'RCS', '834 651 820 RCS Paris'], [$ligne['genre'], $ligne['type'], $ligne['numero']]);
+    }
+
+    public function test_liste_des_associes_generee_d_apres_la_fiche(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake();
+        $c = Client::create(['nom' => 'Image Media Production', 'type_personne' => 'morale', 'forme' => 'SARL', 'matricule_fiscal' => '1805005/M/A/M/000',
+            'capital' => 24000, 'nb_parts' => 2400, 'valeur_nominale' => 10,
+            'gerant_nom' => 'Ahmed Ghezal', 'gerant_civilite' => 'M', 'gerant_associe' => true, 'gerant_parts' => 240, 'gerant_apport' => 'numeraire',
+            'gerant_cin' => '06809833', 'gerant_nationalite' => 'Tunisienne', 'gerant_naissance_date' => '1980-11-05']);
+        $c->associes()->create(['civilite' => 'M', 'nom' => 'Wajdi Krifi', 'passeport' => '18DH54816', 'nationalite' => 'Française', 'naissance_date' => '1990-12-12', 'parts' => 1800, 'apport' => 'numeraire']);
+        $c->associes()->create(['nom' => 'STE PGAM Management', 'identifiant_unique' => '834651820', 'parts_de' => 2041, 'parts_a' => 2400, 'apport' => 'nature', 'nationalite' => 'Française']);
+
+        $l = \App\Services\Exports\ListeAssocies::lignes($c->fresh());
+        $this->assertSame(['AHMED GHEZAL', 'WAJDI KRIFI', 'STE PGAM MANAGEMENT'], array_column($l, 'nom'));
+        $this->assertSame(['MR', 'MR', 'STE'], array_column($l, 'genre'));
+        $this->assertSame(['CIN', 'PASSEPORT', 'MF'], array_column($l, 'type'));
+        $this->assertSame(['06809833', '18DH54816', '834651820'], array_column($l, 'numero'));     // identifiant unique de l'associé société
+        $this->assertSame([[240, 0], [1800, 0], [0, 360]], array_map(fn ($x) => [$x['numeraire'], $x['nature']], $l));
+        $this->assertSame('1805005M', \App\Services\Exports\ListeAssocies::identifiant($c));
+
+        // Excel au modèle du cabinet
+        $r = $this->get(route('clients.liste-associes', [$c, 'format' => 'xlsx']))->assertOk()->assertDownload('Liste des associes - Image Media Production.xlsx');
+        $ws = \PhpOffice\PhpSpreadsheet\IOFactory::load($r->baseResponse->getFile()->getPathname())->getActiveSheet();
+        $this->assertSame(['TABLEAU DES ASSOCIES/ACTIONNAIRES', '1805005M', 'IMAGE MEDIA PRODUCTION', 'NOM & PRENOM', 'WAJDI KRIFI', '18DH54816'],
+            [$ws->getCell('A1')->getValue(), $ws->getCell('C3')->getValue(), $ws->getCell('D3')->getValue(), $ws->getCell('B7')->getValue(), $ws->getCell('B9')->getValue(), $ws->getCell('F9')->getValue()]);
+        $this->assertEqualsWithDelta(0.75, $ws->getCell('I9')->getCalculatedValue(), 0.0001);
+        $this->assertSame(2400, (int) $ws->getCell('L11')->getCalculatedValue());              // ligne des totaux
+        $this->get(route('clients.liste-associes', [$c, 'format' => 'pdf']))->assertOk()->assertDownload('Liste des associes - Image Media Production.pdf');
+
+        // Classement dans la GED, en Excel et en PDF ; une nouvelle génération remplace la précédente
+        $this->post(route('clients.liste-associes.ged', $c))->assertSessionHas('ok');
+        $this->post(route('clients.liste-associes.ged', $c))->assertSessionHas('ok', fn ($m) => str_contains($m, 'remplacée'));
+        $docs = \App\Models\Document::where('client_id', $c->id)->where('categorie', 'Liste des associés')->get();
+        $this->assertEqualsCanonicalizing(['xlsx', 'pdf'], $docs->map(fn ($d) => pathinfo($d->nom, PATHINFO_EXTENSION))->all());
+        foreach ($docs as $d) \Illuminate\Support\Facades\Storage::assertExists($d->chemin);
+        $this->assertStringStartsWith('%PDF', \Illuminate\Support\Facades\Storage::get($docs->firstWhere('mime', 'application/pdf')->chemin));
+        $this->assertContains('Liste des associés', $c->fresh()->piecesRequises());
+        $this->get(route('clients.show', [$c, 'tab' => 'documents']))->assertOk()->assertSee('Régénérer d’après la fiche');
+
+        // Sans associé : rien n'est généré
+        $vide = Client::create(['nom' => 'Beta SARL', 'type_personne' => 'morale', 'forme' => 'SARL']);
+        $this->post(route('clients.liste-associes.ged', $vide))->assertSessionHas('err');
+    }
 }

@@ -8,27 +8,40 @@
         {{-- Envoi au cabinet --}}
         <div class="card self-start lg:col-span-2">
             <div class="card-h"><h2 class="card-t">Envoyer des documents au cabinet</h2></div>
+            @php $anciens = collect(old('lots', [[]]))->values()->map(fn ($l, $i) => ['id' => $i + 1, 't' => $l['type_piece'] ?? '', 'p' => $l['periode'] ?? '', 'n' => 0])->all(); @endphp
             <form method="POST" action="{{ route('espace.envoyer') }}" enctype="multipart/form-data" class="card-b space-y-4"
-                  x-data="{ t: @js(old('type_piece', '')), avecPeriode: @js(\App\Support\TypesPieces::AVEC_PERIODE) }">@csrf
-                <div><label class="label" for="f-type">Type de documents</label>
-                    <select id="f-type" name="type_piece" class="input" required x-model="t">
-                        <option value="">Choisissez…</option>
-                        @foreach(\App\Support\TypesPieces::parDestination() as $groupe => $types)
-                            <optgroup label="{{ $groupe === 'GED (classement)' ? 'Autres documents' : $groupe }}">
-                                @foreach($types as $k => $lib)<option value="{{ $k }}">{{ $lib }}</option>@endforeach
-                            </optgroup>
-                        @endforeach
-                    </select>
-                    <p class="mt-1 text-xs text-slate-400">Un envoi par type : vos documents sont transmis directement au service concerné du cabinet.</p>
-                </div>
-                <div x-show="avecPeriode.includes(t)" x-cloak><label class="label" for="f-periode">Mois concerné</label>
-                    <input id="f-periode" type="month" name="periode" value="{{ old('periode') }}" class="input"></div>
-                <div><label class="label" for="f-fichiers">Fichiers</label>
-                    <input id="f-fichiers" type="file" name="fichiers[]" multiple required class="input">
-                    <p class="mt-1 text-xs text-slate-400">PDF, images, Word, Excel, CSV ou ZIP · 20 Mo maximum par fichier, 20 fichiers par envoi.</p>
-                </div>
+                  x-data="{ lots: @js($anciens), suivant: {{ count($anciens) + 1 }}, avecPeriode: @js(\App\Support\TypesPieces::AVEC_PERIODE),
+                            get total() { return this.lots.reduce((s, l) => s + l.n, 0) } }">@csrf
+                <p class="text-xs text-slate-500">Ajoutez un groupe par type de documents (factures d’achat, relevé bancaire, pointage…) : chaque groupe part directement au service concerné du cabinet.</p>
+                <template x-for="(l, i) in lots" :key="l.id">
+                    <div class="space-y-3 rounded-xl border border-slate-200 p-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold uppercase text-slate-400" x-text="'Groupe ' + (i + 1)"></span>
+                            <button type="button" class="text-xs text-rose-600 hover:underline" x-show="lots.length > 1" @click="lots.splice(i, 1)">Retirer</button>
+                        </div>
+                        <div><label class="label">Type de documents</label>
+                            <select :name="`lots[${i}][type_piece]`" class="input" required x-model="l.t">
+                                <option value="">Choisissez…</option>
+                                @foreach(\App\Support\TypesPieces::parDestination() as $groupe => $types)
+                                    <optgroup label="{{ $groupe === 'GED (classement)' ? 'Autres documents' : $groupe }}">
+                                        @foreach($types as $k => $lib)<option value="{{ $k }}">{{ $lib }}</option>@endforeach
+                                    </optgroup>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div x-show="avecPeriode.includes(l.t)"><label class="label">Mois concerné</label>
+                            <input type="month" :name="`lots[${i}][periode]`" x-model="l.p" class="input"></div>
+                        <div><label class="label">Fichiers</label>
+                            <input type="file" :name="`lots[${i}][fichiers][]`" multiple required class="input" @change="l.n = $event.target.files.length">
+                            <p class="mt-1 text-xs text-slate-400" x-show="l.n" x-text="l.n + ' fichier(s) choisi(s)'"></p>
+                        </div>
+                    </div>
+                </template>
+                <button type="button" class="btn-secondary w-full" x-show="lots.length < 10" @click="lots.push({ id: suivant++, t: '', p: '', n: 0 })">
+                    <x-icon name="plus" class="h-4 w-4"/> Ajouter un autre type de documents</button>
+                <p class="text-xs text-slate-400">PDF, images, Word, Excel, CSV ou ZIP · 20 Mo maximum par fichier · 40 fichiers au plus par envoi.</p>
                 <x-field label="Message pour le cabinet (facultatif)" name="message" type="textarea" placeholder="Ex. : relevés de janvier à mars, il manque celui de la BIAT."/>
-                <button class="btn-primary w-full"><x-icon name="upload" class="h-4 w-4"/> Envoyer</button>
+                <button class="btn-primary w-full"><x-icon name="upload" class="h-4 w-4"/> <span x-text="total > 1 ? 'Envoyer les ' + total + ' documents' : 'Envoyer'">Envoyer</span></button>
             </form>
         </div>
 

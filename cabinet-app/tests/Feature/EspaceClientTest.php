@@ -180,9 +180,9 @@ class EspaceClientTest extends TestCase
     {
         $u = $this->acces($this->client);
         $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['type_piece' => 'juridique', 'fichiers' => [UploadedFile::fake()->create('virus.exe', 10)]])
-            ->assertSessionHasErrors('fichiers.0');
+            ->assertSessionHasErrors('lots.0.fichiers.0');
         $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['type_piece' => 'inexistant', 'fichiers' => [UploadedFile::fake()->create('a.pdf', 10)]])
-            ->assertSessionHasErrors('type_piece');
+            ->assertSessionHasErrors('lots.0.type_piece');
         $this->assertSame(0, CabinetCourant::pour($this->chef->cabinet_id, fn () => Document::count()));
     }
 

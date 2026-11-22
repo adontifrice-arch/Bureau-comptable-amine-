@@ -78,7 +78,7 @@
             @if($client->associes->count())
                 <table class="tbl"><thead><tr><th>Associé</th><th>Pièce d’identité</th><th>Nationalité</th><th>Apport</th><th class="text-right">Parts</th></tr></thead><tbody>
                 @foreach($client->associes as $a)
-                    <tr><td class="font-medium">{{ trim((\App\Models\Client::CIVILITES[$a->civilite] ?? '').' '.$a->nom) }}</td><td>{{ collect([$a->cin ? 'CIN '.$a->cin.($a->cin_date ? ' du '.dfr($a->cin_date) : '') : null, $a->passeport ? 'Passeport '.$a->passeport.($a->passeport_validite ? ' (valable jusqu’au '.dfr($a->passeport_validite).')' : '') : null, $a->carte_sejour ? 'Carte de séjour '.$a->carte_sejour : null])->filter()->implode(' · ') ?: '—' }}</td><td>{{ $a->nationalite ?: '—' }}</td><td>{{ $a->apport === 'nature' ? 'En nature' : 'En numéraire' }}</td><td class="num">{{ $a->parts }}{{ $a->parts_de ? ' (n° '.$a->parts_de.' à '.$a->parts_a.')' : '' }}</td></tr>
+                    <tr><td class="font-medium">{{ trim((\App\Models\Client::CIVILITES[$a->civilite] ?? '').' '.$a->nom) }}</td><td>{{ collect([$a->identifiant_unique ? 'Identifiant unique '.$a->identifiant_unique : null, $a->rcs ? 'RCS '.$a->rcs : null, $a->cin ? 'CIN '.$a->cin.($a->cin_date ? ' du '.dfr($a->cin_date) : '') : null, $a->passeport ? 'Passeport '.$a->passeport.($a->passeport_validite ? ' (valable jusqu’au '.dfr($a->passeport_validite).')' : '') : null, $a->carte_sejour ? 'Carte de séjour '.$a->carte_sejour : null])->filter()->implode(' · ') ?: '—' }}</td><td>{{ $a->nationalite ?: '—' }}</td><td>{{ $a->apport === 'nature' ? 'En nature' : 'En numéraire' }}</td><td class="num">{{ $a->parts }}{{ $a->parts_de ? ' (n° '.$a->parts_de.' à '.$a->parts_a.')' : '' }}</td></tr>
                 @endforeach
                 </tbody></table>
             @else <x-empty icon="users" title="Aucun associé renseigné"/> @endif
@@ -138,15 +138,29 @@
         </div>
 
     @elseif($tab === 'documents')
-        @php $base = array_slice(config('cabinet.GC'), 0, 9); $have = $documents->pluck('categorie')->unique(); @endphp
+        @php $base = $client->piecesDeBase(); $requises = $client->piecesRequises(); $have = $documents->pluck('categorie')->unique(); @endphp
         <div class="grid gap-6 lg:grid-cols-3">
             <div class="card">
-                <div class="card-h"><h2 class="card-t">Pièces de base</h2><span class="badge-blue">{{ collect($base)->filter(fn($c) => $have->contains($c))->count() }}/9</span></div>
+                <div class="card-h"><h2 class="card-t">Pièces de base</h2><span class="badge-blue">{{ collect($requises)->filter(fn($c) => $have->contains($c))->count() }}/{{ count($requises) }}</span></div>
                 <ul class="divide-y divide-slate-100 dark:divide-slate-800">
-                    @foreach($base as $c)
-                        <li class="flex items-center justify-between px-5 py-2.5 text-sm"><span>{{ $c }}</span>@if($have->contains($c))<x-icon name="check" class="h-4 w-4 text-emerald-600"/>@else<span class="badge-amber">Manquante</span>@endif</li>
+                    @foreach($base as $c => $condition)
+                        <li class="flex items-center justify-between gap-2 px-5 py-2.5 text-sm">
+                            <span>{{ $c }}@if($condition)<span class="block text-xs text-slate-400">{{ $condition }}</span>@endif</span>
+                            @if($have->contains($c))<x-icon name="check" class="h-4 w-4 text-emerald-600"/>
+                            @elseif(in_array($c, $requises, true))<span class="badge-amber">Manquante</span>
+                            @else<span class="badge-gray" title="À fournir seulement si le cas se présente">Si applicable</span>@endif
+                        </li>
+                        @if($c === 'Liste des associés')
+                            <li class="flex flex-wrap items-center gap-2 bg-slate-50/60 px-5 py-2 text-xs dark:bg-slate-800/30">
+                                <form method="POST" action="{{ route('clients.liste-associes.ged', $client) }}">@csrf
+                                    <button class="btn-secondary btn-sm" title="Excel et PDF, d’après les associés de la fiche">{{ $have->contains($c) ? 'Régénérer' : 'Générer' }} d’après la fiche</button></form>
+                                <a href="{{ route('clients.liste-associes', [$client, 'format' => 'xlsx']) }}" class="font-medium text-brand-700 hover:underline">Excel</a>
+                                <a href="{{ route('clients.liste-associes', [$client, 'format' => 'pdf']) }}" class="font-medium text-brand-700 hover:underline">PDF</a>
+                            </li>
+                        @endif
                     @endforeach
                 </ul>
+                <p class="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 dark:border-slate-800">Une pièce conditionnelle devient requise quand la fiche l’indique (matricule CNSS employeur ou indépendant, déclaration d’investissement, régime d’export, société non résidente).</p>
             </div>
             <div class="card lg:col-span-2">
                 <div class="card-h"><h2 class="card-t">Documents du dossier</h2><a href="{{ route('ged.index', ['client' => $client->id]) }}" class="btn-primary btn-sm"><x-icon name="upload" class="h-3.5 w-3.5"/> Ajouter dans la GED</a></div>

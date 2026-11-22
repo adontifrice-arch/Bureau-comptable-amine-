@@ -121,6 +121,44 @@ class PiecesRecuesTest extends TestCase
         $this->assertSame(1, $this->dans(fn () => Ecriture::where('journal', 'ACH')->count()));
     }
 
+    public function test_envoi_de_plusieurs_types_de_documents_a_la_fois(): void
+    {
+        $this->ia($this->facture());
+        $u = ClientUser::create(['cabinet_id' => $this->chef->cabinet_id, 'client_id' => $this->client->id, 'name' => 'Gérant', 'email' => 'g@alpha.tn', 'password' => 'MotDePasse1', 'actif' => true]);
+        $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['message' => 'Pièces d’octobre', 'lots' => [
+            ['type_piece' => 'facture_achat', 'fichiers' => [UploadedFile::fake()->create('steg.pdf', 20, 'application/pdf'), UploadedFile::fake()->create('sonede.pdf', 20, 'application/pdf')]],
+            ['type_piece' => 'courrier', 'fichiers' => [UploadedFile::fake()->create('lettre.pdf', 20, 'application/pdf')]],
+            ['type_piece' => 'pointage', 'periode' => '2026-10', 'fichiers' => [UploadedFile::fake()->create('pointage.pdf', 20, 'application/pdf')]],
+        ]])->assertSessionHasNoErrors()->assertSessionHas('ok', '4 documents envoyés au cabinet.');
+
+        $docs = $this->dans(fn () => Document::orderBy('id')->get());
+        $this->assertSame(['facture_achat', 'facture_achat', 'courrier', 'pointage'], $docs->pluck('type_piece')->all());
+        $this->assertSame(['compta', 'compta', 'ged', 'paie'], $docs->pluck('destination')->all());
+        $this->assertSame([null, null, null, '2026-10'], $docs->pluck('periode')->all());
+        $this->assertSame(2, $this->dans(fn () => FactureRecue::count()));
+        Mail::assertSent(\App\Mail\EspaceClientMail::class, fn ($m) => $m->modele === 'envoi' && $m->donnees['docs']->count() === 4);
+
+        // Un groupe sans type ou sans fichier est refusé, et rien n'est enregistré
+        $this->actingAs($u, 'client')->post(route('espace.envoyer'), ['lots' => [
+            ['type_piece' => 'facture_vente', 'fichiers' => [UploadedFile::fake()->create('a.pdf', 5, 'application/pdf')]], ['type_piece' => '', 'fichiers' => []],
+        ]])->assertSessionHasErrors(['lots.1.type_piece', 'lots.1.fichiers']);
+        $this->assertSame(4, $this->dans(fn () => Document::count()));
+    }
+
+    public function test_ajout_en_ged_de_plusieurs_categories_a_la_fois(): void
+    {
+        Http::fake();
+        $this->actingAs($this->chef)->post(route('ged.store'), ['client_id' => $this->client->id, 'date' => '2026-11-01', 'lots' => [
+            ['categorie' => 'Statuts', 'description' => 'Statuts mis à jour', 'fichiers' => [UploadedFile::fake()->create('statuts.pdf', 20, 'application/pdf')]],
+            ['categorie' => 'Patente', 'fichiers' => [UploadedFile::fake()->create('patente-recto.jpg', 20, 'image/jpeg'), UploadedFile::fake()->create('patente-verso.jpg', 20, 'image/jpeg')]],
+        ]])->assertSessionHasNoErrors()->assertSessionHas('ok', '3 document(s) classé(s).');
+        $docs = $this->dans(fn () => Document::orderBy('id')->get());
+        $this->assertSame(['Statuts', 'Patente', 'Patente'], $docs->pluck('categorie')->all());
+        $this->assertSame(['Statuts mis à jour', null, null], $docs->pluck('description')->all());
+        $this->assertSame([null, null, null], $docs->pluck('type_piece')->all());              // ajout du cabinet : pas de traitement
+        Http::assertNothingSent();
+    }
+
     public function test_sans_cle_le_document_attend_dans_le_module(): void
     {
         config(['services.anthropic.key' => null]);

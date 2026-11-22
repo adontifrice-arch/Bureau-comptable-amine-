@@ -39,6 +39,8 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
 
     // ---------- Clients ----------
     Route::resource('clients', C\ClientController::class);
+    Route::get('clients/{client}/liste-associes', [C\ClientController::class, 'listeAssocies'])->name('clients.liste-associes');
+    Route::post('clients/{client}/liste-associes', [C\ClientController::class, 'listeAssociesGed'])->name('clients.liste-associes.ged');
     Route::post('clients/{client}/exigences', [C\ClientController::class, 'exigenceStore'])->name('clients.exigences.store');
     Route::put('exigences/{exigence}', [C\ClientController::class, 'exigenceUpdate'])->name('clients.exigences.update');
     Route::delete('exigences/{exigence}', [C\ClientController::class, 'exigenceDestroy'])->name('clients.exigences.destroy');

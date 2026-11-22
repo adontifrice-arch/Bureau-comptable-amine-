@@ -62,6 +62,37 @@ class ClientController extends Controller
         return view('clients.show', compact('client', 'tab', 'echeances', 'factures', 'documents', 'actes', 'acces'));
     }
 
+    /** Tableau des associés (modèle du cabinet) rempli d'après la fiche, à télécharger. */
+    public function listeAssocies(\Illuminate\Http\Request $r, Client $client)
+    {
+        [$tmp, $nom] = \App\Services\Exports\ListeAssocies::fichier($client, $r->input('format') === 'pdf' ? 'pdf' : 'xlsx');
+        return response()->download($tmp, $nom)->deleteFileAfterSend();
+    }
+
+    /** Génère le tableau des associés et le classe dans la GED (pièce de base « Liste des associés »), en remplaçant la version générée précédente. */
+    public function listeAssociesGed(Client $client)
+    {
+        if (! \App\Services\Exports\ListeAssocies::lignes($client)) {
+            return back()->with('err', 'Aucun associé sur la fiche : complétez les associés (ou le gérant associé) avant de générer la liste.');
+        }
+        $ancien = $client->documents()->where('categorie', 'Liste des associés')->where('description', self::GENERE_FICHE)->get();
+        foreach ($ancien as $d) { \Illuminate\Support\Facades\Storage::delete($d->chemin); $d->delete(); }
+        // Deux versions classées : Excel (modifiable) et PDF (à signer / transmettre)
+        foreach (['xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'pdf' => 'application/pdf'] as $format => $mime) {
+            [$tmp, $nom] = \App\Services\Exports\ListeAssocies::fichier($client, $format);
+            $chemin = 'ged/'.\App\Support\CabinetCourant::exiger().'/'.$client->id.'/'.\Illuminate\Support\Str::random(12).'-liste-des-associes.'.$format;
+            \Illuminate\Support\Facades\Storage::put($chemin, (string) file_get_contents($tmp));
+            @unlink($tmp);
+            \App\Models\Document::create(['client_id' => $client->id, 'categorie' => 'Liste des associés', 'nom' => $nom, 'chemin' => $chemin,
+                'taille' => \Illuminate\Support\Facades\Storage::size($chemin), 'mime' => $mime, 'date' => now(), 'description' => self::GENERE_FICHE, 'user_id' => auth()->id()]);
+        }
+        $this->log('Liste des associés générée d’après la fiche (Excel et PDF)', $client->id);
+        return redirect()->route('clients.show', [$client, 'tab' => 'documents'])->with('ok', 'Liste des associés générée d’après la fiche et classée dans la GED en Excel et en PDF'
+            .($ancien->isNotEmpty() ? ' (version précédente remplacée)' : '').'.');
+    }
+
+    private const GENERE_FICHE = 'Générée d’après la fiche client';
+
     public function edit(Client $client)
     {
         return view('clients.form', ['client' => $client, 'associes' => $client->associes->map(fn ($a) => $a->only(Associe::CHAMPS))->map(fn ($a) => array_map(fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v, $a))->values()]);

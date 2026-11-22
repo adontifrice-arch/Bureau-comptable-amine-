@@ -64,7 +64,7 @@ class Balises
     public static function detenteurs(Client $c): Collection
     {
         $c->loadMissing('associes');
-        $as = $c->associes->map(fn ($a) => ['civ' => $a->civilite, 'nom' => $a->nom, 'nat' => $a->nationalite, 'dn' => $a->naissance_date, 'ln' => $a->naissance_lieu, 'cin' => $a->cin,
+        $as = $c->associes->map(fn ($a) => ['civ' => $a->civilite, 'nom' => $a->nom, 'iu' => $a->identifiant_unique, 'rcs' => $a->rcs, 'nat' => $a->nationalite, 'dn' => $a->naissance_date, 'ln' => $a->naissance_lieu, 'cin' => $a->cin,
             'cind' => $a->cin_date, 'cinl' => $a->cin_lieu, 'pas' => $a->passeport, 'pasd' => $a->passeport_date, 'pasv' => $a->passeport_validite,
             'cs' => $a->carte_sejour, 'adr' => $a->adresse,
             'p' => $a->parts, 'pd' => $a->parts_de, 'pf' => $a->parts_a, 'ap' => $a->apport])->values();

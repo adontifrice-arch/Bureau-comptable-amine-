@@ -112,24 +112,39 @@ class EspaceClientController extends Controller
     {
         $u = $this->compte();
         $client = $this->client($r);
-        $d = $r->validate([
-            'type_piece' => ['required', Rule::in(array_keys(\App\Support\TypesPieces::TYPES))],
-            'periode' => 'nullable|date_format:Y-m',
+        // Plusieurs groupes à la fois, chacun avec son type de documents (et son mois) et ses fichiers ;
+        // l'ancien envoi d'un seul type (type_piece + fichiers) reste accepté.
+        $d = \Illuminate\Support\Facades\Validator::make(['lots' => self::lotsDocuments($r, 'type_piece', ['periode']), 'message' => $r->input('message')], [
+            'lots' => 'required|array|min:1|max:10',
+            'lots.*.type_piece' => ['required', Rule::in(array_keys(\App\Support\TypesPieces::TYPES))],
+            'lots.*.periode' => 'nullable|date_format:Y-m',
+            'lots.*.fichiers' => 'required|array|max:20', 'lots.*.fichiers.*' => Document::REGLE_FICHIER,
             'message' => 'nullable|max:2000',
-            'fichiers' => 'required|array|max:20', 'fichiers.*' => Document::REGLE_FICHIER,
-        ], ['type_piece.required' => 'Choisissez le type de documents envoyés.'], ['type_piece' => 'type de documents', 'periode' => 'mois concerné', 'fichiers' => 'fichiers', 'fichiers.*' => 'fichier']);
+        ], ['lots.*.type_piece.required' => 'Choisissez le type de chaque groupe de documents.', 'lots.*.fichiers.required' => 'Ajoutez au moins un fichier dans chaque groupe.'],
+            ['lots.*.type_piece' => 'type de documents', 'lots.*.periode' => 'mois concerné', 'lots.*.fichiers' => 'fichiers', 'lots.*.fichiers.*' => 'fichier'])->validate();
+        if (collect($d['lots'])->sum(fn ($l) => count($l['fichiers'])) > 40) {
+            return back()->withInput()->with('err', '40 fichiers au plus par envoi : envoyez le reste en une autre fois.');
+        }
 
-        $docs = collect($r->file('fichiers'))->map(fn ($f) => Document::create([
-            'client_id' => $client->id, 'categorie' => \App\Support\TypesPieces::categorie($d['type_piece']), 'description' => $d['message'] ?? null, 'date' => now(),
-            'nom' => $f->getClientOriginalName(), 'chemin' => $f->store('ged/'.CabinetCourant::exiger().'/'.$client->id),
-            'taille' => $f->getSize(), 'mime' => $f->getMimeType(), 'origine' => 'client', 'depose_par' => $u->id,
-        ]));
-        Activite::create(['user_id' => null, 'client_id' => $client->id, 'action' => $docs->count().' document(s) envoyé(s) par '.$u->name.' depuis l’espace client ('.\App\Support\TypesPieces::libelle($d['type_piece']).')']);
-        // Aiguillage vers la comptabilité, les immobilisations ou la paie, et lecture en arrière-plan
-        foreach ($docs as $doc) \App\Services\TraitementPieces::recevoir($doc, $d['type_piece'], $d['periode'] ?? null);
+        $docs = collect();
+        foreach ($d['lots'] as $lot) {
+            foreach ($lot['fichiers'] as $f) {
+                $doc = Document::create([
+                    'client_id' => $client->id, 'categorie' => \App\Support\TypesPieces::categorie($lot['type_piece']), 'description' => $d['message'] ?? null, 'date' => now(),
+                    'nom' => $f->getClientOriginalName(), 'chemin' => $f->store('ged/'.CabinetCourant::exiger().'/'.$client->id),
+                    'taille' => $f->getSize(), 'mime' => $f->getMimeType(), 'origine' => 'client', 'depose_par' => $u->id,
+                ]);
+                // Aiguillage vers la comptabilité, les immobilisations ou la paie, et lecture en arrière-plan
+                \App\Services\TraitementPieces::recevoir($doc, $lot['type_piece'], $lot['periode'] ?? null);
+                $docs->push($doc->fresh());
+            }
+        }
+        $types = collect($d['lots'])->pluck('type_piece')->unique()->map(fn ($t) => \App\Support\TypesPieces::libelle($t))->implode(', ');
+        Activite::create(['user_id' => null, 'client_id' => $client->id, 'action' => $docs->count().' document(s) envoyé(s) par '.$u->name.' depuis l’espace client ('.$types.')']);
         EspaceClientAvis::envoiClient($u, $client, $docs, $d['message'] ?? null);
         return back()->with('ok', $docs->count() > 1 ? $docs->count().' documents envoyés au cabinet.' : 'Document envoyé au cabinet.');
     }
+
 
     public function telecharger(Request $r, int $document)
     {
