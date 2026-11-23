@@ -23,7 +23,7 @@
         'non_cotisable' => 'Hors assiette CNSS. Une retenue non cotisable est déduite du net.',
         'non_imposable' => 'Hors assiette de l’IRPP et de la CSS.',
         'ticket_cadeau' => 'Entre dans le brut mais n’est pas versé en espèces.',
-        'ticket_restaurant' => 'Entre dans le brut mais n’est pas versé en espèces.',
+        'ticket_restaurant' => 'Saisi chaque mois en nombre de tickets (Saisie Paie, colonne Tickets resto) ; le montant (mode Montant) est la valeur d’un ticket. Entre dans le brut mais n’est pas versé en espèces.',
         'a_deduire' => 'Retenue : déduite du brut si cotisable, sinon du net (compte 427).',
         'heures_sup' => 'Saisie en heures, valorisée au taux horaire.',
         'jours_sup' => 'Saisie en jours, valorisée au taux journalier.',

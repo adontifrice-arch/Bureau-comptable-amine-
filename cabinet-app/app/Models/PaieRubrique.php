@@ -15,6 +15,7 @@ use Illuminate\Support\Collection;
  * Une rubrique « note » ne porte qu'une quantité (sans valeur) ; une rubrique « dépend d'une note » est multipliée par cette quantité.
  * Une rubrique « à déduire » est une retenue : déduite du brut si elle est cotisable, sinon du net (retenue diverse, compte 427).
  * Les avantages en nature et les tickets (cadeau, restaurant) entrent dans le brut mais ne sont pas versés en espèces.
+ * Les tickets restaurant se saisissent chaque mois en nombre de tickets, valorisé à la valeur d'un ticket (montant de la rubrique).
  */
 class PaieRubrique extends Model
 {
@@ -175,13 +176,25 @@ class PaieRubrique extends Model
     /** La rubrique se saisit chaque mois (montant ou quantité). */
     public function aSaisir(): bool
     {
-        return $this->mode === 'manuelle' || $this->note || $this->heures_sup || $this->jours_sup || $this->heures_nuit;
+        return $this->mode === 'manuelle' || $this->note || $this->heures_sup || $this->jours_sup || $this->heures_nuit || $this->ticket_restaurant;
     }
 
-    /** Quantité (heures, jours, note) plutôt que montant. */
+    /** Quantité (heures, jours, note, nombre de tickets restaurant) plutôt que montant. */
     public function enQuantite(): bool
     {
-        return $this->note || $this->heures_sup || $this->jours_sup || $this->heures_nuit;
+        return $this->note || $this->heures_sup || $this->jours_sup || $this->heures_nuit || $this->ticket_restaurant;
+    }
+
+    /** Ticket restaurant : valeur d'un ticket (montant de la rubrique), null si elle n'est pas renseignée (saisie manuelle). */
+    public function valeurTicket(): ?float
+    {
+        return $this->ticket_restaurant && $this->mode === 'montant' && (float) $this->montant > 0 ? (float) $this->montant : null;
+    }
+
+    /** Tickets restaurant du dossier, saisis en nombre dans la grille Saisie Paie. */
+    public static function ticketsRestaurant(Collection $rubriques): Collection
+    {
+        return $rubriques->filter(fn ($r) => $r->ticket_restaurant && ! $r->note && ! $r->a_deduire)->values();
     }
 
     public function enNature(): bool
@@ -247,7 +260,11 @@ class PaieRubrique extends Model
                 str_starts_with((string) $r->base, 'r:') => (float) ($montants[(int) substr($r->base, 2)] ?? 0),
                 default => (float) $ctx['base'],
             };
-            if ($r->heures_sup || $r->heures_nuit || $r->jours_sup) {
+            if ($r->ticket_restaurant) {
+                // Nombre de tickets × valeur d'un ticket (sans valeur renseignée, le nombre est noté sans montant).
+                if ($q === null) continue;
+                $m = $q * (float) $r->valeurTicket();
+            } elseif ($r->heures_sup || $r->heures_nuit || $r->jours_sup) {
                 if ($q === null) continue;
                 $taux = $r->jours_sup ? $ctx['taux_j'] : $ctx['taux_h'];
                 $unite = match ($r->mode) { 'montant' => (float) $r->montant, 'pourcentage' => $taux * (float) $r->taux / 100, default => $taux };

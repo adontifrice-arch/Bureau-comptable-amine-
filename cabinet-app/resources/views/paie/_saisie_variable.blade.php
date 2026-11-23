@@ -2,7 +2,7 @@
 @php
     $aSaisir = $rubriques->filter->aSaisir();
     $parId = $salaries->keyBy('id');
-    $unite = fn ($rb) => $rb->note ? 'qté' : ($rb->heures_sup || $rb->heures_nuit ? 'h' : ($rb->jours_sup ? 'j' : ($rb->a_deduire ? 'retenue' : ($rb->valeur_net ? 'net' : 'TND'))));
+    $unite = fn ($rb) => $rb->note ? 'qté' : ($rb->ticket_restaurant ? 'tickets' : ($rb->heures_sup || $rb->heures_nuit ? 'h' : ($rb->jours_sup ? 'j' : ($rb->a_deduire ? 'retenue' : ($rb->valeur_net ? 'net' : 'TND')))));
     $infos = $aSaisir->mapWithKeys(fn ($rb) => [$rb->id => ['code' => $rb->code, 'nom' => $rb->nom, 'unite' => $unite($rb), 'q' => $rb->enQuantite()]]);
 @endphp
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">

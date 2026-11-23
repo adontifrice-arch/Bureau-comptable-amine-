@@ -13,6 +13,11 @@
     // Colonnes de rubriques : celles du dossier payées ce mois-ci (hors notes), dans l'ordre des codes.
     $colsRub = $rubriques->reject(fn ($rb) => $rb->note)->filter(fn ($rb) => collect($R)->contains(fn ($x) => collect($x['rubriques'] ?? [])->contains('id', $rb->id)))->values();
     $pt = fn ($id, $k) => (($paie?->pointage ?? [])[$id][$k] ?? null);
+    // Tickets restaurant du dossier : nombre de tickets du mois saisi par employé (colonne « Tickets »), valorisé à la valeur d'un ticket.
+    // Colonne affichée pour les rubriques ticket restaurant dont la valeur est renseignée, ou déjà saisies ce mois-ci.
+    $nbTickets = fn ($id, $rid) => (($paie?->rubriques ?? [])[$id][$rid] ?? null);
+    $tickets = \App\Models\PaieRubrique::ticketsRestaurant($rubriques)
+        ->filter(fn ($tk) => $tk->valeurTicket() || collect($R)->contains(fn ($x) => collect($x['rubriques'] ?? [])->contains('id', $tk->id)))->values();
     $nb = fn ($v) => $v === null || $v === '' ? '' : rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
     $etat = ! $paie ? ['Mois non encore enregistré', 'text-rose-600'] : ($lock ? ['Paie clôturée — '.(['transmise' => 'transmise à la comptabilité', 'val' => 'comptabilisée'][$paie->statut] ?? ''), 'text-emerald-700'] : ['Mois enregistré (brouillon)', 'text-amber-600']);
     $filtres = ['departement' => 'Département', 'profil' => 'Profil', 'regime' => 'Régime salarial'];
@@ -62,6 +67,11 @@
     {{-- Grille de saisie --}}
     <form method="POST" action="{{ route('paie.calcul') }}" id="form-primes" class="card overflow-x-auto">@csrf
         <input type="hidden" name="mois" value="{{ $mois }}"><input type="hidden" name="parties[]" value="saisie"><input type="hidden" name="tab" value="calc">
+        @if($tickets->isNotEmpty() && ! $lock)<input type="hidden" name="tickets[]" value="">@endif
+        @foreach($tickets->reject->valeurTicket() as $tk)
+            <p class="px-4 pt-3 text-xs text-rose-600">Ticket restaurant « {{ $tk->nom }} » : la valeur d’un ticket n’est pas renseignée, le nombre de tickets est noté sans montant.
+                <a href="{{ route('paie.rubriques', ['r' => $tk->id, 'mois' => $mois]) }}" class="underline">Renseigner la valeur (mode Montant)</a></p>
+        @endforeach
         <table class="tbl text-xs">
             <thead><tr>
                 <th>N°</th><th>Matricule</th><th>Employé</th><th class="text-center" title="Régularisation mensuelle de l’IRPP">Reg</th><th class="text-center" title="Régularisation sur les primes / autres / rappel">RegP</th><th class="text-right">Net</th><th class="text-right">S. Brut</th><th class="text-right">S. Base</th>
@@ -73,6 +83,7 @@
                 <th class="text-right" title="Acompte déjà versé, déduit du net">Acom</th>
                 <th class="text-right" title="Heures supplémentaires (majoration {{ $P['maj_hs'] }} %)">H. sup.</th>
                 <th class="text-right">Primes</th>
+                @foreach($tickets as $tk)<th class="text-right" title="{{ $tk->code }} {{ $tk->nom }} : nombre de tickets du mois{{ $tk->valeurTicket() ? ' × '.n3($tk->valeurTicket()) : ' — valeur d’un ticket à renseigner dans la rubrique' }}">{{ $tickets->count() > 1 ? \Illuminate\Support\Str::limit($tk->nom, 12) : 'Tickets resto' }}@unless($tk->valeurTicket())<span class="text-rose-600">!</span>@endunless</th>@endforeach
                 @foreach($colsRub as $rb)<th class="text-right" title="{{ $rb->code }} {{ $rb->nom }}">{{ \Illuminate\Support\Str::limit($rb->nom, 14) }}</th>@endforeach
             </tr></thead>
             <tbody>
@@ -102,19 +113,27 @@
                         <td><input type="number" step="0.25" min="0" name="pointage[{{ $id }}][hs]" value="{{ ($x['hs'] ?? 0) ? $nb($x['hs']) : '' }}" class="input-sm ml-auto w-16 text-right"></td>
                         <td><input type="number" step="0.001" name="primes[{{ $id }}]" value="{{ $x['prime'] ? $nb($x['prime']) : '' }}" class="input-sm ml-auto w-24 text-right"></td>
                     @endif
+                    @foreach($tickets as $tk)
+                        @if($lock || ! $s || ! $tk->concerne($s))
+                            <td class="num">{{ $nb(collect($x['rubriques'] ?? [])->firstWhere('id', $tk->id)['quantite'] ?? null) ?: '—' }}</td>
+                        @else
+                            <td><input type="number" step="1" min="0" name="tickets[{{ $id }}][{{ $tk->id }}]" value="{{ $nb($nbTickets($id, $tk->id)) }}" class="input-sm ml-auto w-16 text-right"></td>
+                        @endif
+                    @endforeach
                     @foreach($colsRub as $rb)
                         @php $l = collect($x['rubriques'] ?? [])->firstWhere('id', $rb->id); @endphp
                         <td class="num {{ ($l['sens'] ?? '') === 'retenue' ? 'text-rose-600' : '' }}">{{ $l ? (($l['sens'] === 'retenue' ? '−' : '').n3($l['montant'])) : '' }}</td>
                     @endforeach
                 </tr>
             @empty
-                <tr><td colspan="{{ 16 + $colsRub->count() }}"><x-empty icon="users" title="Aucun salarié à payer ce mois-ci">Ajoutez les employés du dossier (Employé → Nouvel employé).</x-empty></td></tr>
+                <tr><td colspan="{{ 16 + $tickets->count() + $colsRub->count() }}"><x-empty icon="users" title="Aucun salarié à payer ce mois-ci">Ajoutez les employés du dossier (Employé → Nouvel employé).</x-empty></td></tr>
             @endforelse
             </tbody>
             @if(count($R))
                 <tfoot class="border-t-2 border-slate-200 font-semibold"><tr>
                     <td colspan="5">Total ({{ count($R) }})</td><td class="num">{{ n3($T['net']) }}</td><td class="num">{{ n3($T['brut']) }}</td><td colspan="6"></td>
                     <td class="num">{{ n3($T['acompte'] ?? 0) }}</td><td></td><td class="num">{{ n3(array_sum(array_column($R, 'prime'))) }}</td>
+                    @foreach($tickets as $tk)<td class="num">{{ $nb(collect($R)->sum(fn ($x) => (float) (collect($x['rubriques'] ?? [])->firstWhere('id', $tk->id)['quantite'] ?? 0))) ?: '' }}</td>@endforeach
                     @foreach($colsRub as $rb)<td class="num">{{ n3(collect($R)->sum(fn ($x) => collect($x['rubriques'] ?? [])->where('id', $rb->id)->sum('montant'))) }}</td>@endforeach
                 </tr></tfoot>
             @endif

@@ -220,6 +220,19 @@ class PaieController extends Controller
             }
         }
         if (in_array('variable', $parties, true) || in_array('autre', $parties, true)) $paie->rubriques = PaieCalc::saisieRubriques((array) $r->input('rubriques'));
+        // Colonne Tickets resto de Saisie Paie : nombre de tickets restaurant du mois, rangé avec les rubriques variables.
+        if (in_array('saisie', $parties, true) && $r->has('tickets')) {
+            $ids = PaieRubrique::ticketsRestaurant(PaieRubrique::duDossier($client))->pluck('id')->all();
+            $rub = (array) ($paie->rubriques ?? []);
+            foreach ($rub as $sid => $vals) {
+                foreach ($ids as $rid) unset($rub[$sid][$rid]);
+                if (! $rub[$sid]) unset($rub[$sid]);
+            }
+            foreach (PaieCalc::saisieRubriques((array) $r->input('tickets')) as $sid => $vals) {
+                foreach ($vals as $rid => $n) if (in_array($rid, $ids, true) && $n > 0) $rub[$sid][$rid] = $n;
+            }
+            $paie->rubriques = $rub;
+        }
         // Colonnes Reg et RegP de Saisie Paie : cases de régularisation de la fiche de chaque salarié.
         foreach ((array) $r->input('regul') as $id => $v) {
             $s = Salarie::where('client_id', $client->id)->find((int) $id);
