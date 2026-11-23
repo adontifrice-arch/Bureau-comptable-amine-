@@ -358,7 +358,7 @@ class PaieMenuPaieTest extends TestCase
         foreach (array_keys(EtatsPaie::ACOMPTES) as $e) foreach (['imprimer', 'pdf', 'xlsx'] as $f) $this->get(route('paie.edition', [$e, $f, 'mois' => '2026-10']))->assertOk();
         $this->assertSame(200.0, end(EtatsPaie::acomptesMois($this->client, '2026-10')->lignes)['cellules'][5]);
         $a = \App\Models\Acompte::first();
-        $this->get(route('paie.acomptes.recu', $a))->assertOk()->assertSee('REÇU D’ACOMPTE SUR SALAIRE', false)->assertSee('octobre 2026');
+        $this->get(route('paie.acomptes.recu', $a))->assertOk()->assertSee('Reçu d’avance sur salaire', false)->assertSee('octobre 2026');
 
         // Paie clôturée : plus d'acompte sur ce mois, ni de suppression.
         $this->post(route('paie.cloturer'), ['mois' => '2026-10'])->assertSessionHas('ok');
