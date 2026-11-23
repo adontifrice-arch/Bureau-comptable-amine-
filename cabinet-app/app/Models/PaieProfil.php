@@ -13,7 +13,7 @@ use Illuminate\Support\Collection;
  * « Contrat Dignité » : CNSS prise en charge par l’État jusqu’à 600 DT par mois (taux du régime général au-delà), 400 DT exonérés d’IRPP,
  * ni TFP ni FOPROLOS. « Contrat Exo 2 ans » : CNSS patronale du profil sur les 600 premiers dinars, taux ordinaires au-delà.
  * Contrats Dignité et Exo 2 ans : les 600 premiers dinars du mois sont déclarés à la CNSS sous le code d'exploitation du profil
- * (0334, 0337), l'excédent sur la déclaration du régime général (0000). « Base de calcul » et « Rég. d'IRPP KARAMA » sont enregistrés.
+ * (0334, 0337), l'excédent sur la déclaration du régime général (0000). « Exonéré d'IRPP et de CSS » (CIVP) : ni retenue à la source ni CSS. « Base de calcul » et « Rég. d'IRPP KARAMA » sont enregistrés.
  */
 class PaieProfil extends Model
 {
@@ -25,12 +25,13 @@ class PaieProfil extends Model
     public const OPTIONS = [
         'soumis_tfp_fop' => 'Soumis TFP-FOPROLOS', 'decl_cnss' => 'Inclue dans la Déclaration CNSS', 'decl_employeur' => 'Inclue dans la Déclaration Employeur',
         'base_calcul' => 'Base de Calcul', 'contrat_dignite' => 'Contrat Dignité', 'contrat_exo2ans' => 'Contrat Exo 2ans', 'regul_karama' => 'Rég d’IRPP pour « KARAMA »',
+        'exonere_irpp' => 'Exonéré d’IRPP et de CSS',
     ];
 
     /** Profils du logiciel de référence, créés dans chaque dossier. Ordinaire suit le taux de CNSS patronale du dossier. */
     public const STANDARD = [
         'Ordinaire' => ['cnss_patronale' => null, 'code_exploitant' => '0000', 'soumis_tfp_fop' => true, 'decl_cnss' => true, 'decl_employeur' => true],
-        'CIVP' => ['cnss_patronale' => 0, 'code_exploitant' => '0006'],
+        'CIVP' => ['cnss_patronale' => 0, 'code_exploitant' => '0006', 'exonere_irpp' => true],
         'DIGNITE' => ['cnss_patronale' => null, 'code_exploitant' => '0334', 'decl_cnss' => true, 'decl_employeur' => true, 'contrat_dignite' => true],
         'Exo 2 ans' => ['cnss_patronale' => 1, 'code_exploitant' => '0337', 'soumis_tfp_fop' => true, 'decl_cnss' => true, 'decl_employeur' => true, 'contrat_exo2ans' => true],
         'Gérant' => ['cnss_patronale' => 0, 'code_exploitant' => '0006', 'soumis_tfp_fop' => true, 'decl_employeur' => true],
@@ -38,7 +39,7 @@ class PaieProfil extends Model
 
     protected $casts = ['cnss_patronale' => 'float'] + [
         'soumis_tfp_fop' => 'boolean', 'decl_cnss' => 'boolean', 'decl_employeur' => 'boolean', 'base_calcul' => 'boolean',
-        'contrat_dignite' => 'boolean', 'contrat_exo2ans' => 'boolean', 'regul_karama' => 'boolean'];
+        'contrat_dignite' => 'boolean', 'contrat_exo2ans' => 'boolean', 'regul_karama' => 'boolean', 'exonere_irpp' => 'boolean'];
 
     public function client() { return $this->belongsTo(Client::class); }
 

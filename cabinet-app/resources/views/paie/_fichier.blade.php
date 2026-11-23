@@ -230,7 +230,7 @@
                     </table>
                 </div>
             </template>
-            <p class="text-xs text-slate-400">Le brut est recherché pour que le net à payer atteigne le montant voulu (taux, barème IRPP et CSS des paramètres de paie, sans prime ni acompte). Le profil fixe la CNSS salariale (CIVP, gérant : aucune) et les charges patronales.</p>
+            <p class="text-xs text-slate-400">Le brut est recherché pour que le net à payer atteigne le montant voulu (taux, barème IRPP et CSS des paramètres de paie, sans prime ni acompte). Le profil fixe la CNSS salariale (CIVP, gérant : aucune), l’IRPP et la CSS (CIVP : aucun) et les charges patronales.</p>
         </div>
     </div>
 </x-modal>

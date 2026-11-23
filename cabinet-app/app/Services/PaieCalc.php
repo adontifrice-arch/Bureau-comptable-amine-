@@ -235,6 +235,8 @@ class PaieCalc
             $css = $ar(max(0, ($apres - $avant) * $P['css'] / 100));
             $methode = 'difference';
         }
+        // Profil exonéré d'IRPP et de CSS (CIVP) : aucune retenue à la source.
+        if (! empty($P['exo_irpp'])) { $ir = 0.0; $css = 0.0; }
         $ras = r3($ir + $css);
         $acompte = r3(max(0, $acompte));
         $net = r3($brut - $cs - $ras - $acompte - $retenues - $pretS - $pretC);
@@ -610,6 +612,8 @@ class PaieCalc
             $ir = $ar(static::bareme($bi, $P['bar']) / 12);
             $css = $ar($bi * $P['css'] / 100 / 12);
         }
+        // Profil exonéré d'IRPP et de CSS (CIVP) : aucune retenue à la source.
+        if (! empty($P['exo_irpp'])) { $ir = 0.0; $css = 0.0; }
         $ras = r3($ir + $css);
         // L'acompte déjà versé dans le mois est déduit du net à payer.
         // Échéances des prêts (société, CNSS) retenues sur le net.
@@ -705,7 +709,7 @@ class PaieCalc
 
     /**
      * Paramètres de paie d'un employé selon son profil : taux de CNSS patronale du profil (vide = taux du dossier),
-     * pas de cotisation salariale CNSS hors déclaration CNSS (CIVP, gérant), pas de TFP ni de FOPROLOS si le profil n'y est pas soumis.
+     * pas de cotisation salariale CNSS hors déclaration CNSS (CIVP, gérant), pas de TFP ni de FOPROLOS si le profil n'y est pas soumis, ni IRPP ni CSS si le profil en est exonéré (CIVP).
      */
     public static function pourProfil(array $P, ?PaieProfil $profil): array
     {
@@ -727,6 +731,7 @@ class PaieCalc
                 'cnssP' => $profil->cnss_patronale !== null ? (float) $profil->cnss_patronale : (float) $P['cnssP']];
         } elseif ($profil->cnss_patronale !== null) $P['cnssP'] = (float) $profil->cnss_patronale;
         if (! $profil->soumis_tfp_fop) { $P['tfp'] = 0.0; $P['fop'] = 0.0; }
+        if ($profil->exonere_irpp) $P['exo_irpp'] = true;   // CIVP : ni IRPP ni CSS
         $P['profil'] = $profil->meta();
         return $P;
     }

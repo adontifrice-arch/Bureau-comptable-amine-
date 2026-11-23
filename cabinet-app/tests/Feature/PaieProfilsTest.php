@@ -89,6 +89,10 @@ class PaieProfilsTest extends TestCase
 
         $x = $this->resultat($civp);
         $this->assertEquals(0, $x['cnssS'] + $x['cnssP'] + $x['tfp'] + $x['fop']);
+        // CIVP : ni retenue à la source IRPP ni CSS, le net est égal au brut.
+        $this->assertGreaterThan(0, $x0['ir'] + $x0['css']);
+        $this->assertEquals(0, $x['ir'] + $x['css']);
+        $this->assertEquals($x['brut'], $x['net']);
 
         // Contrat Dignité : CNSS au taux du régime général au-delà de 600 DT, 0,5 % patronal plus l'accident du travail jusqu'à 600 DT ; 400 DT exonérés d'IRPP.
         $x = $this->resultat($dig);

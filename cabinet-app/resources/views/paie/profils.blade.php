@@ -50,7 +50,7 @@
                         <x-field label="Code Exploitant" name="code_exploitant" :value="$F->code_exploitant" maxlength="10" class="input font-mono"/>
                     </div>
                     <div class="grid grid-cols-1 gap-x-6 gap-y-2 rounded-lg border border-slate-200 p-3 text-sm sm:grid-cols-2 dark:border-slate-700">
-                        @foreach(['soumis_tfp_fop', 'contrat_dignite', 'decl_cnss', 'contrat_exo2ans', 'decl_employeur', 'regul_karama', 'base_calcul'] as $c)
+                        @foreach(['soumis_tfp_fop', 'contrat_dignite', 'decl_cnss', 'contrat_exo2ans', 'decl_employeur', 'regul_karama', 'base_calcul', 'exonere_irpp'] as $c)
                             <label class="flex items-center gap-2"><input type="checkbox" name="{{ $c }}" value="1" @checked($coche($c)) class="rounded border-slate-300">
                                 {{ \App\Models\PaieProfil::OPTIONS[$c] }}@if($c === 'soumis_tfp_fop')<span class="text-rose-600">*</span>@endif</label>
                         @endforeach
