@@ -75,13 +75,20 @@ trait SaisieSelonModele
         return $err;
     }
 
-    /** Écriture de la facture : lignes regroupées par compte, sens et libellé. */
+    /** Libellé de la pièce et de chacune de ses lignes : N° de facture originale et nom du fournisseur ou du client. */
+    public function libelleEcriture(): string
+    {
+        return trim(trim((string) $this->reference).' '.trim((string) ($this->fournisseur ?? $this->tiers))) ?: 'Facture';
+    }
+
+    /** Écriture de la facture : lignes regroupées par compte et sens, toutes au libellé de la pièce. */
     public function lignesSelonModele(): array
     {
         $x = self::calculerSelonModele((array) $this->parametres, (array) $this->lignes,
             ['timbre' => $this->timbre, 'fodec' => $this->fodec, 'avance' => $this->avance], (string) $this->compte_tiers);
         $g = [];
         foreach ($x['lignes'] as $l) {
+            $l['libelle'] = $this->libelleEcriture();
             $k = $l['compte'].'|'.($l['debit'] > 0 ? 'D' : 'C').'|'.($l['libelle'] ?? '');
             if (isset($g[$k])) { $g[$k]['debit'] = round($g[$k]['debit'] + $l['debit'], 3); $g[$k]['credit'] = round($g[$k]['credit'] + $l['credit'], 3); }
             else $g[$k] = $l;

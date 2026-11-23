@@ -17,6 +17,8 @@ class FactureModeleTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected bool $controleComptes = true;
+
     private Client $client;
 
     protected function setUp(): void
@@ -26,6 +28,10 @@ class FactureModeleTest extends TestCase
         $this->actingAs(User::factory()->create(['cabinet_id' => $cabinet->id, 'role' => 'chef', 'status' => 'active']));
         $this->client = Client::factory()->create();
         session(['dossier' => $this->client->id]);
+        // Sous-comptes du dossier utilisés par les modèles (le plan installé n'a que les comptes généraux)
+        foreach (['607007', '607013', '607019', '436607', '436613', '436619', '401100', '411200', '707019', '707119', '436719', '436799', '437500'] as $n) {
+            \App\Models\Compte::create(['numero' => $n, 'libelle' => 'Compte '.$n, 'personnalise' => true]);
+        }
     }
 
     private function lignes(): array
@@ -74,6 +80,9 @@ class FactureModeleTest extends TestCase
         $this->post(route('compta.factures.valider', $f))->assertSessionHas('ok');
         $e = Ecriture::where('source', 'fr:'.$f->id)->sole();
         $this->assertSame('ACH', $e->journal);
+        // Libellé de la pièce et de chaque ligne : N° de facture originale et nom du fournisseur
+        $this->assertSame('F-12 SOTUMAG', $e->libelle);
+        $this->assertSame(['F-12 SOTUMAG'], $e->lignes->pluck('libelle')->unique()->values()->all());
         $this->assertEqualsCanonicalizing([['401100', 0.0, 396.0], ['607000', 50.0, 0.0], ['607007', 100.0, 0.0], ['436607', 7.0, 0.0], ['607019', 200.0, 0.0], ['436619', 38.0, 0.0], ['665400', 1.0, 0.0]],
             $e->lignes->map(fn ($l) => [$l->compte, (float) $l->debit, (float) $l->credit])->all());
     }
@@ -98,7 +107,9 @@ class FactureModeleTest extends TestCase
             'lignes' => [['ht' => 20]]])->assertSessionHasNoErrors();
         $this->assertSame(20.0, $f->fresh()->ttc());
         $this->post(route('compta.ventes.valider', $f))->assertSessionHas('ok');
-        $this->assertSame('VTE', Ecriture::where('source', 'fv:'.$f->id)->sole()->journal);
+        $ev = Ecriture::where('source', 'fv:'.$f->id)->sole();
+        $this->assertSame('VTE', $ev->journal);
+        $this->assertSame('Compte 411200', $ev->libelle);      // sans N° de facture : nom du client (libellé de son compte)
     }
 
     public function test_compte_manquant_refuse(): void
@@ -107,5 +118,38 @@ class FactureModeleTest extends TestCase
         // Ni compte fournisseur saisi ni compte TTC dans le modèle
         $this->post(route('compta.factures-modele.store', 'achat'), ['modele_id' => $m->id, 'date' => '2026-11-20', 'lignes' => [['ht' => 10]]])->assertSessionHasErrors('compte_tiers');
         $this->assertSame(0, FactureRecue::count());
+    }
+
+    public function test_aucune_piece_avec_un_compte_absent_du_plan(): void
+    {
+        $this->assertTrue(\App\Services\Compta::existe('401000'));          // 401 complété par des zéros
+        $this->assertTrue(\App\Services\Compta::existe('665400'));          // 6654
+        $this->assertFalse(\App\Services\Compta::existe('401999'));
+
+        // Modèle avec un compte inexistant : refusé
+        $this->post(route('compta.modeles-factures.store', 'achat'), ['libelle' => 'X', 'journal' => 'ACH',
+            'lignes' => [['objet' => 'ACHAT', 'compte' => '607555', 'debit' => 1]]])->assertSessionHas('err', fn ($m) => str_contains($m, '607555'));
+        $this->assertSame(0, ModeleFacture::count());
+
+        // Facture saisie avec un fournisseur inexistant : refusée
+        $m = $this->modeleAchat();
+        $this->post(route('compta.factures-modele.store', 'achat'), ['modele_id' => $m->id, 'compte_tiers' => '401999', 'date' => '2026-11-20', 'lignes' => [['ht' => 10]]])
+            ->assertSessionHas('err', fn ($x) => str_contains($x, '401999'));
+        $this->assertSame(0, FactureRecue::count());
+
+        // Facture libre au compte inexistant : enregistrée, mais sa validation est refusée et rien n'est comptabilisé
+        $this->post(route('compta.factures.store'), ['date' => '2026-11-20', 'fournisseur' => 'X', 'lignes' => [['compte' => '6069999', 'ht' => 100, 'tva_taux' => 19]]])->assertSessionHasNoErrors();
+        $f = FactureRecue::sole();
+        $this->post(route('compta.factures.valider', $f))->assertSessionHas('err', fn ($x) => str_contains($x, '6069999'));
+        $this->assertSame('prop', $f->fresh()->statut);
+        $this->assertSame(0, Ecriture::count());
+
+        // Pièce manuelle : refusée, puis acceptée une fois le compte créé
+        $piece = ['journal' => 'OD', 'date' => '2026-11-20', 'libelle' => 'Test', 'lignes' => [['libelle' => 'a', 'compte' => '6069999', 'debit' => '100'], ['libelle' => 'b', 'compte' => '401', 'credit' => '100']]];
+        $this->post(route('compta.piece.store'), $piece)->assertSessionHas('err', fn ($x) => str_contains($x, '6069999'));
+        $this->assertSame(0, Ecriture::count());
+        $this->postJson(route('compta.comptes.store'), ['numero' => '6069999', 'libelle' => 'Achats divers'])->assertCreated();
+        $this->post(route('compta.factures.valider', $f))->assertSessionHas('ok');
+        $this->assertSame(1, Ecriture::count());
     }
 }

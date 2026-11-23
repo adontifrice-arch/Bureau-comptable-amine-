@@ -34,6 +34,37 @@ class Compta
         return '';
     }
 
+    /**
+     * Le compte existe dans le plan comptable : numéro exact, ou numéro complété par des zéros d'un compte du plan
+     * (dossier à comptes de 6 chiffres : 401000 = 401, 665400 = 6654), comme dans les champs de compte des écrans.
+     */
+    public static function existe(string $cpt): bool
+    {
+        $p = self::$plans[CabinetCourant::id() ?? 0] ??= static::plan();
+        $cpt = trim($cpt);
+        if (isset($p[$cpt])) return true;
+        $court = rtrim($cpt, '0');
+        return strlen($court) >= 2 && isset($p[$court]);
+    }
+
+    /** Contrôle des comptes actif (toujours en production ; désactivable pour les tests anciens). */
+    public static bool $controleComptes = true;
+
+    /** Comptes absents du plan comptable parmi ceux donnés (sans doublon, dans l'ordre). */
+    public static function comptesInexistants(array $comptes): array
+    {
+        if (! static::$controleComptes) return [];
+        if (! (self::$plans[CabinetCourant::id() ?? 0] ??= static::plan())) return [];     // plan non installé : rien à contrôler
+        return array_values(array_unique(array_filter(array_map(fn ($c) => trim((string) $c), $comptes), fn ($c) => $c !== '' && ! static::existe($c))));
+    }
+
+    /** Refuse la pièce si un de ses comptes n'existe pas dans le plan comptable. */
+    public static function exigerComptes(array $lignes): void
+    {
+        $actives = array_filter($lignes, fn ($l) => (float) ($l['debit'] ?? 0) != 0 || (float) ($l['credit'] ?? 0) != 0);
+        if ($m = static::comptesInexistants(array_column($actives, 'compte'))) throw new \App\Exceptions\CompteInexistant($m);
+    }
+
     /** Somme d'un côté (debit|credit) des comptes commençant par $pre sur une période. */
     public static function somme(int $client, string $from, string $to, string $pre, string $side): float
     {
@@ -130,6 +161,8 @@ class Compta
     {
         // Numéros de compte à la longueur choisie dans le paramétrage du dossier (401 → 401000…)
         $longueur = Saisie::longueur($client);
+        // Aucune pièce avec un compte absent du plan comptable
+        static::exigerComptes($lignes);
         return DB::transaction(function () use ($client, $date, $journal, $libelle, $lignes, $source, $user, $longueur, $entete) {
             $e = Ecriture::create(compact('date', 'journal', 'libelle', 'source') + ['client_id' => $client, 'valide_par' => $user] + array_intersect_key($entete, array_flip(['reference'])));
             foreach ($lignes as $l) {

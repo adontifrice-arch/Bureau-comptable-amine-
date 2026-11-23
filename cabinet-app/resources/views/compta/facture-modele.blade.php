@@ -76,6 +76,7 @@
 
             enregistrer() {
                 if (! this.m) return alert('Choisissez le modèle de facture.');
+                if (this.compte && ! window.libelleCompte(this.compte)) { alert('Le compte ' + this.compte + ' n’existe pas dans le plan comptable : créez-le avant d’enregistrer.'); this.$refs.compte.focus(); return this.$refs.compte.dispatchEvent(new Event('change', { bubbles: true })); }
                 if (! this.date) { alert('Saisissez la date de la facture.'); return this.$refs.date.focus(); }
                 if (! this.lignes.some(l => this.v(l.ht) || this.v(l.tva))) { alert('Saisissez au moins une assiette.'); return this.focusCell(0, 'ht'); }
                 if (this.ttc <= 0) return alert('Le total TTC doit être positif : vérifiez les montants et le sens des comptes du modèle.');
@@ -132,7 +133,7 @@
                     <div class="flex items-center gap-3"><span class="w-40 font-medium">Numero Pièce</span><span class="input !w-36 !bg-sky-100 !py-1 font-mono text-base text-slate-800" x-text="numero" title="Numéro attribué dans le journal à la validation"></span>
                         <span class="text-xs text-slate-400" x-text="m ? 'Journal ' + m.journal : ''"></span></div>
                     <div class="flex items-start gap-3"><label for="fm-cpt" class="w-40 pt-1.5 font-medium">Compte {{ $achat ? 'fournisseur' : 'client' }}</label>
-                        <div class="flex"><input id="fm-cpt" x-ref="compte" name="compte_tiers" x-model="compte" @change="compteSaisi()" @keydown.enter.prevent="compteSaisi(); suivant('tiers')" class="input !w-32 !rounded-r-none !py-1 font-mono" inputmode="numeric" autocomplete="off" placeholder="{{ $achat ? '401…' : '411…' }}"><button type="button" class="fm-loupe" @click="chercher('compte', compte)" title="(F1) Rechercher un compte"><x-icon name="search" class="h-4 w-4"/></button></div>
+                        <div class="flex"><input id="fm-cpt" x-ref="compte" name="compte_tiers" x-model="compte" @change="compteSaisi()" @keydown.enter.prevent="compteSaisi(); suivant('tiers')" class="input !w-32 !rounded-r-none !py-1 font-mono" inputmode="numeric" data-compte autocomplete="off" placeholder="{{ $achat ? '401…' : '411…' }}"><button type="button" class="fm-loupe" @click="chercher('compte', compte)" title="(F1) Rechercher un compte"><x-icon name="search" class="h-4 w-4"/></button></div>
                         <input x-ref="tiers" name="tiers" x-model="tiers" @input="nomAuto = false" @keydown.enter.prevent="suivant('reference')" maxlength="255" class="input min-w-0 flex-1 !py-1" placeholder="Nom du {{ $achat ? 'fournisseur' : 'client' }}" aria-label="Nom du {{ $achat ? 'fournisseur' : 'client' }}"></div>
                     <div class="flex items-center gap-3"><label for="fm-ref" class="w-40 font-medium">N° facture originale</label><input id="fm-ref" x-ref="reference" name="reference" x-model="reference" maxlength="100" @keydown.enter.prevent="suivant('date')" class="input !w-48 !py-1"></div>
                     <div class="flex items-center gap-3"><label for="fm-date" class="w-40 font-medium">Date facture</label><input id="fm-date" x-ref="date" type="date" name="date" x-model="date" @keydown.enter.prevent="focusCell(0, 'ht')" class="input !w-48 !py-1" required></div>

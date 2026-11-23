@@ -77,6 +77,8 @@ class Ecritures
                 // Libellé et référence de ligne (saisie par pièce) : conservés tels quels lorsqu'ils ne sont pas transmis.
                 + array_intersect_key($l, array_flip(['libelle', 'reference'])))->values();
         if ($lignes->count() < 2) throw new RuntimeException('Saisissez au moins deux lignes.');
+        // Comptes contrôlés tels que saisis (avant complément par des zéros)
+        Compta::exigerComptes(collect($d['lignes'])->all());
         if (abs($lignes->sum('debit') - $lignes->sum('credit')) > 0.0005) {
             throw new RuntimeException('Écriture déséquilibrée : débit '.tnd($lignes->sum('debit')).' ≠ crédit '.tnd($lignes->sum('credit')).'.');
         }

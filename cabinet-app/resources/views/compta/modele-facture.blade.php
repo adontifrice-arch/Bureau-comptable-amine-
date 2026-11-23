@@ -111,14 +111,14 @@
                 @foreach($champs as [$g, $d])
                     <div class="flex items-start gap-3">
                         <label for="mf-{{ $g['k'] }}" class="w-32 pt-1.5 font-medium">{{ $g['label'] }}</label>
-                        <div><div class="fm-cpt"><input id="mf-{{ $g['k'] }}" name="{{ $g['k'] }}" x-model="c.{{ $g['k'] }}" data-entete="{{ $g['k'] }}" class="input !w-36 !py-1 font-mono" autocomplete="off" inputmode="numeric"><button type="button" class="fm-loupe" @click="chercher('{{ $g['k'] }}', c.{{ $g['k'] }})" title="(F1) Rechercher un compte"><x-icon name="search" class="h-4 w-4"/></button></div>
+                        <div><div class="fm-cpt"><input id="mf-{{ $g['k'] }}" name="{{ $g['k'] }}" x-model="c.{{ $g['k'] }}" data-entete="{{ $g['k'] }}" class="input !w-36 !py-1 font-mono" data-compte autocomplete="off" inputmode="numeric"><button type="button" class="fm-loupe" @click="chercher('{{ $g['k'] }}', c.{{ $g['k'] }})" title="(F1) Rechercher un compte"><x-icon name="search" class="h-4 w-4"/></button></div>
                             <p class="mt-0.5 w-44 truncate text-xs text-slate-400" x-text="lib(c.{{ $g['k'] }})"></p></div>
                         <label class="fm-sens"><input type="checkbox" name="{{ $g['sens'] }}" value="1" @checked(old($g['sens'], $m->{$g['sens']})) class="rounded border-slate-300 text-sky-600"> {{ $g['sensLabel'] }}</label>
                     </div>
                     <div class="flex items-start gap-3">
                         @if(is_array($d))
                             <label for="mf-{{ $d['k'] }}" class="w-32 pt-1.5 font-medium">{{ $d['label'] }}</label>
-                            <div><div class="fm-cpt"><input id="mf-{{ $d['k'] }}" name="{{ $d['k'] }}" x-model="c.{{ $d['k'] }}" data-entete="{{ $d['k'] }}" class="input !w-36 !py-1 font-mono" autocomplete="off" inputmode="numeric"><button type="button" class="fm-loupe" @click="chercher('{{ $d['k'] }}', c.{{ $d['k'] }})" title="(F1) Rechercher un compte"><x-icon name="search" class="h-4 w-4"/></button></div>
+                            <div><div class="fm-cpt"><input id="mf-{{ $d['k'] }}" name="{{ $d['k'] }}" x-model="c.{{ $d['k'] }}" data-entete="{{ $d['k'] }}" class="input !w-36 !py-1 font-mono" data-compte autocomplete="off" inputmode="numeric"><button type="button" class="fm-loupe" @click="chercher('{{ $d['k'] }}', c.{{ $d['k'] }})" title="(F1) Rechercher un compte"><x-icon name="search" class="h-4 w-4"/></button></div>
                                 <p class="mt-0.5 w-44 truncate text-xs text-slate-400" x-text="lib(c.{{ $d['k'] }})"></p></div>
                             <label class="fm-sens"><input type="checkbox" name="{{ $d['sens'] }}" value="1" @checked(old($d['sens'], $m->{$d['sens']})) class="rounded border-slate-300 text-sky-600"> {{ $d['sensLabel'] }}</label>
                         @elseif($d === 'timbre')
@@ -144,12 +144,12 @@
                         <template x-for="(l, i) in lignes" :key="i">
                             <tr :class="cur === i && 'courante'" @focusin="cur = i" @click="cur = i">
                                 <td><input :data-cell="`${i}-objet`" :name="`lignes[${i}][objet]`" x-model="l.objet" maxlength="100" class="uppercase" @keydown="touche($event, i, 'objet')" aria-label="Objet"></td>
-                                <td><input :data-cell="`${i}-compte`" :name="`lignes[${i}][compte]`" x-model="l.compte" class="font-mono" inputmode="numeric" autocomplete="off" :title="lib(l.compte)" @keydown="touche($event, i, 'compte')" aria-label="Compte assiette"></td>
+                                <td><input :data-cell="`${i}-compte`" :name="`lignes[${i}][compte]`" x-model="l.compte" class="font-mono" inputmode="numeric" data-compte autocomplete="off" :title="lib(l.compte)" @keydown="touche($event, i, 'compte')" aria-label="Compte assiette"></td>
                                 <td><input :data-cell="`${i}-tva_taux`" :name="`lignes[${i}][tva_taux]`" x-model="l.tva_taux" type="number" step="0.001" min="0" max="100" class="num" @keydown="touche($event, i, 'tva_taux')" aria-label="Taux TVA"></td>
-                                <td><input :data-cell="`${i}-compte_tva`" :name="`lignes[${i}][compte_tva]`" x-model="l.compte_tva" class="font-mono" inputmode="numeric" autocomplete="off" :title="lib(l.compte_tva)" @keydown="touche($event, i, 'compte_tva')" aria-label="Compte TVA"></td>
-                                <td><input :data-cell="`${i}-compte_majore`" :name="`lignes[${i}][compte_majore]`" x-model="l.compte_majore" class="font-mono" inputmode="numeric" autocomplete="off" :title="lib(l.compte_majore)" @keydown="touche($event, i, 'compte_majore')" aria-label="Compte assiette majorée"></td>
+                                <td><input :data-cell="`${i}-compte_tva`" :name="`lignes[${i}][compte_tva]`" x-model="l.compte_tva" class="font-mono" inputmode="numeric" data-compte autocomplete="off" :title="lib(l.compte_tva)" @keydown="touche($event, i, 'compte_tva')" aria-label="Compte TVA"></td>
+                                <td><input :data-cell="`${i}-compte_majore`" :name="`lignes[${i}][compte_majore]`" x-model="l.compte_majore" class="font-mono" inputmode="numeric" data-compte autocomplete="off" :title="lib(l.compte_majore)" @keydown="touche($event, i, 'compte_majore')" aria-label="Compte assiette majorée"></td>
                                 <td><input :data-cell="`${i}-taux_majore`" :name="`lignes[${i}][taux_majore]`" x-model="l.taux_majore" type="number" step="0.001" min="0" max="100" class="num" @keydown="touche($event, i, 'taux_majore')" aria-label="Taux TVA majoré"></td>
-                                <td><input :data-cell="`${i}-compte_tva_majore`" :name="`lignes[${i}][compte_tva_majore]`" x-model="l.compte_tva_majore" class="font-mono" inputmode="numeric" autocomplete="off" :title="lib(l.compte_tva_majore)" @keydown="touche($event, i, 'compte_tva_majore')" aria-label="Compte TVA majoré"></td>
+                                <td><input :data-cell="`${i}-compte_tva_majore`" :name="`lignes[${i}][compte_tva_majore]`" x-model="l.compte_tva_majore" class="font-mono" inputmode="numeric" data-compte autocomplete="off" :title="lib(l.compte_tva_majore)" @keydown="touche($event, i, 'compte_tva_majore')" aria-label="Compte TVA majoré"></td>
                                 <td class="text-center"><input type="hidden" :name="`lignes[${i}][debit]`" :value="l.debit ? 1 : 0"><input type="checkbox" x-model="l.debit" class="rounded border-slate-300 text-sky-600" aria-label="Débiteur"></td>
                             </tr>
                         </template>

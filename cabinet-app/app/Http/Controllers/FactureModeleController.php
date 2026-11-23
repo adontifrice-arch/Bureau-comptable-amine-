@@ -18,7 +18,7 @@ use Illuminate\Validation\ValidationException;
  */
 class FactureModeleController extends Controller
 {
-    private const CPT = 'nullable|regex:/^\d{1,20}$/';
+    private const CPT = 'nullable|regex:/^\d{1,10}$/';
 
     private static function type(string $type): string
     {
@@ -54,6 +54,10 @@ class FactureModeleController extends Controller
             ->filter(fn ($l) => $l['objet'] !== '' || $l['compte'] !== '')->values()->all();
         if (! $d['lignes']) throw ValidationException::withMessages(['lignes' => 'Ajoutez au moins une ligne (objet et compte assiette).']);
         foreach ($d['lignes'] as $l) if ($l['objet'] === '' || $l['compte'] === '') throw ValidationException::withMessages(['lignes' => 'Chaque ligne a un objet et un compte assiette.']);
+        // Comptes du modèle : tous dans le plan comptable
+        $comptes = array_merge([$d['compte_ttc'] ?? '', $d['compte_fodec'] ?? '', $d['compte_avance'] ?? '', $d['compte_timbre'] ?? ''],
+            ...array_map(fn ($l) => [$l['compte'], $l['compte_tva'], $l['compte_majore'], $l['compte_tva_majore']], $d['lignes']));
+        if ($m = Compta::comptesInexistants($comptes)) throw new \App\Exceptions\CompteInexistant($m);
         return $d;
     }
 
@@ -112,6 +116,7 @@ class FactureModeleController extends Controller
         $p = $mo->parametres();
         $m = ['timbre' => round((float) ($d['timbre'] ?? 0), 3), 'fodec' => round((float) ($d['fodec'] ?? 0), 3), 'avance' => round((float) ($d['avance'] ?? 0), 3)];
         $tiersCpt = trim((string) ($d['compte_tiers'] ?? ''));
+        if ($tiersCpt !== '' && ! Compta::existe($tiersCpt)) throw new \App\Exceptions\CompteInexistant([$tiersCpt]);
         if ($err = FactureRecue::comptesManquants($p, $lignes, $m, $tiersCpt)) throw ValidationException::withMessages(['compte_tiers' => $err]);
         $calc = FactureRecue::calculerSelonModele($p, $lignes, $m, $tiersCpt);
         if ($calc['ttc'] <= 0) throw ValidationException::withMessages(['lignes' => 'Le total TTC doit être positif : vérifiez les montants et le sens des comptes du modèle.']);

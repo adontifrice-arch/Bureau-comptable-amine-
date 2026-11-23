@@ -160,7 +160,7 @@ class SaisieController extends Controller
         if ($fv->selonModele() && ($err = $fv->erreurSelonModele())) return back()->with('err', $err);
         if (! $fv->selonModele() && $fv->compteManquant()) return back()->with('err', 'Choisissez le compte de vente de chaque ligne avant de valider (bouton modifier).');
         DB::transaction(function () use ($fv) {
-            Compta::passer($fv->client_id, $fv->date->format('Y-m-d'), $fv->journalEcriture('VTE'), 'Facture '.($fv->reference ?: '').' – '.$fv->tiers, $fv->lignesEcriture(), 'fv:'.$fv->id, auth()->id());
+            Compta::passer($fv->client_id, $fv->date->format('Y-m-d'), $fv->journalEcriture('VTE'), $fv->selonModele() ? $fv->libelleEcriture() : 'Facture '.($fv->reference ?: '').' – '.$fv->tiers, $fv->lignesEcriture(), 'fv:'.$fv->id, auth()->id());
             $fv->update(['statut' => 'val', 'valide_par' => auth()->id()]);
         });
         $this->log('Validation de la facture de vente '.$fv->tiers.' '.$fv->reference, $fv->client_id);
