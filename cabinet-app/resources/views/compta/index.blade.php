@@ -19,7 +19,8 @@
     @if($tab === 'ach')
         <div class="mb-4 flex flex-wrap justify-end gap-2">
             @if($ia)<button class="btn-secondary" x-data @click="$dispatch('open-modal', 'ia')"><x-icon name="sparkles" class="h-4 w-4"/> Lire une facture avec l’IA</button>@endif
-            <button class="btn-primary" x-data @click="$dispatch('fr-edit', {}); $dispatch('open-modal', 'fr')"><x-icon name="plus" class="h-4 w-4"/> Saisir une facture d’achat</button>
+            <button class="btn-secondary" x-data @click="$dispatch('fr-edit', {}); $dispatch('open-modal', 'fr')" title="Saisie libre, sans modèle"><x-icon name="plus" class="h-4 w-4"/> Saisie libre</button>
+            <a href="{{ route('compta.factures-modele', 'achat') }}" class="btn-primary"><x-icon name="plus" class="h-4 w-4"/> Saisir une facture d’achat</a>
         </div>
         <div class="card overflow-x-auto">
             <table class="tbl"><thead><tr><th>Date</th><th>Fournisseur</th><th>Compte</th><th class="text-right">HT</th><th class="text-right">TVA</th><th class="text-right">TTC</th><th>Statut</th><th></th></tr></thead><tbody>
@@ -40,7 +41,8 @@
                                 <form method="POST" action="{{ route('compta.factures.valider', $f) }}" class="inline">@csrf<button class="btn-success btn-sm">Valider</button></form>
                                 <form method="POST" action="{{ route('compta.factures.rejeter', $f) }}" class="inline" onsubmit="this.motif.value = prompt('Motif du rejet ?') || ''">@csrf<input type="hidden" name="motif"><button class="btn-secondary btn-sm !text-rose-600">Rejeter</button></form>
                             @endif
-                            <button class="btn-icon" x-data @click="$dispatch('fr-edit', @js($f->only(['id','fournisseur','matricule_fiscal','reference','description','ht','tva_taux','tva','timbre','compte','retenue_taux']) + ['lignes' => $f->lignesSaisie(), 'date' => $f->date->format('Y-m-d'), 'tva_deductible' => $f->tva_deductible ? '1' : '0', 'tva_suspension' => $f->tva_suspension, 'suspension_ref' => $f->suspension_ref, 'suspension_date' => $f->suspension_date?->format('Y-m-d')])); $dispatch('open-modal', 'fr')"><x-icon name="edit" class="h-4 w-4"/></button>
+                            @if($f->selonModele())<a href="{{ route('compta.factures-modele', ['type' => 'achat', 'facture' => $f->id]) }}" class="btn-icon" title="Modifier"><x-icon name="edit" class="h-4 w-4"/></a>@else
+                            <button class="btn-icon" x-data @click="$dispatch('fr-edit', @js($f->only(['id','fournisseur','matricule_fiscal','reference','description','ht','tva_taux','tva','timbre','compte','retenue_taux']) + ['lignes' => $f->lignesSaisie(), 'date' => $f->date->format('Y-m-d'), 'tva_deductible' => $f->tva_deductible ? '1' : '0', 'tva_suspension' => $f->tva_suspension, 'suspension_ref' => $f->suspension_ref, 'suspension_date' => $f->suspension_date?->format('Y-m-d')])); $dispatch('open-modal', 'fr')"><x-icon name="edit" class="h-4 w-4"/></button>@endif
                             <x-confirm-delete :action="route('compta.factures.destroy', $f)"/>
                         @endif
                     </td>

@@ -4,18 +4,19 @@ namespace App\Models;
 
 use App\Models\Concerns\AppartientAuCabinet;
 use App\Models\Concerns\EstVentilee;
+use App\Models\Concerns\SaisieSelonModele;
 use Illuminate\Database\Eloquent\Model;
 
 class FactureRecue extends Model
 {
-    use AppartientAuCabinet, EstVentilee;
+    use AppartientAuCabinet, EstVentilee, SaisieSelonModele;
 
     protected $table = 'factures_recues';
     protected $guarded = [];
-    protected $casts = ['date'=>'date','tva_deductible'=>'boolean','anomalies'=>'array','lignes'=>'array','tva_suspension'=>'boolean','tva_suspendue'=>'float','suspension_date'=>'date'];
+    protected $casts = ['date'=>'date','tva_deductible'=>'boolean','anomalies'=>'array','lignes'=>'array','tva_suspension'=>'boolean','tva_suspendue'=>'float','suspension_date'=>'date','parametres'=>'array','fodec'=>'float','avance'=>'float','ttc'=>'float'];
     public function client() { return $this->belongsTo(Client::class); }
     public function validePar() { return $this->belongsTo(User::class, 'valide_par'); }
-    public function ttc(): float { return round($this->ht + $this->tva + $this->timbre, 3); }
+    public function ttc(): float { return $this->ttc !== null ? (float) $this->ttc : round($this->ht + $this->tva + $this->timbre, 3); }
     public function retenue(): float { return $this->retenue_taux > 0 ? round(($this->ht + $this->tva) * $this->retenue_taux / 100, 3) : 0; }
 
     /**
@@ -24,6 +25,7 @@ class FactureRecue extends Model
      */
     public function lignesEcriture(): array
     {
+        if ($this->selonModele()) return $this->lignesSelonModele();
         $tva = (float) $this->tva; $tim = (float) $this->timbre;
         $ttc = round((float) $this->ht + $tva + $tim, 3); $rs = $this->retenue();
         $deductible = $this->tva_deductible && $tva > 0;

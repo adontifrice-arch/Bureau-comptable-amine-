@@ -89,8 +89,30 @@
         </fieldset>
     </form>
 
+    <div class="space-y-6 self-start">
+    @php $mf = \App\Models\ModeleFacture::where('client_id', $client->id)->orderBy('type')->orderBy('numero')->get()->groupBy('type'); @endphp
+    <div class="card">
+        <div class="card-h"><h2 class="card-t">Paramètres des factures (modèles de saisie)</h2></div>
+        <p class="px-5 pt-3 text-xs text-slate-500">Chaque modèle fixe le journal, les comptes TTC, FODEC, avance et timbre avec leur sens, et les lignes (objet, compte assiette, TVA) proposées à la saisie d’une facture.</p>
+        @foreach(\App\Models\ModeleFacture::TYPES as $t => $l)
+            <div class="mt-3 flex items-center justify-between border-b border-slate-100 px-5 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800">
+                <span>Paramètres {{ mb_strtolower($l) }}</span>
+                <a href="{{ route('compta.modeles-factures', ['type' => $t, 'nouveau' => 1]) }}" class="btn-secondary btn-sm normal-case tracking-normal">+ Modèle</a>
+            </div>
+            @forelse($mf[$t] ?? [] as $mo)
+                <a href="{{ route('compta.modeles-factures', ['type' => $t, 'modele' => $mo->id]) }}" class="flex items-center gap-3 border-b border-slate-100 px-5 py-2.5 text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                    <span class="font-mono text-xs text-slate-400">{{ $mo->numero }}</span>
+                    <span class="min-w-0 flex-1"><span class="font-medium">{{ $mo->libelle }}</span> <span class="text-xs text-slate-500">· journal {{ $mo->journal }} · {{ count($mo->lignesModele()) }} ligne(s)</span></span>
+                    <x-icon name="chevron-right" class="h-4 w-4 text-slate-400"/>
+                </a>
+            @empty
+                <p class="px-5 py-2.5 text-sm text-slate-400">Aucun modèle : <a class="text-brand-600 hover:underline" href="{{ route('compta.modeles-factures', ['type' => $t, 'nouveau' => 1]) }}">créer le paramétrage {{ mb_strtolower($l) }}</a>.</p>
+            @endforelse
+        @endforeach
+        <div class="h-3"></div>
+    </div>
     <div class="card self-start" x-data="{ m: { comptes: [] } }" @mod-edit.window="m = Object.assign({ comptes: [] }, $event.detail); if (! m.comptes.length) m.comptes.push({ compte: '', tva_taux: 19 })">
-        <div class="card-h"><h2 class="card-t">Modèles de saisie rapide</h2>
+        <div class="card-h"><h2 class="card-t">Modèles de la saisie libre</h2>
             <div class="flex gap-2">
                 <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'achat', tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }}, timbre: {{ (float) $pa['timbre'] }}, retenue_taux: {{ (float) $pa['retenue_taux'] }}, tva_deductible: '{{ $pa['tva_deductible'] ? 1 : 0 }}', comptes: [{ compte: @js((string) $pa['compte']), tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pa) }} }]}); $dispatch('open-modal', 'modele')">+ Achat</button>
                 <button class="btn-secondary btn-sm" @click="$dispatch('mod-edit', {type: 'vente', tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pv) }}, timbre: {{ (float) $pv['timbre'] }}, comptes: [{ compte: @js((string) $pv['compte']), tva_taux: {{ \App\Services\Saisie::tauxParDefaut($pv) }} }]}); $dispatch('open-modal', 'modele')">+ Vente</button>
@@ -135,5 +157,6 @@
                 <div class="flex justify-end md:col-span-2"><button class="btn-primary">Enregistrer le modèle</button></div>
             </form>
         </x-modal>
+    </div>
     </div>
 </div>

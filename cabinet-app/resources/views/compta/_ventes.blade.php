@@ -5,7 +5,8 @@
     $produits = collect($plan)->filter(fn ($l, $n) => str_starts_with($n, '7') && strlen($n) >= 3);
 @endphp
 <div class="mb-4 flex flex-wrap justify-end gap-2">
-    <button class="btn-primary" x-data @click="$dispatch('fv-edit', {}); $dispatch('open-modal', 'fv')"><x-icon name="plus" class="h-4 w-4"/> Saisir une facture de vente</button>
+    <button class="btn-secondary" x-data @click="$dispatch('fv-edit', {}); $dispatch('open-modal', 'fv')" title="Saisie libre, sans modèle"><x-icon name="plus" class="h-4 w-4"/> Saisie libre</button>
+    <a href="{{ route('compta.factures-modele', 'vente') }}" class="btn-primary"><x-icon name="plus" class="h-4 w-4"/> Saisir une facture de vente</a>
 </div>
 <div class="card overflow-x-auto">
     <table class="tbl"><thead><tr><th>Date</th><th>Client</th><th>Compte</th><th class="text-right">HT</th><th class="text-right">TVA</th><th class="text-right">TTC</th><th>Statut</th><th></th></tr></thead><tbody>
@@ -25,7 +26,8 @@
                         <form method="POST" action="{{ route('compta.ventes.valider', $f) }}" class="inline">@csrf<button class="btn-success btn-sm">Valider</button></form>
                         <form method="POST" action="{{ route('compta.ventes.rejeter', $f) }}" class="inline" onsubmit="this.motif.value = prompt('Motif du rejet ?') || ''">@csrf<input type="hidden" name="motif"><button class="btn-secondary btn-sm !text-rose-600">Rejeter</button></form>
                     @endif
-                    <button class="btn-icon" title="Modifier" x-data @click="$dispatch('fv-edit', @js($f->only(['id', 'tiers', 'matricule_fiscal', 'reference', 'description', 'ht', 'tva_taux', 'tva', 'timbre', 'compte']) + ['lignes' => $f->lignesSaisie(), 'date' => $f->date->format('Y-m-d'), 'tva_suspension' => $f->tva_suspension, 'suspension_ref' => $f->suspension_ref, 'suspension_date' => $f->suspension_date?->format('Y-m-d')])); $dispatch('open-modal', 'fv')"><x-icon name="edit" class="h-4 w-4"/></button>
+                    @if($f->selonModele())<a href="{{ route('compta.factures-modele', ['type' => 'vente', 'facture' => $f->id]) }}" class="btn-icon" title="Modifier"><x-icon name="edit" class="h-4 w-4"/></a>@else
+                    <button class="btn-icon" title="Modifier" x-data @click="$dispatch('fv-edit', @js($f->only(['id', 'tiers', 'matricule_fiscal', 'reference', 'description', 'ht', 'tva_taux', 'tva', 'timbre', 'compte']) + ['lignes' => $f->lignesSaisie(), 'date' => $f->date->format('Y-m-d'), 'tva_suspension' => $f->tva_suspension, 'suspension_ref' => $f->suspension_ref, 'suspension_date' => $f->suspension_date?->format('Y-m-d')])); $dispatch('open-modal', 'fv')"><x-icon name="edit" class="h-4 w-4"/></button>@endif
                     <x-confirm-delete :action="route('compta.ventes.destroy', $f)"/>
                 @endif
             </td>

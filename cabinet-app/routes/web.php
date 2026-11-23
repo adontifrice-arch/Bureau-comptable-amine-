@@ -160,6 +160,15 @@ Route::middleware(['auth', 'actif', 'droits', 'tracer'])->group(function () {
     Route::get('comptabilite/journaux/export', [C\ComptaController::class, 'journauxCsv'])->name('compta.journaux.csv');
     Route::get('comptabilite/grand-livre/export', [C\ComptaController::class, 'grandLivreCsv'])->name('compta.grand-livre.csv');
 
+    // ---------- Paramétrage des factures par modèle et saisie selon le modèle ----------
+    Route::get('comptabilite/parametres-factures/{type}', [C\FactureModeleController::class, 'parametrage'])->whereIn('type', ['achat', 'vente'])->name('compta.modeles-factures');
+    Route::post('comptabilite/parametres-factures/{type}', [C\FactureModeleController::class, 'parametrageStore'])->whereIn('type', ['achat', 'vente'])->name('compta.modeles-factures.store');
+    Route::put('comptabilite/parametres-factures/modele/{modele}', [C\FactureModeleController::class, 'parametrageUpdate'])->name('compta.modeles-factures.update');
+    Route::delete('comptabilite/parametres-factures/modele/{modele}', [C\FactureModeleController::class, 'parametrageDestroy'])->name('compta.modeles-factures.destroy');
+    Route::get('comptabilite/saisie-facture/{type}', [C\FactureModeleController::class, 'saisie'])->whereIn('type', ['achat', 'vente'])->name('compta.factures-modele');
+    Route::post('comptabilite/saisie-facture/{type}', [C\FactureModeleController::class, 'saisieStore'])->whereIn('type', ['achat', 'vente'])->name('compta.factures-modele.store');
+    Route::put('comptabilite/saisie-facture/{type}/{facture}', [C\FactureModeleController::class, 'saisieUpdate'])->whereIn('type', ['achat', 'vente'])->whereNumber('facture')->name('compta.factures-modele.update');
+
     // ---------- Saisie rapide : paramétrage, modèles, factures de vente ----------
     Route::post('comptabilite/parametres', [C\SaisieController::class, 'parametres'])->middleware('chef')->name('compta.parametres');
     Route::post('comptabilite/modeles', [C\SaisieController::class, 'modeleStore'])->name('compta.modeles.store');

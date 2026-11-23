@@ -29,7 +29,7 @@ class Sauvegardes
     public const ELEMENTS = [
         'base' => ['Base de données complète', []],
         'clients' => ['Clients (fiches, associés, échéances, documents, actes)', ['clients', 'associes', 'exigences', 'echeances', 'actes', 'modeles_actes', 'documents', 'client_users']],
-        'compta' => ['Dossiers comptables', ['comptes', 'ecritures', 'ecriture_lignes', 'factures_recues', 'factures_ventes', 'modeles_saisie', 'releves', 'releve_lignes']],
+        'compta' => ['Dossiers comptables', ['comptes', 'ecritures', 'ecriture_lignes', 'factures_recues', 'factures_ventes', 'modeles_saisie', 'modeles_factures', 'releves', 'releve_lignes']],
         'paie' => ['Paie', ['salaries', 'salarie_documents', 'salarie_historique', 'paies', 'paie_profils', 'paie_rubriques', 'conges', 'acomptes', 'prets']],
         'liasse' => ['Liasse fiscale', ['liasses', 'passages_fiscaux']],
         'immobilisations' => ['Immobilisations', ['immobilisations', 'amortissements_comptabilises']],

@@ -172,9 +172,10 @@ class ComptaController extends Controller
     /** Validation par le chef comptable → comptabilisation au journal des achats. */
     public function valider(FactureRecue $fr)
     {
-        if ($fr->compteManquant()) return back()->with('err', 'Choisissez le compte de chaque ligne avant de valider (bouton modifier).');
+        if ($fr->selonModele() && ($err = $fr->erreurSelonModele())) return back()->with('err', $err);
+        if (! $fr->selonModele() && $fr->compteManquant()) return back()->with('err', 'Choisissez le compte de chaque ligne avant de valider (bouton modifier).');
         DB::transaction(function () use ($fr) {
-            Compta::passer($fr->client_id, $fr->date->format('Y-m-d'), 'ACH', 'Facture '.($fr->reference ?: '').' – '.$fr->fournisseur, $fr->lignesEcriture(), 'fr:'.$fr->id, auth()->id());
+            Compta::passer($fr->client_id, $fr->date->format('Y-m-d'), $fr->journalEcriture('ACH'), 'Facture '.($fr->reference ?: '').' – '.$fr->fournisseur, $fr->lignesEcriture(), 'fr:'.$fr->id, auth()->id());
             $fr->update(['statut' => 'val', 'valide_par' => auth()->id()]);
         });
         $this->log('Validation de la facture '.$fr->fournisseur.' '.$fr->reference, $fr->client_id);
