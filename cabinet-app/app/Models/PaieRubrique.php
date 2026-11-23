@@ -15,7 +15,8 @@ use Illuminate\Support\Collection;
  * Une rubrique « note » ne porte qu'une quantité (sans valeur) ; une rubrique « dépend d'une note » est multipliée par cette quantité.
  * Une rubrique « à déduire » est une retenue : déduite du brut si elle est cotisable, sinon du net (retenue diverse, compte 427).
  * Les avantages en nature et les tickets (cadeau, restaurant) entrent dans le brut mais ne sont pas versés en espèces.
- * Les tickets restaurant se saisissent chaque mois en nombre de tickets, valorisé à la valeur d'un ticket (montant de la rubrique).
+ * Les tickets restaurant se saisissent chaque mois en nombre de tickets, valorisé à la valeur d'un ticket (montant de la rubrique) ;
+ * chaque ticket est exonéré de CNSS à hauteur de 3 × SMIG horaire (ctx smig_horaire), seul l'excédent est cotisable.
  */
 class PaieRubrique extends Model
 {
@@ -66,6 +67,8 @@ class PaieRubrique extends Model
      * Réservées aux retenues non cotisables, déduites du net : elles ne modifient ni le brut ni l'imposable dont elles dépendent.
      */
     public const BASES_TOTAUX = ['brut', 'imposable'];
+    /** Exonération de CNSS d'un ticket restaurant : 3 × SMIG horaire par ticket. */
+    public const TICKET_EXONERATION_SMIG = 3;
     public const BASES = ['base' => 'Salaire de base', 'salaire' => 'Salaire du mois', 'brut' => 'Total brut', 'imposable' => 'Salaire imposable'];
 
     /** Avantages en nature : nom => cases cochées d'office sur la fiche rubrique. */
@@ -285,7 +288,11 @@ class PaieRubrique extends Model
             $m = r3($m);
             $montants[$r->id] = $m;
             if ($m == 0 && $q === null) continue;
-            $lignes[] = $r->ligne($r->enQuantite() ? $q : null, $m);
+            $ligne = $r->ligne($r->enQuantite() ? $q : null, $m);
+            if ($r->ticket_restaurant && ! $r->non_cotisable && (float) ($ctx['smig_horaire'] ?? 0) > 0) {
+                $ligne['exonere_cnss'] = r3(min($m, $q * self::TICKET_EXONERATION_SMIG * (float) $ctx['smig_horaire']));
+            }
+            $lignes[] = $ligne;
         }
         return $lignes;
     }

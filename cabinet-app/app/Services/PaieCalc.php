@@ -89,6 +89,8 @@ class PaieCalc
         $P['jours_mois'] = $h <= 40 ? 22 : 26;
         $P['heures_mois'] = r3($h * 52 / 12);
         $P['maj_hs'] = (float) ($k['majoration_hs'] ?? 25);
+        // SMIG horaire (Renseignements employeur) : un ticket restaurant est exonéré de CNSS jusqu'à 3 × SMIG horaire.
+        $P['smig_horaire'] = (float) ($k['smig_horaire'] ?? 0);
         $P['heures_jour'] = r3($h / ($h <= 40 ? 5 : 6));
         $P['jours_feries'] = 0.0;
         return $P;
@@ -147,7 +149,7 @@ class PaieCalc
             'acompte' => r3(max(0, $acompte)), 'taux_h' => r3($taux), 'pointage' => $pointage,
             'pret_societe' => r3((float) ($prets['societe'] ?? 0)), 'pret_cnss' => r3((float) ($prets['cnss'] ?? 0))];
         $ctx = ['base' => $base, 'salaire' => $salaire, 'jours' => $horaire ? max($jours ?? $Hm, 0) : min(max($jours ?? $J, 0), $J), 'plein' => $J,
-            'horaire' => $horaire, 'taux_h' => $taux, 'taux_j' => $Jm > 0 ? $base / $Jm : 0];
+            'horaire' => $horaire, 'taux_h' => $taux, 'taux_j' => $Jm > 0 ? $base / $Jm : 0, 'smig_horaire' => (float) ($P['smig_horaire'] ?? 0)];
         $L = $rubriques ? PaieRubrique::evaluer($rubriques, $e, $ctx, $saisie) : [];
         $res = static::assembler($e, $P, $cumul, $f, $L);
         // Second passage pour les retenues calculées sur le total brut ou le salaire imposable (déduites du net : brut et imposable inchangés).
@@ -586,7 +588,9 @@ class PaieCalc
         $retenues = $somme(fn ($l) => $l['sens'] === 'retenue' && ! $l['cotisable']);
         $nature = $somme(fn ($l) => $l['sens'] === 'gain' && $l['nature']);
         $brut = r3($f['salaire'] + $f['hs_montant'] + $f['prime'] + $gains - $dedBrut);
-        $baseCnss = r3($brut - $somme(fn ($l) => $l['sens'] === 'gain' && ! $l['cotisable']));
+        // Hors assiette CNSS : gains non cotisables et part exonérée des tickets restaurant (3 × SMIG horaire par ticket).
+        $exoTickets = r3(array_sum(array_map(fn ($l) => (float) ($l['exonere_cnss'] ?? 0), array_filter($L, fn ($l) => $l['sens'] === 'gain' && $l['cotisable']))));
+        $baseCnss = r3($brut - $somme(fn ($l) => $l['sens'] === 'gain' && ! $l['cotisable']) - $exoTickets);
         $brutImp = r3($brut - $somme(fn ($l) => $l['sens'] === 'gain' && ! $l['imposable']));
         // Contrat Dignité (KARAMA) : cotisations salariale et patronale prises en charge par l'État (FNE) jusqu'au plafond mensuel
         // (600 DT), dues aux taux du régime général sur la fraction excédentaire ; quote-part de l'État (400 DT) exonérée d'IRPP.

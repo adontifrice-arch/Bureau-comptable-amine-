@@ -59,6 +59,26 @@ class PaieTicketsRestaurantTest extends TestCase
         $this->assertEmpty(collect(PaieCalc::mois($this->client, '2026-11', true))->first()['rubriques']);
     }
 
+    public function test_exoneration_cnss_a_trois_fois_le_smig_horaire(): void
+    {
+        $this->client->paie_config = ['smig_horaire' => 2.5];
+        $this->client->save();
+        $e = Salarie::create(['client_id' => $this->client->id, 'nom' => 'Olfa', 'salaire_base' => 1000]);
+        $tk = PaieRubrique::create(['client_id' => $this->client->id, 'code' => 101, 'categorie' => 'avantage', 'nom' => 'Ticket Restaurant',
+            'mode' => 'montant', 'montant' => 10, 'ticket_restaurant' => true]);
+        Paie::create(['client_id' => $this->client->id, 'mois' => '2026-11', 'type' => 'normale', 'statut' => 'brouillon', 'rubriques' => [$e->id => [$tk->id => 22]]]);
+        $x = collect(PaieCalc::mois($this->client, '2026-11', true))->first();
+        // 22 tickets de 10 DT = 220 DT ; exonérés : 22 × 3 × 2,5 = 165 DT ; cotisable : 55 DT.
+        $this->assertEqualsWithDelta(1220, $x['brut'], 0.001);
+        $this->assertEqualsWithDelta(1055, $x['base_cnss'], 0.001);
+
+        // Ticket inférieur à 3 × SMIG horaire : entièrement exonéré.
+        $tk->update(['montant' => 6.5]);
+        $x = collect(PaieCalc::mois($this->client, '2026-11', true))->first();
+        $this->assertEqualsWithDelta(1143, $x['brut'], 0.001);
+        $this->assertEqualsWithDelta(1000, $x['base_cnss'], 0.001);
+    }
+
     public function test_sans_valeur_de_ticket_pas_de_colonne(): void
     {
         Salarie::create(['client_id' => $this->client->id, 'nom' => 'Olfa', 'salaire_base' => 1000]);
